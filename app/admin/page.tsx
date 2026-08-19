@@ -20,9 +20,14 @@ export default function AdminDashboard() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [passwordInput, setPasswordInput] = useState('')
   const [reservations, setReservations] = useState<Reservation[]>([])
+  const [filteredReservations, setFilteredReservations] = useState<Reservation[]>([])
   const [loading, setLoading] = useState(false)
 
-  // GANTI PASSWORD ADMIN DI SINI (bebas kamu atur)
+  // State untuk Filter Tanggal
+  const [startDate, setStartDate] = useState('')
+  const [endDate, setEndDate] = useState('')
+
+  // GANTI PASSWORD ADMIN DI SINI
   const ADMIN_PASSWORD = 'adminrahasia123'
 
   const handleLogin = (e: React.FormEvent) => {
@@ -46,6 +51,7 @@ export default function AdminDashboard() {
       alert('Gagal mengambil data: ' + error.message)
     } else {
       setReservations(data || [])
+      setFilteredReservations(data || [])
     }
     setLoading(false)
   }
@@ -61,6 +67,43 @@ export default function AdminDashboard() {
     } else {
       fetchReservations()
     }
+  }
+
+  // 1. LOGIK FITUR FILTER TANGGAL
+  useEffect(() => {
+    let result = reservations
+
+    if (startDate) {
+      result = result.filter((item) => item.booking_date >= startDate)
+    }
+    if (endDate) {
+      result = result.filter((item) => item.booking_date <= endDate)
+    }
+
+    setFilteredReservations(result)
+  }, [startDate, endDate, reservations])
+
+  // 2. LOGIK FITUR EXPORT TO CSV / EXCEL
+  const exportToCSV = () => {
+    if (filteredReservations.length === 0) {
+      alert('Tidak ada data untuk diexport!')
+      return
+    }
+
+    const headers = ['Tanggal Booking,Jam,Nama Pelanggan,Layanan,WhatsApp,Status\n']
+    const rows = filteredReservations.map(
+      (item) =>
+        `"${item.booking_date}","${item.booking_time}","${item.customer_name}","${item.service_name}","${item.whatsapp_number}","${item.status || 'pending'}"`
+    )
+
+    const csvContent = 'data:text/csv;charset=utf-8,' + headers.concat(rows).join('\n')
+    const encodedUri = encodeURI(csvContent)
+    const link = document.createElement('a')
+    link.setAttribute('href', encodedUri)
+    link.setAttribute('download', `reservasi_export_${new Date().toISOString().split('T')[0]}.csv`)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
   }
 
   useEffect(() => {
@@ -110,17 +153,19 @@ export default function AdminDashboard() {
 
   // TAMPILAN JIKA SUDAH LOGIN
   return (
-    <div className="min-h-screen bg-gray-100 p-8 text-gray-800">
+    <div className="min-h-screen bg-gray-100 p-4 md:p-8 text-gray-800">
       <div className="max-w-6xl mx-auto space-y-6">
-        <div className="flex justify-between items-center bg-white p-6 rounded-xl shadow-sm">
+        
+        {/* Header Dashboard */}
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-white p-6 rounded-xl shadow-sm gap-4">
           <div>
             <h1 className="text-2xl font-bold">Dashboard Admin Reservasi</h1>
             <p className="text-sm text-gray-500">Kelola dan pantau pesanan masuk secara real-time</p>
           </div>
-          <div className="space-x-3">
+          <div className="space-x-3 w-full md:w-auto flex justify-end">
             <button
               onClick={fetchReservations}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition"
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition text-sm"
             >
               Refresh Data
             </button>
@@ -129,18 +174,61 @@ export default function AdminDashboard() {
                 sessionStorage.removeItem('admin_auth')
                 setIsAuthenticated(false)
               }}
-              className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg font-medium transition"
+              className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg font-medium transition text-sm"
             >
               Logout
             </button>
           </div>
         </div>
 
+        {/* BARU: Control Box (Filter Tanggal & Export CSV) */}
+        <div className="bg-white p-4 rounded-xl shadow-sm flex flex-wrap gap-4 items-end justify-between">
+          <div className="flex flex-wrap gap-4 items-end">
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">Dari Tanggal:</label>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="p-2 border border-gray-300 rounded-lg text-sm bg-white"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">Sampai Tanggal:</label>
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="p-2 border border-gray-300 rounded-lg text-sm bg-white"
+              />
+            </div>
+            {(startDate || endDate) && (
+              <button
+                onClick={() => {
+                  setStartDate('')
+                  setEndDate('')
+                }}
+                className="bg-gray-500 hover:bg-gray-600 text-white px-3 py-2 rounded-lg text-xs font-medium transition"
+              >
+                Reset Filter
+              </button>
+            )}
+          </div>
+
+          <button
+            onClick={exportToCSV}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg font-semibold transition text-sm flex items-center gap-2"
+          >
+            📥 Export Excel (CSV)
+          </button>
+        </div>
+
+        {/* Tabel Data */}
         <div className="bg-white rounded-xl shadow-sm overflow-hidden">
           {loading ? (
             <div className="p-8 text-center text-gray-500">Memuat data reservasi...</div>
-          ) : reservations.length === 0 ? (
-            <div className="p-8 text-center text-gray-500">Belum ada reservasi masuk.</div>
+          ) : filteredReservations.length === 0 ? (
+            <div className="p-8 text-center text-gray-500">Belum ada reservasi masuk / sesuai filter.</div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
@@ -155,7 +243,7 @@ export default function AdminDashboard() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200 text-sm">
-                  {reservations.map((item) => (
+                  {filteredReservations.map((item) => (
                     <tr key={item.id} className="hover:bg-gray-50">
                       <td className="p-4 font-medium">{item.booking_date}</td>
                       <td className="p-4">{item.booking_time}</td>
