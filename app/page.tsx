@@ -135,10 +135,10 @@ export default function Home() {
               <p className="text-xs font-semibold text-gray-600">Scan QRIS di bawah ini untuk membayar:</p>
               {/* Ganti src gambar QRIS dengan link/gambar QRIS kamu */}
               <img
-                src="/QRIS.png"
+                src="/qris.png"
                 alt="QRIS Code"
-                className="w-48 h-48 mx-auto border p-2 bg-white rounded-md shadow-sm"
-            />
+                className="w-full max-w-[240px] h-auto mx-auto border p-2 bg-white rounded-md shadow-sm object-contain"
+              />
               <p className="text-xs text-gray-500">Silakan SS bukti bayar untuk dikirim ke WA Admin.</p>
             </div>
           )}
