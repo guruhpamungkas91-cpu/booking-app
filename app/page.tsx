@@ -1,3 +1,6 @@
+Berikut kode lengkap app/page.tsx yang sudah digabungkan dengan tampilan nama branding M - CUT Barbershop dan format pesan WhatsApp terbaru:
+
+TypeScript
 'use client'
 
 export const dynamic = 'force-dynamic'
@@ -32,15 +35,16 @@ export default function Home() {
       return
     }
 
-    // 2. Buat Format Pesan WhatsApp
-    const message =
-      `Halo Admin, saya mau konfirmasi reservasi & pembayaran:%0A` +
-      `- *Nama:* ${formData.customer_name}%0A` +
-      `- *Layanan:* ${formData.service_name}%0A` +
-      `- *Tanggal:* ${formData.booking_date}%0A` +
-      `- *Jam:* ${formData.booking_time}%0A` +
-      `- *Metode Bayar:* ${formData.payment_method}%0A%0A` +
-      `Berikut saya lampirkan bukti transfernya:`
+    // 2. Format Pesan WhatsApp dengan Branding M - CUT Barbershop
+    const message = encodeURIComponent(
+      `Halo Admin *M - CUT Barbershop*, saya mau konfirmasi reservasi:\n\n` +
+      `📌 *Nama:* ${formData.customer_name}\n` +
+      `✂️ *Layanan:* ${formData.service_name}\n` +
+      `📅 *Tanggal:* ${formData.booking_date}\n` +
+      `⏰ *Jam:* ${formData.booking_time}\n` +
+      `💳 *Metode Bayar:* ${formData.payment_method}\n\n` +
+      `Mohon diproses ya, terima kasih!`
+    )
 
     // 3. Redirect ke WA
     const waUrl = `https://wa.me/${ADMIN_WA_NUMBER}?text=${message}`
@@ -50,9 +54,19 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
       <div className="max-w-md w-full bg-white rounded-xl shadow-lg p-6 space-y-6">
-        <h1 className="text-2xl font-bold text-gray-800 text-center">
-          Form Reservasi Online
-        </h1>
+        
+        {/* HEADER BRANDING NAMA USAHA */}
+        <div className="text-center space-y-1">
+          <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight">
+            M - CUT
+          </h1>
+          <p className="text-sm font-bold text-blue-600 uppercase tracking-widest">
+            Barbershop
+          </p>
+          <p className="text-xs text-gray-500 pt-1">
+            Form Reservasi Jadwal Potong
+          </p>
+        </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
@@ -133,9 +147,8 @@ export default function Home() {
           {formData.payment_method === 'QRIS' && (
             <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg text-center space-y-2">
               <p className="text-xs font-semibold text-gray-600">Scan QRIS di bawah ini untuk membayar:</p>
-              {/* Ganti src gambar QRIS dengan link/gambar QRIS kamu */}
               <img
-                src="/QRIS.png"
+                src="/qris.png"
                 alt="QRIS Code"
                 className="w-full max-w-[240px] h-auto mx-auto border p-2 bg-white rounded-md shadow-sm object-contain"
               />
@@ -147,7 +160,7 @@ export default function Home() {
             <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-gray-700 space-y-1">
               <p className="font-semibold text-blue-900">Info Rekening BCA:</p>
               <p className="font-mono text-base font-bold text-gray-900">123-456-7890</p>
-              <p className="text-xs text-gray-600">a.n. Nama Pemilik / Barbershop</p>
+              <p className="text-xs text-gray-600">a.n. M - CUT Barbershop</p>
             </div>
           )}
 
