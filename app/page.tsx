@@ -1,7 +1,11 @@
 'use client'
 
+'use client'
+
+export const dynamic = 'force-dynamic'
+
 import { useState } from 'react'
-import { supabase } from './lib/supabase' // sesuaikan path jika pakai folder src/lib/supabase
+import { supabase } from './lib/supabase' // Sesuaikan path jika menggunakan src/lib/supabase
 
 export default function Home() {
   const [formData, setFormData] = useState({
