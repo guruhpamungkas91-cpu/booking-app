@@ -13,6 +13,7 @@ interface Reservation {
   service_name: string
   booking_date: string
   booking_time: string
+  payment_method?: string // 1. Tambah property payment_method
   status: string
 }
 
@@ -90,10 +91,11 @@ export default function AdminDashboard() {
       return
     }
 
-    const headers = ['Tanggal Booking,Jam,Nama Pelanggan,Layanan,WhatsApp,Status\n']
+    // 2. Tambahkan 'Metode Bayar' di Header & Baris CSV
+    const headers = ['Tanggal Booking,Jam,Nama Pelanggan,Layanan,Metode Bayar,WhatsApp,Status\n']
     const rows = filteredReservations.map(
       (item) =>
-        `"${item.booking_date}","${item.booking_time}","${item.customer_name}","${item.service_name}","${item.whatsapp_number}","${item.status || 'pending'}"`
+        `"${item.booking_date}","${item.booking_time}","${item.customer_name}","${item.service_name}","${item.payment_method || 'QRIS'}","${item.whatsapp_number}","${item.status || 'pending'}"`
     )
 
     const csvContent = 'data:text/csv;charset=utf-8,' + headers.concat(rows).join('\n')
@@ -181,7 +183,7 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* BARU: Control Box (Filter Tanggal & Export CSV) */}
+        {/* Control Box */}
         <div className="bg-white p-4 rounded-xl shadow-sm flex flex-wrap gap-4 items-end justify-between">
           <div className="flex flex-wrap gap-4 items-end">
             <div>
@@ -238,6 +240,7 @@ export default function AdminDashboard() {
                     <th className="p-4">Jam</th>
                     <th className="p-4">Nama Pelanggan</th>
                     <th className="p-4">Layanan</th>
+                    <th className="p-4">Metode Bayar</th> {/* 3. Tambah Header Tabel */}
                     <th className="p-4">WhatsApp</th>
                     <th className="p-4">Aksi / Status</th>
                   </tr>
@@ -251,6 +254,12 @@ export default function AdminDashboard() {
                       <td className="p-4">
                         <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded-md text-xs font-medium">
                           {item.service_name}
+                        </span>
+                      </td>
+                      {/* 4. Tambah Kolom Metode Pembayaran */}
+                      <td className="p-4">
+                        <span className="bg-purple-100 text-purple-800 px-2 py-1 rounded-md text-xs font-medium">
+                          {item.payment_method || 'QRIS'}
                         </span>
                       </td>
                       <td className="p-4">
