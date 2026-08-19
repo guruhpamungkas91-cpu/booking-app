@@ -135,7 +135,7 @@ export default function Home() {
               <p className="text-xs font-semibold text-gray-600">Scan QRIS di bawah ini untuk membayar:</p>
               {/* Ganti src gambar QRIS dengan link/gambar QRIS kamu */}
               <img
-                src="/qris.png"
+                src="/QRIS.png"
                 alt="QRIS Code"
                 className="w-full max-w-[240px] h-auto mx-auto border p-2 bg-white rounded-md shadow-sm object-contain"
               />
