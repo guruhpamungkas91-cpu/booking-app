@@ -1,6 +1,3 @@
-Berikut kode lengkap app/page.tsx yang sudah digabungkan dengan tampilan nama branding M - CUT Barbershop dan format pesan WhatsApp terbaru:
-
-TypeScript
 'use client'
 
 export const dynamic = 'force-dynamic'
