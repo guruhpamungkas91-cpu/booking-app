@@ -1,69 +1,121 @@
-import Image from "next/image";
+'use client'
+
+import { useState } from 'react'
+import { supabase } from './lib/supabase' // sesuaikan path jika pakai folder src/lib/supabase
 
 export default function Home() {
+  const [formData, setFormData] = useState({
+    customer_name: '',
+    whatsapp_number: '',
+    booking_date: '',
+    booking_time: '',
+    service_name: 'Potong Rambut',
+  })
+  const [loading, setLoading] = useState(false)
+
+  // Ganti dengan nomor WhatsApp Admin Bisnis (pake format 62)
+  const ADMIN_WA_NUMBER = '6281234567890' 
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setLoading(true)
+
+    // 1. Simpan ke Database Supabase
+    const { error } = await supabase.from('Reservations').insert([formData])
+
+    if (error) {
+      alert('Gagal membuat reservasi: ' + error.message)
+      setLoading(false)
+      return
+    }
+
+    // 2. Buat Format Pesan WhatsApp
+    const message = `Halo Admin, saya mau konfirmasi reservasi:%0A` +
+      `- *Nama:* ${formData.customer_name}%0A` +
+      `- *Layanan:* ${formData.service_name}%0A` +
+      `- *Tanggal:* ${formData.booking_date}%0A` +
+      `- *Jam:* ${formData.booking_time}`
+
+    // 3. Redirect Otomatis ke WhatsApp Admin
+    const waUrl = `https://wa.me/${ADMIN_WA_NUMBER}?text=${message}`
+    window.location.href = waUrl
+  }
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
+    <main className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+      <div className="max-w-md w-full bg-white rounded-xl shadow-lg p-6 space-y-6">
+        <h1 className="text-2xl font-bold text-gray-800 text-center">
+          Form Reservasi Online
+        </h1>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Nama Lengkap</label>
+            <input
+              type="text"
+              required
+              className="mt-1 w-full p-2 border border-gray-300 rounded-md text-gray-800"
+              value={formData.customer_name}
+              onChange={(e) => setFormData({ ...formData, customer_name: e.target.value })}
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Nomor WhatsApp</label>
+            <input
+              type="tel"
+              required
+              placeholder="08123456789"
+              className="mt-1 w-full p-2 border border-gray-300 rounded-md text-gray-800"
+              value={formData.whatsapp_number}
+              onChange={(e) => setFormData({ ...formData, whatsapp_number: e.target.value })}
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Pilih Layanan</label>
+            <select
+              className="mt-1 w-full p-2 border border-gray-300 rounded-md text-gray-800"
+              value={formData.service_name}
+              onChange={(e) => setFormData({ ...formData, service_name: e.target.value })}
+            >
+              <option value="Potong Rambut">Potong Rambut</option>
+              <option value="Hair Spa">Hair Spa</option>
+              <option value="Coloring">Coloring</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Tanggal</label>
+            <input
+              type="date"
+              required
+              className="mt-1 w-full p-2 border border-gray-300 rounded-md text-gray-800"
+              value={formData.booking_date}
+              onChange={(e) => setFormData({ ...formData, booking_date: e.target.value })}
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Jam</label>
+            <input
+              type="time"
+              required
+              className="mt-1 w-full p-2 border border-gray-300 rounded-md text-gray-800"
+              value={formData.booking_time}
+              onChange={(e) => setFormData({ ...formData, booking_time: e.target.value })}
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-md transition"
           >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
-  );
+            {loading ? 'Memproses...' : 'Kirim & Lanjut ke WA'}
+          </button>
+        </form>
+      </div>
+    </main>
+  )
 }
