@@ -1,11 +1,9 @@
 'use client'
 
-'use client'
-
 export const dynamic = 'force-dynamic'
 
 import { useState } from 'react'
-import { supabase } from './lib/supabase' // Sesuaikan path jika menggunakan src/lib/supabase
+import { supabase } from './lib/supabase'
 
 export default function Home() {
   const [formData, setFormData] = useState({
@@ -14,17 +12,18 @@ export default function Home() {
     booking_date: '',
     booking_time: '',
     service_name: 'Potong Rambut',
+    payment_method: 'QRIS', // Default pembayaran
   })
   const [loading, setLoading] = useState(false)
 
-  // Ganti dengan nomor WhatsApp Admin Bisnis (pake format 62)
-  const ADMIN_WA_NUMBER = '6281234567890' 
+  // Ganti dengan nomor WhatsApp Admin Bisnis (format 62)
+  const ADMIN_WA_NUMBER = '6281234567890'
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
 
-    // 1. Simpan ke Database Supabase
+    // 1. Simpan data reservasi + metode pembayaran ke Supabase
     const { error } = await supabase.from('Reservations').insert([formData])
 
     if (error) {
@@ -34,13 +33,16 @@ export default function Home() {
     }
 
     // 2. Buat Format Pesan WhatsApp
-    const message = `Halo Admin, saya mau konfirmasi reservasi:%0A` +
+    const message =
+      `Halo Admin, saya mau konfirmasi reservasi & pembayaran:%0A` +
       `- *Nama:* ${formData.customer_name}%0A` +
       `- *Layanan:* ${formData.service_name}%0A` +
       `- *Tanggal:* ${formData.booking_date}%0A` +
-      `- *Jam:* ${formData.booking_time}`
+      `- *Jam:* ${formData.booking_time}%0A` +
+      `- *Metode Bayar:* ${formData.payment_method}%0A%0A` +
+      `Berikut saya lampirkan bukti transfernya:`
 
-    // 3. Redirect Otomatis ke WhatsApp Admin
+    // 3. Redirect ke WA
     const waUrl = `https://wa.me/${ADMIN_WA_NUMBER}?text=${message}`
     window.location.href = waUrl
   }
@@ -89,34 +91,72 @@ export default function Home() {
             </select>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Tanggal</label>
-            <input
-              type="date"
-              required
-              className="mt-1 w-full p-2 border border-gray-300 rounded-md text-gray-800"
-              value={formData.booking_date}
-              onChange={(e) => setFormData({ ...formData, booking_date: e.target.value })}
-            />
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Tanggal</label>
+              <input
+                type="date"
+                required
+                className="mt-1 w-full p-2 border border-gray-300 rounded-md text-gray-800"
+                value={formData.booking_date}
+                onChange={(e) => setFormData({ ...formData, booking_date: e.target.value })}
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Jam</label>
+              <input
+                type="time"
+                required
+                className="mt-1 w-full p-2 border border-gray-300 rounded-md text-gray-800"
+                value={formData.booking_time}
+                onChange={(e) => setFormData({ ...formData, booking_time: e.target.value })}
+              />
+            </div>
           </div>
 
+          {/* OPSI PEMBAYARAN */}
           <div>
-            <label className="block text-sm font-medium text-gray-700">Jam</label>
-            <input
-              type="time"
-              required
-              className="mt-1 w-full p-2 border border-gray-300 rounded-md text-gray-800"
-              value={formData.booking_time}
-              onChange={(e) => setFormData({ ...formData, booking_time: e.target.value })}
-            />
+            <label className="block text-sm font-medium text-gray-700 mb-1">Metode Pembayaran</label>
+            <select
+              className="w-full p-2 border border-gray-300 rounded-md text-gray-800"
+              value={formData.payment_method}
+              onChange={(e) => setFormData({ ...formData, payment_method: e.target.value })}
+            >
+              <option value="QRIS">QRIS All Payment (GoPay/OVO/Dana/BCA/dll)</option>
+              <option value="Transfer BCA">Transfer Bank BCA</option>
+              <option value="Bayar di Tempat">Bayar di Tempat (Cash)</option>
+            </select>
           </div>
+
+          {/* DISPLAY TAMPILAN QRIS / NO REK */}
+          {formData.payment_method === 'QRIS' && (
+            <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg text-center space-y-2">
+              <p className="text-xs font-semibold text-gray-600">Scan QRIS di bawah ini untuk membayar:</p>
+              {/* Ganti src gambar QRIS dengan link/gambar QRIS kamu */}
+              <img
+                src="/qris.png"
+                alt="QRIS Code"
+                className="w-48 h-48 mx-auto border p-2 bg-white rounded-md shadow-sm"
+            />
+              <p className="text-xs text-gray-500">Silakan SS bukti bayar untuk dikirim ke WA Admin.</p>
+            </div>
+          )}
+
+          {formData.payment_method === 'Transfer BCA' && (
+            <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-gray-700 space-y-1">
+              <p className="font-semibold text-blue-900">Info Rekening BCA:</p>
+              <p className="font-mono text-base font-bold text-gray-900">123-456-7890</p>
+              <p className="text-xs text-gray-600">a.n. Nama Pemilik / Barbershop</p>
+            </div>
+          )}
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-md transition"
+            className="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-3 px-4 rounded-md transition shadow-md"
           >
-            {loading ? 'Memproses...' : 'Kirim & Lanjut ke WA'}
+            {loading ? 'Memproses...' : 'Kirim & Lanjut Kirim Bukti WA'}
           </button>
         </form>
       </div>
