@@ -20,7 +20,7 @@ export default function Home() {
   const [loading, setLoading] = useState(false)
 
   // Ganti dengan nomor WhatsApp Admin Bisnis (format 62)
-  const ADMIN_WA_NUMBER = '6281234567890'
+  const ADMIN_WA_NUMBER = '6285899997828'
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
