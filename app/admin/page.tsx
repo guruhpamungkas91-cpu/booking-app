@@ -109,6 +109,7 @@ export default function AdminDashboard() {
   }
 
   // 1. KALKULASI STATISTIK (ANALYTICS)
+    console.log('Data bookings saat ini:', bookings);
     const stats = useMemo(() => {
     const now = new Date()
     const sevenDaysAgo = new Date(now.setDate(now.getDate() - 7))
@@ -117,7 +118,9 @@ export default function AdminDashboard() {
     const totalBookings = bookings.length
 
     // 2. Total pending murni (SEMUA yang pending tanpa batasan tanggal)
-    const pendingCount = bookings.filter((b) => b.status === 'pending').length
+    const pendingCount = bookings.filter((b) => 
+    b.status && b.status.toString().trim().toLowerCase() === 'pending'
+    ).length
 
     // 3. Total confirmed & completed
     const activeConfirmedCount = bookings.filter(
