@@ -13,7 +13,7 @@ interface Reservation {
   service_name: string
   booking_date: string
   booking_time: string
-  payment_method?: string // 1. Tambah property payment_method
+  payment_method?: string
   status: string
 }
 
@@ -70,7 +70,29 @@ export default function AdminDashboard() {
     }
   }
 
-  // 1. LOGIK FITUR FILTER TANGGAL
+  // FITUR HAPUS DATA RESERVASI
+  const handleDelete = async (id: number, customerName: string) => {
+    const isConfirmed = window.confirm(
+      `Apakah kamu yakin ingin menghapus data reservasi atas nama "${customerName}"?`
+    )
+
+    if (!isConfirmed) return
+
+    const { error } = await supabase
+      .from('Reservations')
+      .delete()
+      .eq('id', id)
+
+    if (error) {
+      alert('Gagal menghapus data: ' + error.message)
+    } else {
+      // Refresh list lokal agar UI langsung ter-update tanpa reload full
+      setReservations((prev) => prev.filter((item) => item.id !== id))
+      alert('Data reservasi berhasil dihapus!')
+    }
+  }
+
+  // LOGIK FITUR FILTER TANGGAL
   useEffect(() => {
     let result = reservations
 
@@ -84,14 +106,13 @@ export default function AdminDashboard() {
     setFilteredReservations(result)
   }, [startDate, endDate, reservations])
 
-  // 2. LOGIK FITUR EXPORT TO CSV / EXCEL
+  // LOGIK FITUR EXPORT TO CSV / EXCEL
   const exportToCSV = () => {
     if (filteredReservations.length === 0) {
       alert('Tidak ada data untuk diexport!')
       return
     }
 
-    // 2. Tambahkan 'Metode Bayar' di Header & Baris CSV
     const headers = ['Tanggal Booking,Jam,Nama Pelanggan,Layanan,Metode Bayar,WhatsApp,Status\n']
     const rows = filteredReservations.map(
       (item) =>
@@ -240,9 +261,10 @@ export default function AdminDashboard() {
                     <th className="p-4">Jam</th>
                     <th className="p-4">Nama Pelanggan</th>
                     <th className="p-4">Layanan</th>
-                    <th className="p-4">Metode Bayar</th> {/* 3. Tambah Header Tabel */}
+                    <th className="p-4">Metode Bayar</th>
                     <th className="p-4">WhatsApp</th>
-                    <th className="p-4">Aksi / Status</th>
+                    <th className="p-4">Status</th>
+                    <th className="p-4 text-center">Aksi</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200 text-sm">
@@ -256,7 +278,6 @@ export default function AdminDashboard() {
                           {item.service_name}
                         </span>
                       </td>
-                      {/* 4. Tambah Kolom Metode Pembayaran */}
                       <td className="p-4">
                         <span className="bg-purple-100 text-purple-800 px-2 py-1 rounded-md text-xs font-medium">
                           {item.payment_method || 'QRIS'}
@@ -284,6 +305,14 @@ export default function AdminDashboard() {
                           <option value="cancelled">🔴 Cancelled</option>
                         </select>
                       </td>
+                      <td className="p-4 text-center">
+                        <button
+                          onClick={() => handleDelete(item.id, item.customer_name)}
+                          className="bg-red-50 hover:bg-red-100 text-red-600 px-3 py-1.5 rounded-lg text-xs font-semibold border border-red-200 transition"
+                        >
+                          🗑️ Hapus
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -291,6 +320,7 @@ export default function AdminDashboard() {
             </div>
           )}
         </div>
+
       </div>
     </div>
   )
