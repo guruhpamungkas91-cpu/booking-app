@@ -1,382 +1,286 @@
-'use client'
+import React, { useState, useMemo } from 'react';
+import { 
+  Users, 
+  Calendar, 
+  TrendingUp, 
+  CheckCircle2, 
+  Clock, 
+  XCircle, 
+  Trash2, 
+  Search, 
+  Filter 
+} from 'lucide-react';
 
-export const dynamic = 'force-dynamic'
+export default function ReservationAdmin({ 
+  reservations = [], 
+  handleStatusChange, 
+  handleDelete 
+}) {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
 
-import { useEffect, useState } from 'react'
-import { supabase } from '../lib/supabase'
+  // 1. Kalkulasi Statistik & Catatan Mingguan (Analytics)
+  const stats = useMemo(() => {
+    const total = reservations.length;
+    const pending = reservations.filter(r => r.status === 'pending').length;
+    const confirmed = reservations.filter(r => r.status === 'confirmed').length;
+    const completed = reservations.filter(r => r.status === 'completed').length;
+    const cancelled = reservations.filter(r => r.status === 'cancelled').length;
 
-interface Reservation {
-  id: number
-  created_at: string
-  customer_name: string
-  whatsapp_number: string
-  service_name: string
-  booking_date: string
-  booking_time: string
-  payment_method?: string
-  status: string
-}
+    // Filter reservasi masuk dalam 7 hari terakhir (Minggu ini)
+    const now = new Date();
+    const sevenDaysAgo = new Date(now.setDate(now.getDate() - 7));
+    const thisWeekReservations = reservations.filter(item => {
+      const createdDate = new Date(item.created_at || item.booking_date);
+      return createdDate >= sevenDaysAgo;
+    });
 
-export default function AdminDashboard() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
-  
-  // State untuk Login Supabase Auth
-  const [emailInput, setEmailInput] = useState('')
-  const [passwordInput, setPasswordInput] = useState('')
-  
-  const [reservations, setReservations] = useState<Reservation[]>([])
-  const [filteredReservations, setFilteredReservations] = useState<Reservation[]>([])
-  const [loading, setLoading] = useState(false)
+    return {
+      total,
+      pending,
+      confirmed,
+      completed,
+      cancelled,
+      thisWeekCount: thisWeekReservations.length
+    };
+  }, [reservations]);
 
-  // State untuk Filter Tanggal
-  const [startDate, setStartDate] = useState('')
-  const [endDate, setEndDate] = useState('')
+  // 2. Filter & Search Data Reservasi
+  const filteredReservations = useMemo(() => {
+    return reservations.filter(item => {
+      const matchSearch = 
+        item.customer_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.customer_phone?.includes(searchTerm) ||
+        item.service?.toLowerCase().includes(searchTerm.toLowerCase());
+      
+      const matchStatus = statusFilter === 'all' || item.status === statusFilter;
 
-  // LOGIN MENGGUNAKAN SUPABASE AUTH
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setLoading(true)
+      return matchSearch && matchStatus;
+    });
+  }, [reservations, searchTerm, statusFilter]);
 
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: emailInput,
-      password: passwordInput,
-    })
+  // Visual Bar Helper untuk Mini Chart Minggu Ini
+  const maxWeeklyTarget = Math.max(stats.thisWeekCount, 10);
+  const weeklyPercentage = Math.min(Math.round((stats.thisWeekCount / maxWeeklyTarget) * 100), 100);
 
-    if (error) {
-      alert('Login gagal: ' + error.message)
-    } else if (data.session) {
-      setIsAuthenticated(true)
-    }
-    setLoading(false)
-  }
-
-  // LOGOUT SUPABASE AUTH
-  const handleLogout = async () => {
-    await supabase.auth.signOut()
-    setIsAuthenticated(false)
-  }
-
-  const fetchReservations = async () => {
-    setLoading(true)
-    const { data, error } = await supabase
-      .from('Reservations')
-      .select('*')
-      .order('created_at', { ascending: false })
-
-    if (error) {
-      alert('Gagal mengambil data: ' + error.message)
-    } else {
-      setReservations(data || [])
-      setFilteredReservations(data || [])
-    }
-    setLoading(false)
-  }
-
-  const handleStatusChange = async (id: number, newStatus: string) => {
-    const { error } = await supabase
-      .from('Reservations')
-      .update({ status: newStatus })
-      .eq('id', id)
-
-    if (error) {
-      alert('Gagal update status: ' + error.message)
-    } else {
-      fetchReservations()
-    }
-  }
-
-  // FITUR HAPUS DATA RESERVASI
-  const handleDelete = async (id: number, customerName: string) => {
-    const isConfirmed = window.confirm(
-      `Apakah kamu yakin ingin menghapus data reservasi atas nama "${customerName}"?`
-    )
-
-    if (!isConfirmed) return
-
-    const { error } = await supabase
-      .from('Reservations')
-      .delete()
-      .eq('id', id)
-
-    if (error) {
-      alert('Gagal menghapus data: ' + error.message)
-    } else {
-      setReservations((prev) => prev.filter((item) => item.id !== id))
-      alert('Data reservasi berhasil dihapus!')
-    }
-  }
-
-  // LOGIKA FITUR FILTER TANGGAL
-  useEffect(() => {
-    let result = reservations
-
-    if (startDate) {
-      result = result.filter((item) => item.booking_date >= startDate)
-    }
-    if (endDate) {
-      result = result.filter((item) => item.booking_date <= endDate)
-    }
-
-    setFilteredReservations(result)
-  }, [startDate, endDate, reservations])
-
-  // LOGIKA FITUR EXPORT TO CSV / EXCEL
-  const exportToCSV = () => {
-    if (filteredReservations.length === 0) {
-      alert('Tidak ada data untuk diexport!')
-      return
-    }
-
-    const headers = ['Tanggal Booking,Jam,Nama Pelanggan,Layanan,Metode Bayar,WhatsApp,Status\n']
-    const rows = filteredReservations.map(
-      (item) =>
-        `"${item.booking_date}","${item.booking_time}","${item.customer_name}","${item.service_name}","${item.payment_method || 'QRIS'}","${item.whatsapp_number}","${item.status || 'pending'}"`
-    )
-
-    const csvContent = 'data:text/csv;charset=utf-8,' + headers.concat(rows).join('\n')
-    const encodedUri = encodeURI(csvContent)
-    const link = document.createElement('a')
-    link.setAttribute('href', encodedUri)
-    link.setAttribute('download', `reservasi_export_${new Date().toISOString().split('T')[0]}.csv`)
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-  }
-
-  // CEK SESSION AKTIF DARI SUPABASE
-  useEffect(() => {
-    const checkSession = async () => {
-      const { data } = await supabase.auth.getSession()
-      if (data.session) {
-        setIsAuthenticated(true)
-      }
-    }
-    checkSession()
-  }, [])
-
-  useEffect(() => {
-    if (isAuthenticated) {
-      fetchReservations()
-    }
-  }, [isAuthenticated])
-
-  // TAMPILAN JIKA BELUM LOGIN
-  if (!isAuthenticated) {
-    return (
-      <main className="min-h-screen bg-zinc-950 flex items-center justify-center p-4 font-sans text-zinc-100">
-        <div className="max-w-md w-full bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl p-6 sm:p-8 space-y-6">
-          <div className="text-center space-y-1">
-            <span className="px-3 py-1 rounded-full text-[11px] font-extrabold bg-amber-500/10 text-amber-500 border border-amber-500/20 tracking-wider">
-              ADMIN DASHBOARD
-            </span>
-            <h1 className="text-2xl font-black text-white tracking-wide uppercase mt-2">
-              M - CUT Barbershop
-            </h1>
-            <p className="text-xs text-zinc-400">Silakan login untuk mengelola sistem reservasi</p>
-          </div>
-
-          <form onSubmit={handleLogin} className="space-y-4">
-            <div>
-              <label className="block text-xs font-semibold text-zinc-300 mb-1.5">Email Admin</label>
-              <input
-                type="email"
-                required
-                placeholder="admin@mcutbarbershop.com"
-                className="w-full px-4 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-amber-500 transition"
-                value={emailInput}
-                onChange={(e) => setEmailInput(e.target.value)}
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-zinc-300 mb-1.5">Password</label>
-              <input
-                type="password"
-                required
-                placeholder="••••••••"
-                className="w-full px-4 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-amber-500 transition"
-                value={passwordInput}
-                onChange={(e) => setPasswordInput(e.target.value)}
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold py-3 rounded-xl transition text-xs shadow-lg shadow-amber-500/10 disabled:opacity-50 mt-2"
-            >
-              {loading ? 'Memproses...' : 'Masuk Dashboard'}
-            </button>
-          </form>
-        </div>
-      </main>
-    )
-  }
-
-  // TAMPILAN JIKA SUDAH LOGIN
   return (
-    <div className="min-h-screen bg-zinc-950 p-4 md:p-8 text-zinc-100 font-sans">
-      <div className="max-w-7xl mx-auto space-y-6">
+    <div className="min-h-screen bg-slate-950 text-slate-100 p-4 md:p-8 font-sans">
+      <div className="max-w-7xl mx-auto space-y-8">
         
-        {/* Header Dashboard */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-zinc-900 border border-zinc-800 p-6 rounded-2xl shadow-xl gap-4">
+        {/* Header Section */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-6">
           <div>
-            <div className="flex items-center space-x-2">
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-500/10 text-amber-500 border border-amber-500/20">
-                PANEL UTAMA
-              </span>
-              <h1 className="text-xl sm:text-2xl font-black text-white tracking-wide uppercase">
-                M - CUT Barbershop
-              </h1>
-            </div>
-            <p className="text-xs text-zinc-400 mt-1">Kelola dan pantau pesanan masuk secara real-time</p>
-          </div>
-
-          <div className="space-x-3 w-full md:w-auto flex justify-end">
-            <button
-              onClick={fetchReservations}
-              className="bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 px-4 py-2 rounded-xl font-semibold transition text-xs flex items-center gap-1.5"
-            >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-              <span>Refresh Data</span>
-            </button>
-            <button
-              onClick={handleLogout}
-              className="bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white border border-red-500/30 px-4 py-2 rounded-xl font-semibold transition text-xs"
-            >
-              Logout
-            </button>
+            <h1 className="text-3xl font-bold tracking-tight text-white flex items-center gap-3">
+              <Calendar className="w-8 h-8 text-indigo-500" />
+              Dashboard Reservasi
+            </h1>
+            <p className="text-slate-400 text-sm mt-1">
+              Kelola jadwal booking masuk dari WhatsApp & Google Bisnis
+            </p>
           </div>
         </div>
 
-        {/* Control Box */}
-        <div className="bg-zinc-900 border border-zinc-800 p-4 sm:p-5 rounded-2xl shadow-xl flex flex-wrap gap-4 items-end justify-between">
-          <div className="flex flex-wrap gap-4 items-end">
-            <div>
-              <label className="block text-xs font-semibold text-zinc-400 mb-1.5">Dari Tanggal:</label>
-              <input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-zinc-200 focus:outline-none focus:border-amber-500"
-              />
+        {/* --- STATS & CHART WIDGET SECTION --- */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          
+          {/* Card: Total Reservasi Minggu Ini */}
+          <div className="bg-slate-900/80 backdrop-blur border border-slate-800 rounded-2xl p-5 shadow-lg relative overflow-hidden">
+            <div className="flex justify-between items-start">
+              <div>
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                  Masuk Minggu Ini
+                </p>
+                <h3 className="text-3xl font-extrabold text-white mt-2">
+                  {stats.thisWeekCount} <span className="text-xs text-slate-400 font-normal">reservasi</span>
+                </h3>
+              </div>
+              <div className="p-3 bg-indigo-500/10 rounded-xl text-indigo-400 border border-indigo-500/20">
+                <TrendingUp className="w-6 h-6" />
+              </div>
             </div>
-            <div>
-              <label className="block text-xs font-semibold text-zinc-400 mb-1.5">Sampai Tanggal:</label>
-              <input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-zinc-200 focus:outline-none focus:border-amber-500"
-              />
+            {/* Visual Mini Chart Bar */}
+            <div className="mt-4">
+              <div className="flex justify-between text-xs text-slate-400 mb-1">
+                <span>Progress Mingguan</span>
+                <span>{weeklyPercentage}%</span>
+              </div>
+              <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+                <div 
+                  className="bg-indigo-500 h-2 rounded-full transition-all duration-500" 
+                  style={{ width: `${weeklyPercentage}%` }}
+                ></div>
+              </div>
             </div>
-            {(startDate || endDate) && (
-              <button
-                onClick={() => {
-                  setStartDate('')
-                  setEndDate('')
-                }}
-                className="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700 px-3 py-2 rounded-xl text-xs font-medium transition"
-              >
-                Reset Filter
-              </button>
-            )}
           </div>
 
-          <button
-            onClick={exportToCSV}
-            className="bg-emerald-500/10 hover:bg-emerald-500 text-emerald-400 hover:text-zinc-950 border border-emerald-500/30 px-4 py-2 rounded-xl font-bold transition text-xs flex items-center gap-2"
-          >
-            <span>📥 Export Excel (CSV)</span>
-          </button>
+          {/* Card: Pending / Menunggu Konfirmasi */}
+          <div className="bg-slate-900/80 backdrop-blur border border-slate-800 rounded-2xl p-5 shadow-lg">
+            <div className="flex justify-between items-start">
+              <div>
+                <p className="text-xs font-semibold text-amber-400 uppercase tracking-wider">
+                  Menunggu (Pending)
+                </p>
+                <h3 className="text-3xl font-extrabold text-white mt-2">
+                  {stats.pending}
+                </h3>
+              </div>
+              <div className="p-3 bg-amber-500/10 rounded-xl text-amber-400 border border-amber-500/20">
+                <Clock className="w-6 h-6" />
+              </div>
+            </div>
+            <p className="text-xs text-slate-500 mt-4">Perlu konfirmasi admin segera</p>
+          </div>
+
+          {/* Card: Dikonfirmasi */}
+          <div className="bg-slate-900/80 backdrop-blur border border-slate-800 rounded-2xl p-5 shadow-lg">
+            <div className="flex justify-between items-start">
+              <div>
+                <p className="text-xs font-semibold text-emerald-400 uppercase tracking-wider">
+                  Dikonfirmasi / Selesai
+                </p>
+                <h3 className="text-3xl font-extrabold text-white mt-2">
+                  {stats.confirmed + stats.completed}
+                </h3>
+              </div>
+              <div className="p-3 bg-emerald-500/10 rounded-xl text-emerald-400 border border-emerald-500/20">
+                <CheckCircle2 className="w-6 h-6" />
+              </div>
+            </div>
+            <p className="text-xs text-slate-500 mt-4">
+              Confirmed: {stats.confirmed} | Selesai: {stats.completed}
+            </p>
+          </div>
+
+          {/* Card: Total Keseluruhan */}
+          <div className="bg-slate-900/80 backdrop-blur border border-slate-800 rounded-2xl p-5 shadow-lg">
+            <div className="flex justify-between items-start">
+              <div>
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                  Total Semua Reservasi
+                </p>
+                <h3 className="text-3xl font-extrabold text-white mt-2">
+                  {stats.total}
+                </h3>
+              </div>
+              <div className="p-3 bg-slate-800 rounded-xl text-slate-300">
+                <Users className="w-6 h-6" />
+              </div>
+            </div>
+            <p className="text-xs text-slate-500 mt-4">
+              Batal: {stats.cancelled}
+            </p>
+          </div>
+
         </div>
 
-        {/* Tabel Data */}
-        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden">
-          {loading ? (
-            <div className="p-12 text-center text-zinc-500 text-xs">Memuat data reservasi...</div>
-          ) : filteredReservations.length === 0 ? (
-            <div className="p-12 text-center text-zinc-500 text-xs">Belum ada reservasi masuk / sesuai filter.</div>
+        {/* --- FILTER & SEARCH BAR --- */}
+        <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-4 flex flex-col md:flex-row gap-4 items-center justify-between">
+          <div className="relative w-full md:w-80">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+            <input
+              type="text"
+              placeholder="Cari nama, WA, atau layanan..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-4 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 transition"
+            />
+          </div>
+
+          <div className="flex items-center gap-2 w-full md:w-auto">
+            <Filter className="w-4 h-4 text-slate-400 hidden sm:block" />
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="bg-slate-950 border border-slate-800 text-slate-300 text-sm rounded-xl px-3 py-2 focus:outline-none focus:border-indigo-500 transition w-full md:w-auto"
+            >
+              <option value="all">Semua Status</option>
+              <option value="pending">🟡 Pending</option>
+              <option value="confirmed">🟢 Confirmed</option>
+              <option value="completed">🔵 Completed</option>
+              <option value="cancelled">🔴 Cancelled</option>
+            </select>
+          </div>
+        </div>
+
+        {/* --- TABLE SECTION (DENGAN FUNGSI LAMA KAMU) --- */}
+        <div className="bg-slate-900/80 backdrop-blur border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+          {filteredReservations.length === 0 ? (
+            <div className="p-12 text-center text-slate-500">
+              Belum ada data reservasi yang sesuai.
+            </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="bg-zinc-950 border-b border-zinc-800 text-[11px] font-bold text-zinc-400 uppercase tracking-wider">
-                    <th className="p-4">Tanggal Booking</th>
-                    <th className="p-4">Jam</th>
-                    <th className="p-4">Nama Pelanggan</th>
+                  <tr className="border-b border-slate-800 text-slate-400 text-xs uppercase tracking-wider bg-slate-950/50">
+                    <th className="p-4">Pelanggan</th>
+                    <th className="p-4">No. WhatsApp</th>
                     <th className="p-4">Layanan</th>
-                    <th className="p-4">Metode Bayar</th>
-                    <th className="p-4">WhatsApp</th>
-                    <th className="p-4">Status</th>
+                    <th className="p-4">Tanggal & Jam</th>
+                    <th className="p-4 text-center">Status</th>
                     <th className="p-4 text-center">Aksi</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-zinc-800/60 text-xs">
+                <tbody className="divide-y divide-slate-800/60 text-sm text-slate-300">
                   {filteredReservations.map((item) => {
-                    const currentStatus = item.status || 'pending'
-                    const cleanPhone = item.whatsapp_number.replace(/^0/, '62')
+                    // Penentuan warna badge status
+                    let statusBg = "bg-amber-500/10 text-amber-400 border-amber-500/20";
+                    if (item.status === 'confirmed') statusBg = "bg-emerald-500/10 text-emerald-400 border-emerald-500/20";
+                    if (item.status === 'completed') statusBg = "bg-blue-500/10 text-blue-400 border-blue-500/20";
+                    if (item.status === 'cancelled') statusBg = "bg-red-500/10 text-red-400 border-red-500/20";
 
                     return (
-                      <tr key={item.id} className="hover:bg-zinc-800/40 transition">
-                        <td className="p-4 font-semibold text-zinc-200">{item.booking_date}</td>
-                        <td className="p-4 font-mono text-zinc-400">{item.booking_time} WIB</td>
-                        <td className="p-4 font-bold text-white">{item.customer_name}</td>
+                      <tr key={item.id} className="hover:bg-slate-800/40 transition">
+                        <td className="p-4 font-semibold text-white">
+                          {item.customer_name}
+                        </td>
+                        <td className="p-4 text-slate-400 font-mono text-xs">
+                          {item.customer_phone || '-'}
+                        </td>
                         <td className="p-4">
-                          <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2.5 py-1 rounded-md text-[11px] font-semibold">
-                            {item.service_name}
+                          <span className="bg-slate-800 text-slate-300 px-2.5 py-1 rounded-lg text-xs font-medium">
+                            {item.service}
                           </span>
                         </td>
-                        <td className="p-4">
-                          <span className="bg-zinc-800 text-zinc-300 border border-zinc-700 px-2.5 py-1 rounded-md text-[11px] font-medium">
-                            {item.payment_method || 'QRIS'}
-                          </span>
+                        <td className="p-4 text-slate-300">
+                          {item.booking_date} {item.booking_time && `• ${item.booking_time}`}
                         </td>
-                        <td className="p-4">
-                          <a
-                            href={`https://wa.me/${cleanPhone}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-emerald-400 hover:text-emerald-300 font-semibold inline-flex items-center gap-1.5"
-                          >
-                            <span>{item.whatsapp_number}</span>
-                            <svg className="w-3 h-3 fill-current" viewBox="0 0 24 24">
-                              <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981z"/>
-                            </svg>
-                          </a>
-                        </td>
-                        <td className="p-4">
+                        
+                        {/* SELECT STATUS (FUNGSI UTAMA LAMA) */}
+                        <td className="p-4 text-center">
                           <select
-                            value={currentStatus}
+                            value={item.status}
                             onChange={(e) => handleStatusChange(item.id, e.target.value)}
-                            className={`p-1.5 rounded-lg text-xs font-bold border bg-zinc-950 focus:outline-none cursor-pointer ${
-                              currentStatus === 'confirmed'
-                                ? 'text-emerald-400 border-emerald-500/40'
-                                : currentStatus === 'completed'
-                                ? 'text-blue-400 border-blue-500/40'
-                                : currentStatus === 'cancelled'
-                                ? 'text-red-400 border-red-500/40'
-                                : 'text-amber-400 border-amber-500/40'
-                            }`}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-semibold border focus:outline-none transition cursor-pointer ${statusBg}`}
                           >
-                            <option value="pending">🟡 Pending</option>
-                            <option value="confirmed">🟢 Confirmed</option>
-                            <option value="completed">🔵 Completed</option>
-                            <option value="cancelled">🔴 Cancelled</option>
+                            <option value="pending" className="bg-slate-900 text-slate-200">🟡 Pending</option>
+                            <option value="confirmed" className="bg-slate-900 text-slate-200">🟢 Confirmed</option>
+                            <option value="completed" className="bg-slate-900 text-slate-200">🔵 Completed</option>
+                            <option value="cancelled" className="bg-slate-900 text-slate-200">🔴 Cancelled</option>
                           </select>
                         </td>
+
+                        {/* BUTTON DELETE (FUNGSI UTAMA LAMA) */}
                         <td className="p-4 text-center">
                           <button
                             onClick={() => handleDelete(item.id, item.customer_name)}
-                            className="bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white px-3 py-1.5 rounded-xl text-xs font-semibold border border-red-500/20 transition"
+                            className="bg-red-500/10 hover:bg-red-500 hover:text-white text-red-400 p-2 rounded-xl border border-red-500/20 transition flex items-center justify-center gap-1 mx-auto text-xs font-semibold"
+                            title="Hapus Reservasi"
                           >
-                            🗑️ Hapus
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span>Hapus</span>
                           </button>
                         </td>
                       </tr>
-                    )
+                    );
                   })}
                 </tbody>
               </table>
             </div>
+          )}
+        </div>
+
+      </div>
+    </div>
+  );
+}
