@@ -32,9 +32,9 @@ export default function Home() {
       return
     }
 
-    // 2. Format Pesan WhatsApp dengan Branding M - CUT Barbershop
+    // 2. Format Pesan WhatsApp dengan Branding M CUT Barbershop
     const message = encodeURIComponent(
-      `Halo Admin *M - CUT Barbershop*, saya mau konfirmasi reservasi:\n\n` +
+      `Halo Admin *M CUT Barbershop*, saya mau konfirmasi reservasi:\n\n` +
       `📌 *Nama:* ${formData.customer_name}\n` +
       `✂️ *Layanan:* ${formData.service_name}\n` +
       `📅 *Tanggal:* ${formData.booking_date}\n` +
@@ -55,7 +55,7 @@ export default function Home() {
         {/* HEADER BRANDING NAMA USAHA */}
         <div className="text-center space-y-1">
           <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight">
-            M - CUT
+            M CUT
           </h1>
           <p className="text-sm font-bold text-blue-600 uppercase tracking-widest">
             Barbershop
@@ -157,7 +157,7 @@ export default function Home() {
             <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-gray-700 space-y-1">
               <p className="font-semibold text-blue-900">Info Rekening BCA:</p>
               <p className="font-mono text-base font-bold text-gray-900">123-456-7890</p>
-              <p className="text-xs text-gray-600">a.n. M - CUT Barbershop</p>
+              <p className="text-xs text-gray-600">a.n. M CUT Barbershop</p>
             </div>
           )}
 
