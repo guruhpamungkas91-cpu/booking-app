@@ -19,11 +19,11 @@ interface Reservation {
 
 export default function AdminDashboard() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
-  
+
   // State untuk Login Supabase Auth
   const [emailInput, setEmailInput] = useState('')
   const [passwordInput, setPasswordInput] = useState('')
-  
+
   const [reservations, setReservations] = useState<Reservation[]>([])
   const [filteredReservations, setFilteredReservations] = useState<Reservation[]>([])
   const [loading, setLoading] = useState(false)
@@ -108,17 +108,14 @@ export default function AdminDashboard() {
     }
   }
 
-  // 1. KALKULASI STATISTIK (ANALYTICS) - SUDAH DIBETULKAN
-    const stats = useMemo(() => {
-    // 1. Total seluruh reservasi di database
+  // 1. KALKULASI STATISTIK (ANALYTICS)
+  const stats = useMemo(() => {
     const totalBookings = reservations.length
 
-    // 2. Total pending murni
     const pendingCount = reservations.filter((b) => 
       b.status && b.status.toString().trim().toLowerCase() === 'pending'
     ).length
 
-    // 3. Status Confirmed & Completed
     const confirmedCount = reservations.filter(
       (b) => b.status && b.status.toString().trim().toLowerCase() === 'confirmed'
     ).length
@@ -131,7 +128,6 @@ export default function AdminDashboard() {
       (b) => b.status && b.status.toString().trim().toLowerCase() === 'cancelled'
     ).length
 
-    // 4. Masuk 7 hari terakhir (Berdasarkan booking_date / created_at)
     const sevenDaysAgo = new Date()
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
 
@@ -156,7 +152,7 @@ export default function AdminDashboard() {
 
   // 2. LOGIKA FITUR FILTER (TANGGAL, SEARCH, & STATUS)
   useEffect(() => {
-    let result = reservations
+    let result = [...reservations]
 
     if (startDate) {
       result = result.filter((item) => item.booking_date >= startDate)
@@ -165,7 +161,7 @@ export default function AdminDashboard() {
       result = result.filter((item) => item.booking_date <= endDate)
     }
     if (statusFilter !== 'all') {
-      result = result.filter((item) => (item.status || 'pending') === statusFilter)
+      result = result.filter((item) => (item.status || 'pending').toLowerCase() === statusFilter.toLowerCase())
     }
     if (searchTerm) {
       const term = searchTerm.toLowerCase()
@@ -275,7 +271,7 @@ export default function AdminDashboard() {
   return (
     <div className="min-h-screen bg-zinc-950 p-4 md:p-8 text-zinc-100 font-sans">
       <div className="max-w-7xl mx-auto space-y-6">
-        
+
         {/* Header Dashboard */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-zinc-900 border border-zinc-800 p-6 rounded-2xl shadow-xl gap-4">
           <div>
@@ -311,7 +307,7 @@ export default function AdminDashboard() {
 
         {/* --- STATISTIK & ANALYTICS WIDGET --- */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          
+
           {/* Card 1: Masuk Minggu Ini */}
           <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 shadow-lg relative overflow-hidden">
             <div className="flex justify-between items-start">
@@ -369,16 +365,13 @@ export default function AdminDashboard() {
                 <h3 className="text-3xl font-extrabold text-white mt-2">
                   {stats.confirmedCount + stats.completedCount}
                 </h3>
-                <p className="text-[11px] text-zinc-500 mt-4">
-                  Confirmed: {stats.confirmedCount} | Selesai: {stats.completedCount}
-                </p>
               </div>
               <div className="p-2.5 bg-emerald-500/10 rounded-xl text-emerald-400 border border-emerald-500/20">
                 ✅
               </div>
             </div>
             <p className="text-[11px] text-zinc-500 mt-4">
-              Confirmed: {stats.confirmed} | Selesai: {stats.completed}
+              Confirmed: {stats.confirmedCount} | Selesai: {stats.completedCount}
             </p>
           </div>
 
@@ -392,16 +385,13 @@ export default function AdminDashboard() {
                 <h3 className="text-3xl font-extrabold text-white mt-2">
                   {stats.totalBookings}
                 </h3>
-                <p className="text-[11px] text-zinc-500 mt-4">
-                  Batal: {stats.cancelledCount}
-                </p>
               </div>
               <div className="p-2.5 bg-zinc-800 rounded-xl text-zinc-300 border border-zinc-700">
                 👥
               </div>
             </div>
             <p className="text-[11px] text-zinc-500 mt-4">
-              Batal: {stats.cancelled}
+              Batal: {stats.cancelledCount}
             </p>
           </div>
 
@@ -505,7 +495,7 @@ export default function AdminDashboard() {
                 <tbody className="divide-y divide-zinc-800/60 text-xs">
                   {filteredReservations.map((item) => {
                     const currentStatus = item.status || 'pending'
-                    const cleanPhone = item.whatsapp_number.replace(/^0/, '62')
+                    const cleanPhone = item.whatsapp_number ? item.whatsapp_number.replace(/^0/, '62') : ''
 
                     return (
                       <tr key={item.id} className="hover:bg-zinc-800/40 transition">
