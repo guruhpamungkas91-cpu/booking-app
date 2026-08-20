@@ -161,7 +161,7 @@ export default function AdminDashboard() {
         {/* Header Dashboard */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-white p-6 rounded-xl shadow-sm gap-4">
           <div>
-            <h1 className="text-2xl font-bold">Dashboard MCUT BARBERSHOP</h1>
+            <h1 className="text-2xl font-bold">M CUT BARBERSHOP</h1>
             <p className="text-sm text-gray-500">Kelola dan pantau pesanan masuk secara real-time</p>
           </div>
           <div className="space-x-3 w-full md:w-auto flex justify-end">
