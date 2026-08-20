@@ -215,7 +215,7 @@ export default function AdminDashboard() {
               ADMIN DASHBOARD
             </span>
             <h1 className="text-2xl font-black text-white tracking-wide uppercase mt-2">
-              M - CUT Barbershop
+              M CUT Barbershop
             </h1>
             <p className="text-xs text-zinc-400">Silakan login untuk mengelola sistem reservasi</p>
           </div>
@@ -270,7 +270,7 @@ export default function AdminDashboard() {
                 PANEL UTAMA
               </span>
               <h1 className="text-xl sm:text-2xl font-black text-white tracking-wide uppercase">
-                M - CUT Barbershop
+                M CUT Barbershop
               </h1>
             </div>
             <p className="text-xs text-zinc-400 mt-1">Kelola dan pantau pesanan masuk secara real-time</p>
