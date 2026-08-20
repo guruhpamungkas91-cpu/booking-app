@@ -305,15 +305,12 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* --- STATISTIK & ANALYTICS WIDGET --- */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* 4 CARD STATISTIK AKSEN WARNA MANIS */}
+<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-
-  {/* Card 1: Masuk Minggu Ini (Aksen Emerald / Fresh) */}
+  {/* Card 1: Masuk Minggu Ini */}
   <div className="bg-zinc-900 border border-emerald-500/30 rounded-2xl p-5 shadow-xl relative overflow-hidden group hover:border-emerald-500/50 transition">
     <div className="absolute -right-6 -bottom-6 w-24 h-24 bg-emerald-500/10 rounded-full blur-xl group-hover:bg-emerald-500/20 transition"></div>
-
     <div className="flex justify-between items-start relative z-10">
       <div>
         <p className="text-[11px] font-semibold text-emerald-400 uppercase tracking-wider">
@@ -327,7 +324,6 @@ export default function AdminDashboard() {
         📈
       </div>
     </div>
-
     <div className="mt-4 relative z-10">
       <div className="flex justify-between text-[11px] text-zinc-400 mb-1">
         <span>Progress Mingguan</span>
@@ -342,11 +338,9 @@ export default function AdminDashboard() {
     </div>
   </div>
 
-
-  {/* Card 2: Menunggu / Pending (Aksen Amber Warm) */}
+  {/* Card 2: Menunggu (Pending) */}
   <div className="bg-zinc-900 border border-amber-500/30 rounded-2xl p-5 shadow-xl relative overflow-hidden group hover:border-amber-500/50 transition">
     <div className="absolute -right-6 -bottom-6 w-24 h-24 bg-amber-500/10 rounded-full blur-xl group-hover:bg-amber-500/20 transition"></div>
-
     <div className="flex justify-between items-start relative z-10">
       <div>
         <p className="text-[11px] font-semibold text-amber-400 uppercase tracking-wider">
@@ -363,11 +357,9 @@ export default function AdminDashboard() {
     <p className="text-[11px] text-zinc-400 mt-4 relative z-10">Perlu konfirmasi admin segera</p>
   </div>
 
-
-  {/* Card 3: Confirmed & Completed (Aksen Sky / Teal Fresh) */}
+  {/* Card 3: Dikonfirmasi / Selesai */}
   <div className="bg-zinc-900 border border-sky-500/30 rounded-2xl p-5 shadow-xl relative overflow-hidden group hover:border-sky-500/50 transition">
     <div className="absolute -right-6 -bottom-6 w-24 h-24 bg-sky-500/10 rounded-full blur-xl group-hover:bg-sky-500/20 transition"></div>
-
     <div className="flex justify-between items-start relative z-10">
       <div>
         <p className="text-[11px] font-semibold text-sky-400 uppercase tracking-wider">
@@ -382,15 +374,13 @@ export default function AdminDashboard() {
       </div>
     </div>
     <p className="text-[11px] text-zinc-400 mt-4 relative z-10">
-      Confirmed: <span className="text-sky-400 font-semibold">{stats.confirmedCount}</span> | Selesai: <span className="text-emerald-400 font-semibold">{stats.completedCount}</span>
+      Confirmed: {stats.confirmedCount} | Selesai: {stats.completedCount}
     </p>
   </div>
 
-
-  {/* Card 4: Total Reservasi (Aksen Indigo / Purple Glow Elegant) */}
+  {/* Card 4: Total Reservasi */}
   <div className="bg-zinc-900 border border-indigo-500/30 rounded-2xl p-5 shadow-xl relative overflow-hidden group hover:border-indigo-500/50 transition">
     <div className="absolute -right-6 -bottom-6 w-24 h-24 bg-indigo-500/10 rounded-full blur-xl group-hover:bg-indigo-500/20 transition"></div>
-  
     <div className="flex items-center justify-between relative z-10">
       <div>
         <p className="text-[11px] font-bold uppercase tracking-wider text-indigo-400 mb-1">
