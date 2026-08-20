@@ -348,7 +348,7 @@ export default function AdminDashboard() {
     <p className="text-xs font-semibold text-amber-400 uppercase tracking-wider">Menunggu</p>
     <div className="flex items-baseline justify-between mt-2">
       <h3 className="text-3xl font-black text-amber-400">{stats.pendingCount}</h3>
-      <span className="text-xs text-amber-500/80 font-medium">Perlu aksi</span>
+      <span className="text-xs text-amber-500/80 font-medium">Perlu Konfirmasi</span>
     </div>
   </div>
 
@@ -357,7 +357,7 @@ export default function AdminDashboard() {
     <p className="text-xs font-semibold text-blue-400 uppercase tracking-wider">Dikonfirmasi</p>
     <div className="flex items-baseline justify-between mt-2">
       <h3 className="text-3xl font-black text-blue-400">{stats.confirmedCount}</h3>
-      <span className="text-xs text-blue-500/80 font-medium">Siap potong</span>
+      <span className="text-xs text-blue-500/80 font-medium">Siap dilayani</span>
     </div>
   </div>
 
@@ -374,7 +374,7 @@ export default function AdminDashboard() {
 
   {/* 5. Total Batal (Cancelled + Persentase) - CARD BARU */}
   <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl shadow-lg">
-    <p className="text-xs font-semibold text-rose-400 uppercase tracking-wider">Total Batal</p>
+    <p className="text-xs font-semibold text-rose-400 uppercase tracking-wider">Pembatalan</p>
     <div className="flex items-baseline justify-between mt-2">
       <h3 className="text-3xl font-black text-rose-400">{stats.cancelledCount}</h3>
       <span className="text-xs font-bold text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded-md border border-rose-500/20">
