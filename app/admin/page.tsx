@@ -148,12 +148,10 @@ export default function AdminDashboard() {
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
 
     const last7DaysCount = reservations.filter((b) => {
-      // Ambil tanggal dari created_at, booking_date, atau fallback tanggal reservasi lain
-      const rawDate = b.created_at || b.booking_date || b.date
-      if (!rawDate) return false
-      
-      const dateToCheck = new Date(rawDate)
-      return !isNaN(dateToCheck.getTime()) && dateToCheck >= sevenDaysAgo
+    const rawDate = b.created_at || b.booking_date // 👈 HAPUS || b.date
+    if (!rawDate) return false
+    const dateToCheck = new Date(rawDate)
+    return !isNaN(dateToCheck.getTime()) && dateToCheck >= sevenDaysAgo
     }).length
 
     return {
