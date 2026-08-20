@@ -92,7 +92,7 @@ export default function AdminDashboard() {
     }
   }
 
-  // LOGIK FITUR FILTER TANGGAL
+  // LOGIKA FITUR FILTER TANGGAL
   useEffect(() => {
     let result = reservations
 
@@ -106,7 +106,7 @@ export default function AdminDashboard() {
     setFilteredReservations(result)
   }, [startDate, endDate, reservations])
 
-  // LOGIK FITUR EXPORT TO CSV / EXCEL
+  // LOGIKA FITUR EXPORT TO CSV / EXCEL
   const exportToCSV = () => {
     if (filteredReservations.length === 0) {
       alert('Tidak ada data untuk diexport!')
@@ -204,7 +204,7 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* Control Box */}
+        {/* Control Box (Filter Tanggal & Export CSV) */}
         <div className="bg-white p-4 rounded-xl shadow-sm flex flex-wrap gap-4 items-end justify-between">
           <div className="flex flex-wrap gap-4 items-end">
             <div>
@@ -246,7 +246,7 @@ export default function AdminDashboard() {
           </button>
         </div>
 
-        {/* Tabel Data */}
+        {/* Tabel Data Reservasi */}
         <div className="bg-white rounded-xl shadow-sm overflow-hidden">
           {loading ? (
             <div className="p-8 text-center text-gray-500">Memuat data reservasi...</div>
