@@ -108,34 +108,52 @@ export default function AdminDashboard() {
     }
   }
 
-  // 1. KALKULASI STATISTIK (ANALYTICS)
-  const stats = useMemo(() => {
+    // 1. KALKULASI STATISTIK (ANALYTICS)
+    const stats = useMemo(() => {
     const totalBookings = reservations.length
 
-    const pendingCount = reservations.filter(r => {
-    // Jika status tidak ada/null/undefined, anggap sebagai 'pending'
-    const currentStatus = r.status ? r.status.toLowerCase() : 'pending';
-    return currentStatus === 'pending';
-    }).length;
+    // 1. PENDING: Aman dari null, undefined, string kosong, spasi, maupun Bahasa Indonesia ('menunggu')
+    const pendingCount = reservations.filter((r) => {
+      if (!r.status) return true // Jika status null/undefined/falsy, otomatis dianggap pending
+      
+      const cleanStatus = r.status.toString().trim().toLowerCase()
+      
+      // Kebal jika statusnya kosong "", "pending", atau "menunggu"
+      return cleanStatus === '' || cleanStatus === 'pending' || cleanStatus === 'menunggu'
+    }).length
 
-    const confirmedCount = reservations.filter(
-      (b) => b.status && b.status.toString().trim().toLowerCase() === 'confirmed'
-    ).length
+    // 2. CONFIRMED
+    const confirmedCount = reservations.filter((b) => {
+      if (!b.status) return false
+      const s = b.status.toString().trim().toLowerCase()
+      return s === 'confirmed' || s === 'dikonfirmasi'
+    }).length
 
-    const completedCount = reservations.filter(
-      (b) => b.status && b.status.toString().trim().toLowerCase() === 'completed'
-    ).length
+    // 3. COMPLETED
+    const completedCount = reservations.filter((b) => {
+      if (!b.status) return false
+      const s = b.status.toString().trim().toLowerCase()
+      return s === 'completed' || s === 'selesai'
+    }).length
 
-    const cancelledCount = reservations.filter(
-      (b) => b.status && b.status.toString().trim().toLowerCase() === 'cancelled'
-    ).length
+    // 4. CANCELLED
+    const cancelledCount = reservations.filter((b) => {
+      if (!b.status) return false
+      const s = b.status.toString().trim().toLowerCase()
+      return s === 'cancelled' || s === 'batal'
+    }).length
 
+    // 5. MASUK 7 HARI TERAKHIR
     const sevenDaysAgo = new Date()
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
 
     const last7DaysCount = reservations.filter((b) => {
-      const dateToCheck = new Date(b.created_at || b.booking_date)
-      return dateToCheck >= sevenDaysAgo
+      // Ambil tanggal dari created_at, booking_date, atau fallback tanggal reservasi lain
+      const rawDate = b.created_at || b.booking_date || b.date
+      if (!rawDate) return false
+      
+      const dateToCheck = new Date(rawDate)
+      return !isNaN(dateToCheck.getTime()) && dateToCheck >= sevenDaysAgo
     }).length
 
     return {
