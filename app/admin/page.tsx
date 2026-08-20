@@ -308,96 +308,105 @@ export default function AdminDashboard() {
       {/* --- STATISTIK & ANALYTICS WIDGET --- */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
 
-        {/* Card 1: Masuk Minggu Ini */}
-          <div className="bg-zinc-900 border border-emerald-500/30 rounded-2xl p-5 shadow-xl relative overflow-hidden group hover:border-emerald-500/50 transition">
-        {/* Glow background tipis */}
-          <div className="absolute -right-6 -bottom-6 w-24 h-24 bg-emerald-500/10 rounded-full blur-xl group-hover:bg-emerald-500/20 transition"></div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
 
-          <div className="flex justify-between items-start relative z-10">
-          <div>
-          <p className="text-[11px] font-semibold text-emerald-400 uppercase tracking-wider">
-           Masuk Minggu Ini
-          </p>
-          <h3 className="text-3xl font-extrabold text-white mt-2">
-        {stats.last7DaysCount} <span className="text-xs text-zinc-400 font-normal">booking</span>
+  {/* Card 1: Masuk Minggu Ini (Aksen Emerald / Fresh) */}
+  <div className="bg-zinc-900 border border-emerald-500/30 rounded-2xl p-5 shadow-xl relative overflow-hidden group hover:border-emerald-500/50 transition">
+    <div className="absolute -right-6 -bottom-6 w-24 h-24 bg-emerald-500/10 rounded-full blur-xl group-hover:bg-emerald-500/20 transition"></div>
+
+    <div className="flex justify-between items-start relative z-10">
+      <div>
+        <p className="text-[11px] font-semibold text-emerald-400 uppercase tracking-wider">
+          Masuk Minggu Ini
+        </p>
+        <h3 className="text-3xl font-extrabold text-white mt-2">
+          {stats.last7DaysCount} <span className="text-xs text-zinc-400 font-normal">booking</span>
         </h3>
-    </div>
-        <div className="p-2.5 bg-emerald-500/10 rounded-xl text-emerald-400 border border-emerald-500/20">
+      </div>
+      <div className="p-2.5 bg-emerald-500/10 rounded-xl text-emerald-400 border border-emerald-500/20">
         📈
       </div>
-  </div>
+    </div>
 
-        <div className="mt-4 relative z-10">
-        <div className="flex justify-between text-[11px] text-zinc-400 mb-1">
-          <span>Progress Mingguan</span>
-          <span className="text-emerald-400 font-semibold">{weeklyPercentage}%</span>
+    <div className="mt-4 relative z-10">
+      <div className="flex justify-between text-[11px] text-zinc-400 mb-1">
+        <span>Progress Mingguan</span>
+        <span className="text-emerald-400 font-semibold">{weeklyPercentage}%</span>
       </div>
-        <div className="w-full bg-zinc-950 rounded-full h-2 overflow-hidden border border-zinc-800">
+      <div className="w-full bg-zinc-950 rounded-full h-2 overflow-hidden border border-zinc-800">
         <div 
           className="bg-emerald-500 h-2 rounded-full transition-all duration-500" 
           style={{ width: `${weeklyPercentage}%` }}
-      ></div>
+        ></div>
+      </div>
     </div>
   </div>
-</div>
 
-        {/* Card 2: Pending */}
-        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 shadow-lg">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-[11px] font-semibold text-amber-400 uppercase tracking-wider">
-                Menunggu (Pending)
-              </p>
-              <h3 className="text-3xl font-extrabold text-white mt-2">
-                {stats.pendingCount}
-              </h3>
-            </div>
-            <div className="p-2.5 bg-amber-500/10 rounded-xl text-amber-400 border border-amber-500/20">
-              ⏳
-            </div>
-          </div>
-          <p className="text-[11px] text-zinc-500 mt-4">Perlu konfirmasi admin segera</p>
-        </div>
 
-        {/* Card 3: Confirmed & Completed */}
-        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 shadow-lg">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-[11px] font-semibold text-emerald-400 uppercase tracking-wider">
-                Dikonfirmasi / Selesai
-              </p>
-              <h3 className="text-3xl font-extrabold text-white mt-2">
-                {stats.confirmedCount + stats.completedCount}
-              </h3>
-            </div>
-            <div className="p-2.5 bg-emerald-500/10 rounded-xl text-emerald-400 border border-emerald-500/20">
-              ✅
-            </div>
-          </div>
-          <p className="text-[11px] text-zinc-500 mt-4">
-            Confirmed: {stats.confirmedCount} | Selesai: {stats.completedCount}
-          </p>
-        </div>
+  {/* Card 2: Menunggu / Pending (Aksen Amber Warm) */}
+  <div className="bg-zinc-900 border border-amber-500/30 rounded-2xl p-5 shadow-xl relative overflow-hidden group hover:border-amber-500/50 transition">
+    <div className="absolute -right-6 -bottom-6 w-24 h-24 bg-amber-500/10 rounded-full blur-xl group-hover:bg-amber-500/20 transition"></div>
 
-        {/* Card 4: Total Keseluruhan (Aksen Biru & Tag Diperbaiki) */}
-          <div className="bg-zinc-900 border border-amber-500/30 rounded-2xl p-5 shadow-xl relative overflow-hidden group hover:border-amber-500/50 transition">
-        {/* Glow background tipis */}
-          <div className="absolute -right-6 -bottom-6 w-24 h-24 bg-amber-500/10 rounded-full blur-xl group-hover:bg-amber-500/20 transition"></div>
+    <div className="flex justify-between items-start relative z-10">
+      <div>
+        <p className="text-[11px] font-semibold text-amber-400 uppercase tracking-wider">
+          Menunggu (Pending)
+        </p>
+        <h3 className="text-3xl font-extrabold text-white mt-2">
+          {stats.pendingCount}
+        </h3>
+      </div>
+      <div className="p-2.5 bg-amber-500/10 rounded-xl text-amber-400 border border-amber-500/20">
+        ⏳
+      </div>
+    </div>
+    <p className="text-[11px] text-zinc-400 mt-4 relative z-10">Perlu konfirmasi admin segera</p>
+  </div>
+
+
+  {/* Card 3: Confirmed & Completed (Aksen Sky / Teal Fresh) */}
+  <div className="bg-zinc-900 border border-sky-500/30 rounded-2xl p-5 shadow-xl relative overflow-hidden group hover:border-sky-500/50 transition">
+    <div className="absolute -right-6 -bottom-6 w-24 h-24 bg-sky-500/10 rounded-full blur-xl group-hover:bg-sky-500/20 transition"></div>
+
+    <div className="flex justify-between items-start relative z-10">
+      <div>
+        <p className="text-[11px] font-semibold text-sky-400 uppercase tracking-wider">
+          Dikonfirmasi / Selesai
+        </p>
+        <h3 className="text-3xl font-extrabold text-white mt-2">
+          {stats.confirmedCount + stats.completedCount}
+        </h3>
+      </div>
+      <div className="p-2.5 bg-sky-500/10 rounded-xl text-sky-400 border border-sky-500/20">
+        ✅
+      </div>
+    </div>
+    <p className="text-[11px] text-zinc-400 mt-4 relative z-10">
+      Confirmed: <span className="text-sky-400 font-semibold">{stats.confirmedCount}</span> | Selesai: <span className="text-emerald-400 font-semibold">{stats.completedCount}</span>
+    </p>
+  </div>
+
+
+  {/* Card 4: Total Reservasi (Aksen Indigo / Purple Glow Elegant) */}
+  <div className="bg-zinc-900 border border-indigo-500/30 rounded-2xl p-5 shadow-xl relative overflow-hidden group hover:border-indigo-500/50 transition">
+    <div className="absolute -right-6 -bottom-6 w-24 h-24 bg-indigo-500/10 rounded-full blur-xl group-hover:bg-indigo-500/20 transition"></div>
   
-          <div className="flex items-center justify-between relative z-10">
-          <div>
-          <p className="text-[11px] font-bold uppercase tracking-wider text-amber-400 mb-1">
+    <div className="flex items-center justify-between relative z-10">
+      <div>
+        <p className="text-[11px] font-bold uppercase tracking-wider text-indigo-400 mb-1">
           Total Reservasi
         </p>
         <h3 className="text-3xl font-extrabold text-white mt-2">
-        {reservations.length}
-      </h3>
-    </div>
-        <div className="w-12 h-12 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 text-xl font-bold shadow-inner">
+          {reservations.length}
+        </h3>
+      </div>
+      <div className="w-12 h-12 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 text-xl font-bold shadow-inner">
         📅
       </div>
+    </div>
+    <p className="text-[11px] text-zinc-400 mt-4 relative z-10">Semua data riwayat booking</p>
   </div>
-      <p className="text-[11px] text-zinc-400 mt-4 relative z-10">Semua data riwayat booking</p>
+
 </div>
 
       {/* --- CONTROL BOX (FILTER & SEARCH BAR) --- */}
