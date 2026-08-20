@@ -110,59 +110,67 @@ export default function AdminDashboard() {
 
     // 1. KALKULASI STATISTIK (ANALYTICS)
     const stats = useMemo(() => {
-    const totalBookings = reservations.length
+  const totalBookings = reservations.length
 
-    // 1. PENDING: Aman dari null, undefined, string kosong, spasi, maupun Bahasa Indonesia ('menunggu')
-    const pendingCount = reservations.filter((r) => {
-      if (!r.status) return true // Jika status null/undefined/falsy, otomatis dianggap pending
-      
+      // 1. PENDING
+      const pendingCount = reservations.filter((r) => {
+      if (!r.status) return true
       const cleanStatus = r.status.toString().trim().toLowerCase()
-      
-      // Kebal jika statusnya kosong "", "pending", atau "menunggu"
       return cleanStatus === '' || cleanStatus === 'pending' || cleanStatus === 'menunggu'
-    }).length
+  }).length
 
-    // 2. CONFIRMED
-    const confirmedCount = reservations.filter((b) => {
+      // 2. CONFIRMED
+      const confirmedCount = reservations.filter((b) => {
       if (!b.status) return false
       const s = b.status.toString().trim().toLowerCase()
       return s === 'confirmed' || s === 'dikonfirmasi'
-    }).length
+  }).length
 
-    // 3. COMPLETED
-    const completedCount = reservations.filter((b) => {
+      // 3. COMPLETED
+      const completedCount = reservations.filter((b) => {
       if (!b.status) return false
       const s = b.status.toString().trim().toLowerCase()
       return s === 'completed' || s === 'selesai'
-    }).length
+  }).length
 
-    // 4. CANCELLED
-    const cancelledCount = reservations.filter((b) => {
+      // 4. CANCELLED (TOTAL BATAL)
+      const cancelledCount = reservations.filter((b) => {
       if (!b.status) return false
       const s = b.status.toString().trim().toLowerCase()
       return s === 'cancelled' || s === 'batal'
-    }).length
+  }).length
 
-    // 5. MASUK 7 HARI TERAKHIR
-    const sevenDaysAgo = new Date()
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
+      // 5. PENERIMAAN 7 HARI TERAKHIR
+      const sevenDaysAgo = new Date()
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
 
-    const last7DaysCount = reservations.filter((b) => {
-    const rawDate = b.created_at || b.booking_date // 👈 HAPUS || b.date
-    if (!rawDate) return false
-    const dateToCheck = new Date(rawDate)
-    return !isNaN(dateToCheck.getTime()) && dateToCheck >= sevenDaysAgo
-    }).length
+      const last7DaysCount = reservations.filter((b) => {
+      const rawDate = b.created_at || b.booking_date
+      if (!rawDate) return false
+      const dateToCheck = new Date(rawDate)
+      return !isNaN(dateToCheck.getTime()) && dateToCheck >= sevenDaysAgo
+  }).length
 
-    return {
-      totalBookings,
-      pendingCount,
-      confirmedCount,
-      completedCount,
-      cancelledCount,
-      last7DaysCount,
-    }
-  }, [reservations])
+  // 📈 KALKULASI PERSENTASE (Mencegah division by zero)
+  const completedPercentage = totalBookings > 0 
+    ? Math.round((completedCount / totalBookings) * 100) 
+    : 0
+
+  const cancelledPercentage = totalBookings > 0 
+    ? Math.round((cancelledCount / totalBookings) * 100) 
+    : 0
+
+  return {
+    totalBookings,
+    pendingCount,
+    confirmedCount,
+    completedCount,
+    cancelledCount,
+    last7DaysCount,
+    completedPercentage,
+    cancelledPercentage,
+  }
+}, [reservations])
 
   // Progress Bar Helper untuk Statistik Mingguan
   const maxWeeklyTarget = Math.max(stats.last7DaysCount, 10)
@@ -323,96 +331,56 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* GRID 4 CARD STATISTIK */}
-<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-
-  {/* Card 1: Masuk Minggu Ini */}
-  <div className="bg-zinc-900 border border-emerald-500/30 rounded-2xl p-5 shadow-xl relative overflow-hidden group hover:border-emerald-500/50 transition">
-    <div className="absolute -right-6 -bottom-6 w-24 h-24 bg-emerald-500/10 rounded-full blur-xl group-hover:bg-emerald-500/20 transition"></div>
-    <div className="flex justify-between items-start relative z-10">
-      <div>
-        <p className="text-[11px] font-semibold text-emerald-400 uppercase tracking-wider">
-          Masuk Minggu Ini
-        </p>
-        <h3 className="text-3xl font-extrabold text-white mt-2">
-          {stats.last7DaysCount} <span className="text-xs text-zinc-400 font-normal">booking</span>
-        </h3>
-      </div>
-      <div className="p-2.5 bg-emerald-500/10 rounded-xl text-emerald-400 border border-emerald-500/20">
-        📈
-      </div>
-    </div>
-    <div className="mt-4 relative z-10">
-      <div className="flex justify-between text-[11px] text-zinc-400 mb-1">
-        <span>Progress Mingguan</span>
-        <span className="text-emerald-400 font-semibold">{weeklyPercentage}%</span>
-      </div>
-      <div className="w-full bg-zinc-950 rounded-full h-2 overflow-hidden border border-zinc-800">
-        <div 
-          className="bg-emerald-500 h-2 rounded-full transition-all duration-500" 
-          style={{ width: `${weeklyPercentage}%` }}
-        ></div>
-      </div>
+      {/* STATS CARDS GRID */}
+<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+  
+  {/* 1. Total Booking */}
+  <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl shadow-lg">
+    <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Total Booking</p>
+    <div className="flex items-baseline justify-between mt-2">
+      <h3 className="text-3xl font-black text-white">{stats.totalBookings}</h3>
+      <span className="text-xs text-amber-500 font-medium">Semua data</span>
     </div>
   </div>
 
-  {/* Card 2: Menunggu (Pending) */}
-  <div className="bg-zinc-900 border border-amber-500/30 rounded-2xl p-5 shadow-xl relative overflow-hidden group hover:border-amber-500/50 transition">
-    <div className="absolute -right-6 -bottom-6 w-24 h-24 bg-amber-500/10 rounded-full blur-xl group-hover:bg-amber-500/20 transition"></div>
-    <div className="flex justify-between items-start relative z-10">
-      <div>
-        <p className="text-[11px] font-semibold text-amber-400 uppercase tracking-wider">
-          Menunggu (Pending)
-        </p>
-        <h3 className="text-3xl font-extrabold text-white mt-2">
-          {stats.pendingCount}
-        </h3>
-      </div>
-      <div className="p-2.5 bg-amber-500/10 rounded-xl text-amber-400 border border-amber-500/20">
-        ⏳
-      </div>
+  {/* 2. Menunggu (Pending) */}
+  <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl shadow-lg">
+    <p className="text-xs font-semibold text-amber-400 uppercase tracking-wider">Menunggu</p>
+    <div className="flex items-baseline justify-between mt-2">
+      <h3 className="text-3xl font-black text-amber-400">{stats.pendingCount}</h3>
+      <span className="text-xs text-amber-500/80 font-medium">Perlu aksi</span>
     </div>
-    <p className="text-[11px] text-zinc-400 mt-4 relative z-10">Perlu konfirmasi admin segera</p>
   </div>
 
-  {/* Card 3: Dikonfirmasi / Selesai */}
-  <div className="bg-zinc-900 border border-sky-500/30 rounded-2xl p-5 shadow-xl relative overflow-hidden group hover:border-sky-500/50 transition">
-    <div className="absolute -right-6 -bottom-6 w-24 h-24 bg-sky-500/10 rounded-full blur-xl group-hover:bg-sky-500/20 transition"></div>
-    <div className="flex justify-between items-start relative z-10">
-      <div>
-        <p className="text-[11px] font-semibold text-sky-400 uppercase tracking-wider">
-          Dikonfirmasi / Selesai
-        </p>
-        <h3 className="text-3xl font-extrabold text-white mt-2">
-          {stats.confirmedCount + stats.completedCount}
-        </h3>
-      </div>
-      <div className="p-2.5 bg-sky-500/10 rounded-xl text-sky-400 border border-sky-500/20">
-        ✅
-      </div>
+  {/* 3. Dikonfirmasi */}
+  <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl shadow-lg">
+    <p className="text-xs font-semibold text-blue-400 uppercase tracking-wider">Dikonfirmasi</p>
+    <div className="flex items-baseline justify-between mt-2">
+      <h3 className="text-3xl font-black text-blue-400">{stats.confirmedCount}</h3>
+      <span className="text-xs text-blue-500/80 font-medium">Siap potong</span>
     </div>
-    <p className="text-[11px] text-zinc-400 mt-4 relative z-10">
-      Confirmed: {stats.confirmedCount} | Selesai: {stats.completedCount}
-    </p>
   </div>
 
-  {/* Card 4: Total Reservasi */}
-  <div className="bg-zinc-900 border border-indigo-500/30 rounded-2xl p-5 shadow-xl relative overflow-hidden group hover:border-indigo-500/50 transition">
-    <div className="absolute -right-6 -bottom-6 w-24 h-24 bg-indigo-500/10 rounded-full blur-xl group-hover:bg-indigo-500/20 transition"></div>
-    <div className="flex items-center justify-between relative z-10">
-      <div>
-        <p className="text-[11px] font-bold uppercase tracking-wider text-indigo-400 mb-1">
-          Total Reservasi
-        </p>
-        <h3 className="text-3xl font-extrabold text-white mt-2">
-          {reservations.length}
-        </h3>
-      </div>
-      <div className="w-12 h-12 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 text-xl font-bold shadow-inner">
-        📅
-      </div>
+  {/* 4. Selesai (Completed + Persentase) */}
+  <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl shadow-lg">
+    <p className="text-xs font-semibold text-emerald-400 uppercase tracking-wider">Selesai</p>
+    <div className="flex items-baseline justify-between mt-2">
+      <h3 className="text-3xl font-black text-emerald-400">{stats.completedCount}</h3>
+      <span className="text-xs font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20">
+        {stats.completedPercentage}%
+      </span>
     </div>
-    <p className="text-[11px] text-zinc-400 mt-4 relative z-10">Semua data riwayat booking</p>
+  </div>
+
+  {/* 5. Total Batal (Cancelled + Persentase) - CARD BARU */}
+  <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl shadow-lg">
+    <p className="text-xs font-semibold text-rose-400 uppercase tracking-wider">Total Batal</p>
+    <div className="flex items-baseline justify-between mt-2">
+      <h3 className="text-3xl font-black text-rose-400">{stats.cancelledCount}</h3>
+      <span className="text-xs font-bold text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded-md border border-rose-500/20">
+        {stats.cancelledPercentage}%
+      </span>
+    </div>
   </div>
 
 </div>
