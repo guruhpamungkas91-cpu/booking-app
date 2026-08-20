@@ -97,7 +97,6 @@ export default function Home() {
               onChange={(e) => setFormData({ ...formData, service_name: e.target.value })}
             >
               <option value="Potong Rambut">Potong Rambut</option>
-              <option value="Hair Spa">Hair Spa</option>
               <option value="Coloring">Coloring</option>
             </select>
           </div>
