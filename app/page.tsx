@@ -224,7 +224,7 @@ export default function Home() {
                 {/* CONTAINER QRIS DIPERBESAR */}
                 <div className="p-4 bg-white rounded-2xl inline-block shadow-2xl border border-zinc-300">
                   <img
-                    src="/qris.png"
+                    src="/MCUT.png"
                     alt="QRIS Code M-CUT Barbershop"
                     className="w-64 h-64 sm:w-72 sm:h-72 mx-auto object-contain image-render-crisp"
                   />
@@ -233,7 +233,7 @@ export default function Home() {
                 {/* CTA / INFO TAMBAHAN */}
                 <div className="pt-1 flex flex-col items-center gap-2">
                   <a
-                    href="/qris.png"
+                    href="/MCUT.png"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center space-x-1.5 text-xs text-amber-500 hover:text-amber-400 font-medium bg-amber-500/10 px-3 py-1.5 rounded-lg border border-amber-500/20 transition-all"
