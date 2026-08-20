@@ -110,29 +110,31 @@ export default function AdminDashboard() {
 
   // 1. KALKULASI STATISTIK (ANALYTICS)
     const stats = useMemo(() => {
-    const total = reservations.length
-    const pending = reservations.filter(r => (r.status || 'pending') === 'pending').length
-    const confirmed = reservations.filter(r => r.status === 'confirmed').length
-    const completed = reservations.filter(r => r.status === 'completed').length
-    const cancelled = reservations.filter(r => r.status === 'cancelled').length
-
-    // Filter reservasi masuk dalam 7 hari terakhir
     const now = new Date()
-    const sevenDaysAgo = new Date()
-    sevenDaysAgo.setDate(now.getDate() - 7)
-    
-    const thisWeekReservations = reservations.filter(item => {
-      const createdDate = new Date(item.created_at || item.booking_date)
-      return createdDate >= sevenDaysAgo
-    })
+    const sevenDaysAgo = new Date(now.setDate(now.getDate() - 7))
+
+    // 1. Total seluruh reservasi di database
+    const totalBookings = bookings.length
+
+    // 2. Total pending murni (SEMUA yang pending tanpa batasan tanggal)
+    const pendingCount = bookings.filter((b) => b.status === 'pending').length
+
+    // 3. Total confirmed & completed
+    const activeConfirmedCount = bookings.filter(
+      (b) => b.status === 'confirmed' || b.status === 'completed'
+    ).length
+
+    // 4. Masuk 7 hari terakhir (Berdasarkan booking_date atau created_at)
+    const last7DaysCount = bookings.filter((b) => {
+      const dateToCheck = new Date(b.created_at || b.booking_date)
+      return dateToCheck >= sevenDaysAgo
+    }).length
 
     return {
-      total,
-      pending,
-      confirmed,
-      completed,
-      cancelled,
-      thisWeekCount: thisWeekReservations.length
+    totalBookings,
+    pendingCount,
+    activeConfirmedCount,
+    last7DaysCount,
     }
   }, [reservations])
 
