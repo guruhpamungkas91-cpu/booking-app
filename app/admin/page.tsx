@@ -109,7 +109,7 @@ export default function AdminDashboard() {
   }
 
   // 1. KALKULASI STATISTIK (ANALYTICS)
-  const stats = useMemo(() => {
+    const stats = useMemo(() => {
     const total = reservations.length
     const pending = reservations.filter(r => (r.status || 'pending') === 'pending').length
     const confirmed = reservations.filter(r => r.status === 'confirmed').length
