@@ -376,24 +376,23 @@ export default function AdminDashboard() {
           </div>
 
           {/* Card 4: Total Keseluruhan */}
-          <div className="bg-blue-950/30 border border-blue-500/30 rounded-2xl p-5 shadow-lg backdrop-blur-sm relative overflow-hidden group hover:border-blue-500/50 transition">
-          {/* Glow / Accent background effect */}
-          <div className="absolute -right-6 -bottom-6 w-24 h-24 bg-blue-500/10 rounded-full blur-xl group-hover:bg-blue-500/20 transition"></div>
+          <div className="bg-blue-900/60 border border-blue-500/50 rounded-2xl p-5 shadow-lg backdrop-blur-sm relative overflow-hidden group hover:border-blue-400 transition">
+          <div className="absolute -right-6 -bottom-6 w-24 h-24 bg-blue-500/20 rounded-full blur-xl group-hover:bg-blue-500/30 transition"></div>
   
           <div className="flex items-center justify-between relative z-10">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-blue-300/80 mb-1">
-                Total Reservasi
-              </p>
-              <h3 className="text-3xl font-bold text-blue-400">
-                {reservations.length}
-              </h3>
-            </div>
-            <div className="w-12 h-12 rounded-xl bg-blue-500/20 border border-blue-500/40 flex items-center justify-center text-blue-400 text-xl font-bold">
-              📅
-            </div>
-          </div>
+          <div>
+          <p className="text-xs font-semibold uppercase tracking-wider text-blue-300 mb-1">
+              Total Reservasi
+          </p>
+          <h3 className="text-3xl font-bold text-blue-400">
+        {reservations.length}
+          </h3>
         </div>
+        <div className="w-12 h-12 rounded-xl bg-blue-500/30 border border-blue-400/60 flex items-center justify-center text-blue-300 text-xl font-bold">
+        📅
+        </div>
+      </div>
+    </div>
 
         {/* --- CONTROL BOX (FILTER & SEARCH BAR) --- */}
         <div className="bg-zinc-900 border border-zinc-800 p-4 sm:p-5 rounded-2xl shadow-xl flex flex-wrap gap-4 items-end justify-between">
