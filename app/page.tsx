@@ -82,7 +82,7 @@ export default function Home() {
             <input
               type="tel"
               required
-              placeholder="08123456789"
+              placeholder="085899997828"
               className="mt-1 w-full p-2 border border-gray-300 rounded-md text-gray-800"
               value={formData.whatsapp_number}
               onChange={(e) => setFormData({ ...formData, whatsapp_number: e.target.value })}
