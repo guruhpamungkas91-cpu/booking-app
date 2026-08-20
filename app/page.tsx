@@ -25,17 +25,22 @@ export default function Home() {
   ]
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setLoading(true)
+  e.preventDefault()
+  setLoading(true)
 
-    // 1. Simpan data reservasi + metode pembayaran ke Supabase
-    const { error } = await supabase.from('Reservations').insert([formData])
-
-    if (error) {
-      alert('Gagal membuat reservasi: ' + error.message)
-      setLoading(false)
-      return
+  // 1. Simpan data reservasi + SET STATUS DEFAULT KE 'pending'
+  const { error } = await supabase.from('Reservations').insert([
+    {
+      ...formData,
+      status: 'pending', // 👈 DITAMBAHKAN DI SINI BIAR DB OTOMATIS TERISI 'pending'
     }
+  ])
+
+  if (error) {
+    alert('Gagal membuat reservasi: ' + error.message)
+    setLoading(false)
+    return
+  }
 
     // 2. Format Pesan WhatsApp dengan Branding M - CUT Barbershop
     const message = encodeURIComponent(
