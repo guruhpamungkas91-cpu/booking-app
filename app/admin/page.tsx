@@ -112,9 +112,11 @@ export default function AdminDashboard() {
   const stats = useMemo(() => {
     const totalBookings = reservations.length
 
-    const pendingCount = reservations.filter((b) => 
-      b.status && b.status.toString().trim().toLowerCase() === 'pending'
-    ).length
+    const pendingCount = reservations.filter(r => {
+    // Jika status tidak ada/null/undefined, anggap sebagai 'pending'
+    const currentStatus = r.status ? r.status.toLowerCase() : 'pending';
+    return currentStatus === 'pending';
+    }).length;
 
     const confirmedCount = reservations.filter(
       (b) => b.status && b.status.toString().trim().toLowerCase() === 'confirmed'
