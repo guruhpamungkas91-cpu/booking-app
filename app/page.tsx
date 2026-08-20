@@ -209,24 +209,48 @@ export default function Home() {
               })}
             </div>
 
-            {/* DISPLAY QRIS */}
+            {/* DISPLAY QRIS - PERBAIKAN UKURAN & KEJELASAN */}
             {formData.payment_method === 'QRIS' && (
-              <div className="p-4 bg-zinc-950 border border-zinc-800 rounded-2xl text-center space-y-3 mt-3">
-                <p className="text-xs font-medium text-amber-400">
-                  Scan QRIS di bawah ini untuk pembayaran:
-                </p>
-                <div className="p-3 bg-white rounded-xl inline-block shadow-inner border border-zinc-200">
+              <div className="p-5 bg-zinc-950 border border-zinc-800 rounded-2xl text-center space-y-4 mt-3 transition-all">
+                <div>
+                  <p className="text-sm font-semibold text-amber-400">
+                    Scan QRIS untuk Pembayaran
+                  </p>
+                  <p className="text-xs text-zinc-400 mt-1">
+                    Bisa scan pakai GoPay, OVO, Dana, ShopeePay, atau Mobile Banking.
+                  </p>
+                </div>
+
+                {/* CONTAINER QRIS DIPERBESAR */}
+                <div className="p-4 bg-white rounded-2xl inline-block shadow-2xl border border-zinc-300">
                   <img
-                    src="/MCUT.png"
-                    alt="QRIS Code"
-                    className="w-48 h-48 mx-auto object-contain"
+                    src="/qris.png"
+                    alt="QRIS Code M-CUT Barbershop"
+                    className="w-64 h-64 sm:w-72 sm:h-72 mx-auto object-contain image-render-crisp"
                   />
                 </div>
-                <p className="text-[11px] text-zinc-500">
-                  *Silakan screenshot bukti bayar untuk dikirim via WA.
-                </p>
+
+                {/* CTA / INFO TAMBAHAN */}
+                <div className="pt-1 flex flex-col items-center gap-2">
+                  <a
+                    href="/qris.png"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center space-x-1.5 text-xs text-amber-500 hover:text-amber-400 font-medium bg-amber-500/10 px-3 py-1.5 rounded-lg border border-amber-500/20 transition-all"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                    </svg>
+                    <span>Klik untuk lihat ukuran penuh</span>
+                  </a>
+
+                  <p className="text-[11px] text-zinc-500">
+                    *Silakan screenshot atau simpan bukti bayar untuk dikirim via WA.
+                  </p>
+                </div>
               </div>
-            )}
+)}
 
             {/* DISPLAY BCA */}
             {formData.payment_method === 'Transfer BCA' && (
