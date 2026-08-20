@@ -305,8 +305,8 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* 4 CARD STATISTIK AKSEN WARNA MANIS */}
-<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* GRID 4 CARD STATISTIK */}
+<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
 
   {/* Card 1: Masuk Minggu Ini */}
   <div className="bg-zinc-900 border border-emerald-500/30 rounded-2xl p-5 shadow-xl relative overflow-hidden group hover:border-emerald-500/50 transition">
