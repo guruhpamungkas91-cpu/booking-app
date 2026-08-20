@@ -108,42 +108,51 @@ export default function AdminDashboard() {
     }
   }
 
-  // 1. KALKULASI STATISTIK (ANALYTICS)
-    console.log('Data bookings saat ini:', bookings);
+  // 1. KALKULASI STATISTIK (ANALYTICS) - SUDAH DIBETULKAN
     const stats = useMemo(() => {
-    const now = new Date()
-    const sevenDaysAgo = new Date(now.setDate(now.getDate() - 7))
-
     // 1. Total seluruh reservasi di database
-    const totalBookings = bookings.length
+    const totalBookings = reservations.length
 
-    // 2. Total pending murni (SEMUA yang pending tanpa batasan tanggal)
-    const pendingCount = bookings.filter((b) => 
-    b.status && b.status.toString().trim().toLowerCase() === 'pending'
+    // 2. Total pending murni
+    const pendingCount = reservations.filter((b) => 
+      b.status && b.status.toString().trim().toLowerCase() === 'pending'
     ).length
 
-    // 3. Total confirmed & completed
-    const activeConfirmedCount = bookings.filter(
-      (b) => b.status === 'confirmed' || b.status === 'completed'
+    // 3. Status Confirmed & Completed
+    const confirmedCount = reservations.filter(
+      (b) => b.status && b.status.toString().trim().toLowerCase() === 'confirmed'
     ).length
 
-    // 4. Masuk 7 hari terakhir (Berdasarkan booking_date atau created_at)
-    const last7DaysCount = bookings.filter((b) => {
+    const completedCount = reservations.filter(
+      (b) => b.status && b.status.toString().trim().toLowerCase() === 'completed'
+    ).length
+
+    const cancelledCount = reservations.filter(
+      (b) => b.status && b.status.toString().trim().toLowerCase() === 'cancelled'
+    ).length
+
+    // 4. Masuk 7 hari terakhir (Berdasarkan booking_date / created_at)
+    const sevenDaysAgo = new Date()
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
+
+    const last7DaysCount = reservations.filter((b) => {
       const dateToCheck = new Date(b.created_at || b.booking_date)
       return dateToCheck >= sevenDaysAgo
     }).length
 
     return {
-    totalBookings,
-    pendingCount,
-    activeConfirmedCount,
-    last7DaysCount,
+      totalBookings,
+      pendingCount,
+      confirmedCount,
+      completedCount,
+      cancelledCount,
+      last7DaysCount,
     }
   }, [reservations])
 
   // Progress Bar Helper untuk Statistik Mingguan
-  const maxWeeklyTarget = Math.max(stats.thisWeekCount, 10)
-  const weeklyPercentage = Math.min(Math.round((stats.thisWeekCount / maxWeeklyTarget) * 100), 100)
+  const maxWeeklyTarget = Math.max(stats.last7DaysCount, 10)
+  const weeklyPercentage = Math.min(Math.round((stats.last7DaysCount / maxWeeklyTarget) * 100), 100)
 
   // 2. LOGIKA FITUR FILTER (TANGGAL, SEARCH, & STATUS)
   useEffect(() => {
@@ -311,7 +320,7 @@ export default function AdminDashboard() {
                   Masuk Minggu Ini
                 </p>
                 <h3 className="text-3xl font-extrabold text-white mt-2">
-                  {stats.thisWeekCount} <span className="text-xs text-zinc-400 font-normal">booking</span>
+                  {stats.last7DaysCount} <span className="text-xs text-zinc-400 font-normal">booking</span>
                 </h3>
               </div>
               <div className="p-2.5 bg-amber-500/10 rounded-xl text-amber-500 border border-amber-500/20">
@@ -340,7 +349,7 @@ export default function AdminDashboard() {
                   Menunggu (Pending)
                 </p>
                 <h3 className="text-3xl font-extrabold text-white mt-2">
-                  {stats.pending}
+                  {stats.pendingCount}
                 </h3>
               </div>
               <div className="p-2.5 bg-amber-500/10 rounded-xl text-amber-400 border border-amber-500/20">
@@ -358,8 +367,11 @@ export default function AdminDashboard() {
                   Dikonfirmasi / Selesai
                 </p>
                 <h3 className="text-3xl font-extrabold text-white mt-2">
-                  {stats.confirmed + stats.completed}
+                  {stats.confirmedCount + stats.completedCount}
                 </h3>
+                <p className="text-[11px] text-zinc-500 mt-4">
+                  Confirmed: {stats.confirmedCount} | Selesai: {stats.completedCount}
+                </p>
               </div>
               <div className="p-2.5 bg-emerald-500/10 rounded-xl text-emerald-400 border border-emerald-500/20">
                 ✅
@@ -378,8 +390,11 @@ export default function AdminDashboard() {
                   Total Semua Reservasi
                 </p>
                 <h3 className="text-3xl font-extrabold text-white mt-2">
-                  {stats.total}
+                  {stats.totalBookings}
                 </h3>
+                <p className="text-[11px] text-zinc-500 mt-4">
+                  Batal: {stats.cancelledCount}
+                </p>
               </div>
               <div className="p-2.5 bg-zinc-800 rounded-xl text-zinc-300 border border-zinc-700">
                 👥
