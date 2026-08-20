@@ -19,7 +19,11 @@ interface Reservation {
 
 export default function AdminDashboard() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
+  
+  // State untuk Login Supabase Auth
+  const [emailInput, setEmailInput] = useState('')
   const [passwordInput, setPasswordInput] = useState('')
+  
   const [reservations, setReservations] = useState<Reservation[]>([])
   const [filteredReservations, setFilteredReservations] = useState<Reservation[]>([])
   const [loading, setLoading] = useState(false)
@@ -28,17 +32,28 @@ export default function AdminDashboard() {
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
 
-  // GANTI PASSWORD ADMIN DI SINI
-  const ADMIN_PASSWORD = 'adminrahasia123'
-
-  const handleLogin = (e: React.FormEvent) => {
+  // LOGIN MENGGUNAKAN SUPABASE AUTH
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (passwordInput === ADMIN_PASSWORD) {
+    setLoading(true)
+
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: emailInput,
+      password: passwordInput,
+    })
+
+    if (error) {
+      alert('Login gagal: ' + error.message)
+    } else if (data.session) {
       setIsAuthenticated(true)
-      sessionStorage.setItem('admin_auth', 'true')
-    } else {
-      alert('Password salah, bro!')
     }
+    setLoading(false)
+  }
+
+  // LOGOUT SUPABASE AUTH
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
+    setIsAuthenticated(false)
   }
 
   const fetchReservations = async () => {
@@ -86,7 +101,6 @@ export default function AdminDashboard() {
     if (error) {
       alert('Gagal menghapus data: ' + error.message)
     } else {
-      // Refresh list lokal agar UI langsung ter-update tanpa reload full
       setReservations((prev) => prev.filter((item) => item.id !== id))
       alert('Data reservasi berhasil dihapus!')
     }
@@ -129,11 +143,15 @@ export default function AdminDashboard() {
     document.body.removeChild(link)
   }
 
+  // CEK SESSION AKTIF DARI SUPABASE
   useEffect(() => {
-    const isAuth = sessionStorage.getItem('admin_auth')
-    if (isAuth === 'true') {
-      setIsAuthenticated(true)
+    const checkSession = async () => {
+      const { data } = await supabase.auth.getSession()
+      if (data.session) {
+        setIsAuthenticated(true)
+      }
     }
+    checkSession()
   }, [])
 
   useEffect(() => {
@@ -152,7 +170,18 @@ export default function AdminDashboard() {
           </h1>
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700">Password Admin</label>
+              <label className="block text-sm font-medium text-gray-700">Email Admin</label>
+              <input
+                type="email"
+                required
+                placeholder="Masukkan email..."
+                className="mt-1 w-full p-2 border border-gray-300 rounded-md text-gray-800"
+                value={emailInput}
+                onChange={(e) => setEmailInput(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Password</label>
               <input
                 type="password"
                 required
@@ -164,9 +193,10 @@ export default function AdminDashboard() {
             </div>
             <button
               type="submit"
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 rounded-md transition"
+              disabled={loading}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 rounded-md transition disabled:bg-gray-400"
             >
-              Masuk Dashboard
+              {loading ? 'Memproses...' : 'Masuk Dashboard'}
             </button>
           </form>
         </div>
@@ -193,10 +223,7 @@ export default function AdminDashboard() {
               Refresh Data
             </button>
             <button
-              onClick={() => {
-                sessionStorage.removeItem('admin_auth')
-                setIsAuthenticated(false)
-              }}
+              onClick={handleLogout}
               className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg font-medium transition text-sm"
             >
               Logout
@@ -204,7 +231,7 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* Control Box (Filter Tanggal & Export CSV) */}
+        {/* Control Box */}
         <div className="bg-white p-4 rounded-xl shadow-sm flex flex-wrap gap-4 items-end justify-between">
           <div className="flex flex-wrap gap-4 items-end">
             <div>
@@ -246,7 +273,7 @@ export default function AdminDashboard() {
           </button>
         </div>
 
-        {/* Tabel Data Reservasi */}
+        {/* Tabel Data */}
         <div className="bg-white rounded-xl shadow-sm overflow-hidden">
           {loading ? (
             <div className="p-8 text-center text-gray-500">Memuat data reservasi...</div>
