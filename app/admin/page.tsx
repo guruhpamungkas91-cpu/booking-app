@@ -376,25 +376,23 @@ export default function AdminDashboard() {
           </div>
 
           {/* Card 4: Total Keseluruhan */}
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 shadow-lg">
-            <div className="flex justify-between items-start">
-              <div>
-                <p className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">
-                  Total Semua Reservasi
-                </p>
-                <h3 className="text-3xl font-extrabold text-white mt-2">
-                  {stats.totalBookings}
-                </h3>
-              </div>
-              <div className="p-2.5 bg-zinc-800 rounded-xl text-zinc-300 border border-zinc-700">
-                👥
-              </div>
+          <div className="bg-blue-950/30 border border-blue-500/30 rounded-2xl p-5 shadow-lg backdrop-blur-sm relative overflow-hidden group hover:border-blue-500/50 transition">
+          {/* Glow / Accent background effect */}
+          <div className="absolute -right-6 -bottom-6 w-24 h-24 bg-blue-500/10 rounded-full blur-xl group-hover:bg-blue-500/20 transition"></div>
+  
+          <div className="flex items-center justify-between relative z-10">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-blue-300/80 mb-1">
+                Total Reservasi
+              </p>
+              <h3 className="text-3xl font-bold text-blue-400">
+                {reservations.length}
+              </h3>
             </div>
-            <p className="text-[11px] text-zinc-500 mt-4">
-              Batal: {stats.cancelledCount}
-            </p>
+            <div className="w-12 h-12 rounded-xl bg-blue-500/20 border border-blue-500/40 flex items-center justify-center text-blue-400 text-xl font-bold">
+              📅
+            </div>
           </div>
-
         </div>
 
         {/* --- CONTROL BOX (FILTER & SEARCH BAR) --- */}

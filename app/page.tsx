@@ -21,7 +21,7 @@ export default function Home() {
 
   const services = [
     { name: 'Potong Rambut', price: 'Rp 50.000', desc: 'Gunting + Styling + Washing' },
-    { name: 'Coloring', price: 'Rp 120.000+', desc: 'Pewarnaan Rambut Premium' },
+    { name: 'Coloring', price: 'Rp 120.000', desc: 'Pewarnaan Rambut Premium' },
   ]
 
   const handleSubmit = async (e: React.FormEvent) => {
