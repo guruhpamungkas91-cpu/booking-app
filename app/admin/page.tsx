@@ -47,7 +47,7 @@ export default function AdminDashboard() {
   const [cancelModalItem, setCancelModalItem] = useState<Reservation | null>(null)
 
   // State Khusus Penarikan Laporan / Report
-  const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly' | 'custom'>('daily')
+  const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly' | 'custom'>('monthly')
   const [reportDate, setReportDate] = useState(new Date().toISOString().split('T')[0])
   const [reportStartDate, setReportStartDate] = useState('')
   const [reportEndDate, setReportEndDate] = useState('')
@@ -242,7 +242,7 @@ export default function AdminDashboard() {
     }
   }, [reservations])
 
-  // LOGIKA PENARIKAN LAPORAN KEUANGAN (KHUSUS COMPLETED & CANCELLED/REFUND)
+  // LOGIKA PENARIKAN LAPORAN KEUANGAN
   const reportData = useMemo(() => {
     let weekInfo = { startStr: '', endStr: '' }
 
@@ -266,13 +266,13 @@ export default function AdminDashboard() {
       return true
     })
 
-    // 2. Filter Khusus Laporan Keuangan: Hanya "Completed" dan "Cancelled"
+    // 2. Filter Khusus Laporan Keuangan: Hanya "Completed" dan "Cancelled with Refund"
     const financialItems = dateFiltered.filter((item) => {
       const s = (item.status || '').toLowerCase()
       return isCompleted(s) || s.startsWith('cancelled')
     })
 
-    // 3. Hitung Omzet Bruto, Refund, dan Omzet Bersih
+    // 3. LOGIKA BARU: Omzet Bruto = Completed + Transaksi Refund (Uang yang sempat masuk)
     let grossRevenue = 0
     let totalRefund = 0
 
@@ -283,10 +283,12 @@ export default function AdminDashboard() {
       if (isCompleted(s)) {
         grossRevenue += price
       } else if (s === 'cancelled_refunded' || s === 'cancelled_need_refund') {
-        totalRefund += price
+        grossRevenue += price // Uang masuk di awal
+        totalRefund += price  // Uang keluar saat direfund
       }
     })
 
+    // Omzet Netto = Gross Revenue - Total Refund
     const netRevenue = grossRevenue - totalRefund
 
     return {
@@ -332,7 +334,7 @@ export default function AdminDashboard() {
         </style>
       </head>
       <body>
-        <div class="title">LAPORAN KEUANGAN & OMZET BERSIH - M CUT BARBERSHOP</div>
+        <div class="title">LAPORAN KEUANGAN & OMZET NETTO - M CUT BARBERSHOP</div>
         <div class="subtitle">Periode: ${labelPeriode} | Tanggal Cetak: ${new Date().toLocaleDateString('id-ID')}</div>
         
         <table>
@@ -366,10 +368,10 @@ export default function AdminDashboard() {
                   <td class="center">${item.payment_method || 'QRIS'}</td>
                   <td>'${item.whatsapp_number}</td>
                   <td class="center ${isRefund ? 'status-refund' : 'status-completed'}">
-                    ${isCompleted(s) ? 'COMPLETED' : isRefund ? 'CANCELLED (REFUND)' : 'CANCELLED'}
+                    ${isCompleted(s) ? 'COMPLETED' : 'CANCELLED (REFUND)'}
                   </td>
-                  <td class="num" style="color: ${isRefund ? '#dc2626' : '#000000'};">
-                    ${isRefund ? `- Rp ${harga.toLocaleString('id-ID')}` : `Rp ${harga.toLocaleString('id-ID')}`}
+                  <td class="num">
+                    Rp ${harga.toLocaleString('id-ID')}
                   </td>
                 </tr>
               `
@@ -377,7 +379,7 @@ export default function AdminDashboard() {
               .join('')}
             
             <tr class="total-row">
-              <td colspan="8" style="text-align: right;">TOTAL OMZET BRUTO (COMPLETED):</td>
+              <td colspan="8" style="text-align: right;">TOTAL OMZET BRUTO (UANG MASUK):</td>
               <td class="num" style="color: #059669;">Rp ${reportData.grossRevenue.toLocaleString('id-ID')}</td>
             </tr>
             <tr class="total-row">
@@ -385,7 +387,7 @@ export default function AdminDashboard() {
               <td class="num" style="color: #dc2626;">- Rp ${reportData.totalRefund.toLocaleString('id-ID')}</td>
             </tr>
             <tr class="net-row">
-              <td colspan="8" style="text-align: right; font-weight: bold; color: #065f46;">TOTAL OMZET BERSIH (NETT REVENUE):</td>
+              <td colspan="8" style="text-align: right; font-weight: bold; color: #065f46;">TOTAL OMZET NETTO (PENDAPATAN BERSIH):</td>
               <td class="num" style="color: #065f46; font-size: 14px;">Rp ${reportData.netRevenue.toLocaleString('id-ID')}</td>
             </tr>
           </tbody>
@@ -429,7 +431,7 @@ export default function AdminDashboard() {
         <style>
           @page { size: A4 portrait; margin: 15mm; }
           body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 11px; color: #111; margin: 0; padding: 0; }
-          .header { text-align: center; margin-bottom: 20px; border-b: 2px solid #000; padding-bottom: 10px; }
+          .header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #000; padding-bottom: 10px; }
           .header h1 { margin: 0; font-size: 18px; text-transform: uppercase; letter-spacing: 1px; }
           .header p { margin: 4px 0 0 0; color: #555; font-size: 11px; }
           .info-table { width: 100%; margin-bottom: 15px; font-size: 11px; }
@@ -442,7 +444,7 @@ export default function AdminDashboard() {
           .bold { font-weight: bold; }
           .text-red { color: #dc2626; }
           .text-green { color: #059669; }
-          .summary-box { margin-top: 20px; float: right; width: 40%; }
+          .summary-box { margin-top: 20px; float: right; width: 45%; }
           .summary-table { width: 100%; border-collapse: collapse; }
           .summary-table td { padding: 5px; border-bottom: 1px solid #e5e7eb; }
           .footer { margin-top: 50px; text-align: right; clear: both; }
@@ -452,7 +454,7 @@ export default function AdminDashboard() {
       <body>
         <div class="header">
           <h1>M CUT BARBERSHOP</h1>
-          <p>LAPORAN KEUANGAN & TRANSAKSI BERSIH</p>
+          <p>LAPORAN KEUANGAN & OMZET NETTO</p>
         </div>
 
         <table class="info-table">
@@ -493,8 +495,8 @@ export default function AdminDashboard() {
                   <td class="center bold ${isRefund ? 'text-red' : 'text-green'}">
                     ${isCompleted(s) ? 'COMPLETED' : 'REFUND'}
                   </td>
-                  <td class="right bold ${isRefund ? 'text-red' : ''}">
-                    ${isRefund ? `- Rp ${harga.toLocaleString('id-ID')}` : `Rp ${harga.toLocaleString('id-ID')}`}
+                  <td class="right bold">
+                    Rp ${harga.toLocaleString('id-ID')}
                   </td>
                 </tr>
               `
@@ -506,15 +508,15 @@ export default function AdminDashboard() {
         <div class="summary-box">
           <table class="summary-table">
             <tr>
-              <td>Omzet Bruto:</td>
+              <td>Omzet Bruto (Uang Masuk):</td>
               <td class="right bold text-green">Rp ${reportData.grossRevenue.toLocaleString('id-ID')}</td>
             </tr>
             <tr>
-              <td>Total Refund:</td>
+              <td>Total Refund (Uang Keluar):</td>
               <td class="right bold text-red">- Rp ${reportData.totalRefund.toLocaleString('id-ID')}</td>
             </tr>
             <tr style="border-top: 2px solid #000; font-size: 12px;">
-              <td class="bold">Omzet Bersih:</td>
+              <td class="bold">Omzet Netto:</td>
               <td class="right bold text-green">Rp ${reportData.netRevenue.toLocaleString('id-ID')}</td>
             </tr>
           </table>
@@ -786,12 +788,12 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* PENARIKAN LAPORAN KEUANGAN: EXCEL & CETAK PDF */}
+        {/* PENARIKAN LAPORAN KEUANGAN: FORMAT TAMPILAN TERBARU */}
         <div className="bg-zinc-900 border border-amber-500/30 p-5 rounded-2xl shadow-xl space-y-4">
           <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
             <div>
               <h2 className="text-base font-extrabold text-amber-400 flex items-center gap-2">
-                <span>📊 Penarikan Laporan Keuangan (Omzet Bersih)</span>
+                <span>📊 Penarikan Laporan Keuangan (Omzet Netto)</span>
               </h2>
               <p className="text-xs text-zinc-400">
                 Data siap diexport ke Excel atau dicetak langsung/disimpan sebagai PDF resmi.
@@ -799,107 +801,115 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
-            <div className="md:col-span-3">
-              <label className="block text-xs font-semibold text-zinc-300 mb-1.5">Tipe Laporan:</label>
-              <div className="grid grid-cols-2 gap-1.5 p-1 bg-zinc-950 rounded-xl border border-zinc-800">
-                {(['daily', 'weekly', 'monthly', 'custom'] as const).map((mode) => (
-                  <button
-                    key={mode}
-                    onClick={() => setReportPeriod(mode)}
-                    className={`py-1.5 rounded-lg text-xs font-bold transition capitalize ${
-                      reportPeriod === mode
-                        ? 'bg-amber-500 text-zinc-950 shadow-md'
-                        : 'text-zinc-400 hover:text-white'
-                    }`}
-                  >
-                    {mode === 'daily' ? 'Harian' : mode === 'weekly' ? 'Mingguan' : mode === 'monthly' ? 'Bulanan' : 'Custom'}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {reportPeriod !== 'custom' ? (
-              <div className="md:col-span-3">
-                <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
-                  {reportPeriod === 'daily' && 'Pilih Tanggal:'}
-                  {reportPeriod === 'weekly' && 'Pilih Tanggal Awal (7 Hari):'}
-                  {reportPeriod === 'monthly' && 'Pilih Bulan & Tahun:'}
-                </label>
-
-                <input
-                  type={reportPeriod === 'monthly' ? 'month' : 'date'}
-                  value={reportPeriod === 'monthly' ? reportDate.substring(0, 7) : reportDate}
-                  onChange={(e) => {
-                    const val = e.target.value
-                    setReportDate(reportPeriod === 'monthly' ? `${val}-01` : val)
-                  }}
-                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-zinc-200 focus:outline-none focus:border-amber-500"
-                />
-
-                {reportPeriod === 'weekly' && reportData.weekInfo && (
-                  <p className="text-[11px] text-amber-400 font-semibold mt-1">
-                    📅 Periode: {formatDateID(reportData.weekInfo.startStr)} s/d {formatDateID(reportData.weekInfo.endStr)}
-                  </p>
-                )}
-              </div>
-            ) : (
-              <>
-                <div className="md:col-span-2">
-                  <label className="block text-xs font-semibold text-zinc-300 mb-1.5">Dari Tanggal:</label>
-                  <input
-                    type="date"
-                    value={reportStartDate}
-                    onChange={(e) => setReportStartDate(e.target.value)}
-                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-zinc-200 focus:outline-none focus:border-amber-500"
-                  />
-                </div>
-                <div className="md:col-span-2">
-                  <label className="block text-xs font-semibold text-zinc-300 mb-1.5">Sampai Tanggal:</label>
-                  <input
-                    type="date"
-                    value={reportEndDate}
-                    onChange={(e) => setReportEndDate(e.target.value)}
-                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-zinc-200 focus:outline-none focus:border-amber-500"
-                  />
-                </div>
-              </>
-            )}
-
-            <div className="md:col-span-3 bg-zinc-950 border border-zinc-800 p-3 rounded-xl grid grid-cols-2 gap-2 text-xs">
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-start">
+            
+            {/* SISI KIRI: FILTER PERIODE LAPORAN */}
+            <div className="md:col-span-6 space-y-4">
               <div>
-                <p className="text-[10px] text-zinc-400 uppercase font-bold">Omzet Bruto</p>
-                <p className="text-sm font-bold text-zinc-200">
-                  Rp {reportData.grossRevenue.toLocaleString('id-ID')}
-                </p>
-                <p className="text-[10px] text-red-400 mt-0.5">
-                  Refund: -Rp {reportData.totalRefund.toLocaleString('id-ID')}
-                </p>
+                <label className="block text-xs font-semibold text-zinc-300 mb-1.5">Tipe Laporan:</label>
+                <div className="grid grid-cols-4 gap-1.5 p-1 bg-zinc-950 rounded-xl border border-zinc-800">
+                  {(['daily', 'weekly', 'monthly', 'custom'] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      onClick={() => setReportPeriod(mode)}
+                      className={`py-1.5 rounded-lg text-xs font-bold transition capitalize ${
+                        reportPeriod === mode
+                          ? 'bg-amber-500 text-zinc-950 shadow-md'
+                          : 'text-zinc-400 hover:text-white'
+                      }`}
+                    >
+                      {mode === 'daily' ? 'Harian' : mode === 'weekly' ? 'Mingguan' : mode === 'monthly' ? 'Bulanan' : 'Custom'}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <div className="text-right border-l border-zinc-800 pl-2">
-                <p className="text-[10px] text-emerald-400 uppercase font-extrabold">Omzet Bersih</p>
-                <p className="text-base font-black text-emerald-400">
-                  Rp {reportData.netRevenue.toLocaleString('id-ID')}
-                </p>
+
+              {reportPeriod !== 'custom' ? (
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                    {reportPeriod === 'daily' && 'Pilih Tanggal:'}
+                    {reportPeriod === 'weekly' && 'Pilih Tanggal Awal (7 Hari):'}
+                    {reportPeriod === 'monthly' && 'Pilih Bulan & Tahun:'}
+                  </label>
+
+                  <input
+                    type={reportPeriod === 'monthly' ? 'month' : 'date'}
+                    value={reportPeriod === 'monthly' ? reportDate.substring(0, 7) : reportDate}
+                    onChange={(e) => {
+                      const val = e.target.value
+                      setReportDate(reportPeriod === 'monthly' ? `${val}-01` : val)
+                    }}
+                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-zinc-200 focus:outline-none focus:border-amber-500"
+                  />
+
+                  {reportPeriod === 'weekly' && reportData.weekInfo && (
+                    <p className="text-[11px] text-amber-400 font-semibold mt-1">
+                      📅 Periode: {formatDateID(reportData.weekInfo.startStr)} s/d {formatDateID(reportData.weekInfo.endStr)}
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-zinc-300 mb-1.5">Dari Tanggal:</label>
+                    <input
+                      type="date"
+                      value={reportStartDate}
+                      onChange={(e) => setReportStartDate(e.target.value)}
+                      className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-zinc-200 focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-zinc-300 mb-1.5">Sampai Tanggal:</label>
+                    <input
+                      type="date"
+                      value={reportEndDate}
+                      onChange={(e) => setReportEndDate(e.target.value)}
+                      className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-zinc-200 focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* SISI KANAN: BOX INFO OMZET & TOMBOL EXPORT Tepat DI BAWAHNYA */}
+            <div className="md:col-span-6 space-y-3">
+              <div className="bg-zinc-950 border border-zinc-800 p-4 rounded-xl grid grid-cols-2 gap-4 text-xs">
+                <div>
+                  <p className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider">OMZET BRUTO</p>
+                  <p className="text-xl font-black text-white mt-1">
+                    Rp {reportData.grossRevenue.toLocaleString('id-ID')}
+                  </p>
+                  <p className="text-[10px] text-red-400 mt-0.5 font-medium">
+                    Refund: -Rp {reportData.totalRefund.toLocaleString('id-ID')}
+                  </p>
+                </div>
+                <div className="text-right border-l border-zinc-800 pl-4">
+                  <p className="text-[11px] font-extrabold text-emerald-400 uppercase tracking-wider">OMZET NETTO</p>
+                  <p className="text-2xl font-black text-emerald-400 mt-1">
+                    Rp {reportData.netRevenue.toLocaleString('id-ID')}
+                  </p>
+                </div>
+              </div>
+
+              {/* TOMBOL EXPORT (PAS DI BAWAH BOX OMZET) */}
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={exportReportToCSV}
+                  className="w-full bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2.5 rounded-xl font-bold transition text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-600/10"
+                >
+                  <span>📥 Excel</span>
+                </button>
+
+                <button
+                  onClick={handlePrintPDF}
+                  className="w-full bg-amber-500 hover:bg-amber-400 text-zinc-950 px-4 py-2.5 rounded-xl font-bold transition text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-amber-500/10"
+                >
+                  <span>🖨️ Cetak / PDF</span>
+                </button>
               </div>
             </div>
 
-            {/* DUA TOMBOL: EXCEL & PRINT/PDF */}
-            <div className="md:col-span-3 flex gap-2">
-              <button
-                onClick={exportReportToCSV}
-                className="w-1/2 bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-2.5 rounded-xl font-bold transition text-xs flex items-center justify-center gap-1 shadow-lg shadow-emerald-600/10"
-              >
-                <span>📥 Excel</span>
-              </button>
-
-              <button
-                onClick={handlePrintPDF}
-                className="w-1/2 bg-amber-500 hover:bg-amber-400 text-zinc-950 px-3 py-2.5 rounded-xl font-bold transition text-xs flex items-center justify-center gap-1 shadow-lg shadow-amber-500/10"
-              >
-                <span>🖨️ Cetak / PDF</span>
-              </button>
-            </div>
           </div>
         </div>
 
