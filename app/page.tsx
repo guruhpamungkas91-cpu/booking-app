@@ -2,10 +2,15 @@
 
 export const dynamic = 'force-dynamic'
 
-import { useState } from 'react'
+import { useState, Suspense } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { supabase } from './lib/supabase'
 
-export default function Home() {
+function BookingFormContent() {
+  const searchParams = useSearchParams()
+  // Ambil client_code dari URL parameter ?client=MCUT, default 'MCUT'
+  const clientCode = searchParams.get('client') || 'MCUT'
+
   const [formData, setFormData] = useState({
     customer_name: '',
     whatsapp_number: '',
@@ -16,7 +21,7 @@ export default function Home() {
   })
   const [loading, setLoading] = useState(false)
 
-  // Ganti dengan nomor WhatsApp Admin Bisnis (format 62)
+  // Nomor WA Admin
   const ADMIN_WA_NUMBER = '6285899997828'
 
   const services = [
@@ -25,26 +30,27 @@ export default function Home() {
   ]
 
   const handleSubmit = async (e: React.FormEvent) => {
-  e.preventDefault()
-  setLoading(true)
+    e.preventDefault()
+    setLoading(true)
 
-  // 1. Simpan data reservasi + SET STATUS DEFAULT KE 'pending'
-  const { error } = await supabase.from('Reservations').insert([
-    {
-      ...formData,
-      status: 'pending', // 👈 DITAMBAHKAN DI SINI BIAR DB OTOMATIS TERISI 'pending'
+    // 1. SIMPAN DATA RESERVASI + CLIENT_CODE DARI TENANT
+    const { error } = await supabase.from('Reservations').insert([
+      {
+        ...formData,
+        status: 'pending',
+        client_code: clientCode // 👈 Otomatis terikat ke tenant terkait
+      }
+    ])
+
+    if (error) {
+      alert('Gagal membuat reservasi: ' + error.message)
+      setLoading(false)
+      return
     }
-  ])
 
-  if (error) {
-    alert('Gagal membuat reservasi: ' + error.message)
-    setLoading(false)
-    return
-  }
-
-    // 2. Format Pesan WhatsApp dengan Branding M - CUT Barbershop
+    // 2. Format Pesan WhatsApp
     const message = encodeURIComponent(
-      `Halo Admin *M CUT Barbershop*, saya mau konfirmasi reservasi:\n\n` +
+      `Halo Admin *${clientCode} Barbershop*, saya mau konfirmasi reservasi:\n\n` +
         `📌 *Nama:* ${formData.customer_name}\n` +
         `📞 *WA:* ${formData.whatsapp_number}\n` +
         `✂️ *Layanan:* ${formData.service_name}\n` +
@@ -67,11 +73,11 @@ export default function Home() {
         <div className="relative p-6 sm:p-8 text-center bg-gradient-to-b from-zinc-800/80 to-zinc-900 border-b border-zinc-800">
           <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-amber-500/10 text-amber-500 mb-3 border border-amber-500/20">
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.121 14.121L19 19m-7-7l7-7m-7 7l-2.879 2.879M12 12L9.121 9.121m0 0L4 4m5.121 5.121L4 14.121 border-amber-400" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.121 14.121L19 19m-7-7l7-7m-7 7l-2.879 2.879M12 12L9.121 9.121m0 0L4 4m5.121 5.121L4 14.121" />
             </svg>
           </div>
           <h1 className="text-3xl font-black tracking-wider text-white uppercase">
-            M CUT
+            {clientCode}
           </h1>
           <p className="text-xs font-semibold text-amber-500 uppercase tracking-widest mt-0.5">
             Barbershop
@@ -214,7 +220,7 @@ export default function Home() {
               })}
             </div>
 
-            {/* DISPLAY QRIS - PERBAIKAN UKURAN & KEJELASAN */}
+            {/* DISPLAY QRIS */}
             {formData.payment_method === 'QRIS' && (
               <div className="p-5 bg-zinc-950 border border-zinc-800 rounded-2xl text-center space-y-4 mt-3 transition-all">
                 <div>
@@ -226,36 +232,16 @@ export default function Home() {
                   </p>
                 </div>
 
-                {/* CONTAINER QRIS DIPERBESAR */}
                 <div className="p-4 bg-white rounded-2xl inline-block shadow-2xl border border-zinc-300">
                   <img
-                    src="/MCUT.png"
-                    alt="QRIS Code M-CUT Barbershop"
+                    src={`/${clientCode}.png`}
+                    onError={(e) => { e.currentTarget.src = '/MCUT.png' }}
+                    alt="QRIS Code"
                     className="w-64 h-64 sm:w-72 sm:h-72 mx-auto object-contain image-render-crisp"
                   />
                 </div>
-
-                {/* CTA / INFO TAMBAHAN */}
-                <div className="pt-1 flex flex-col items-center gap-2">
-                  <a
-                    href="/MCUT.png"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center space-x-1.5 text-xs text-amber-500 hover:text-amber-400 font-medium bg-amber-500/10 px-3 py-1.5 rounded-lg border border-amber-500/20 transition-all"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                    </svg>
-                    <span>Klik untuk lihat ukuran penuh</span>
-                  </a>
-
-                  <p className="text-[11px] text-zinc-500">
-                    *Silakan screenshot atau simpan bukti bayar untuk dikirim via WA.
-                  </p>
-                </div>
               </div>
-)}
+            )}
 
             {/* DISPLAY BCA */}
             {formData.payment_method === 'Transfer BCA' && (
@@ -264,7 +250,7 @@ export default function Home() {
                 <div className="bg-zinc-900 p-3 rounded-xl border border-zinc-800 flex items-center justify-between">
                   <div>
                     <p className="text-lg font-mono font-bold text-amber-400 tracking-wider">123-456-7890</p>
-                    <p className="text-xs text-zinc-400 mt-0.5">a.n. M CUT Barbershop</p>
+                    <p className="text-xs text-zinc-400 mt-0.5">a.n. {clientCode} Barbershop</p>
                   </div>
                 </div>
               </div>
@@ -292,5 +278,13 @@ export default function Home() {
         </form>
       </div>
     </main>
+  )
+}
+
+export default function Home() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-zinc-950 text-white flex items-center justify-center">Loading...</div>}>
+      <BookingFormContent />
+    </Suspense>
   )
 }

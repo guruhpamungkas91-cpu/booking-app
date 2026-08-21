@@ -15,6 +15,7 @@ interface Reservation {
   booking_time: string
   payment_method?: string
   status: string
+  client_code?: string // 👈 Tambahan field client_code
 }
 
 type SortField = 'booking_date' | 'booking_time' | 'customer_name' | 'service_name' | 'price' | 'payment_method' | 'status'
@@ -22,6 +23,7 @@ type SortOrder = 'asc' | 'desc'
 
 export default function AdminDashboard() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [tenantCode, setTenantCode] = useState<string>('')
 
   // State Login Supabase
   const [emailInput, setEmailInput] = useState('')
@@ -66,6 +68,8 @@ export default function AdminDashboard() {
       alert('Login gagal: ' + error.message)
     } else if (data.session) {
       setIsAuthenticated(true)
+      const code = data.session.user.app_metadata?.client_code || 'MCUT'
+      setTenantCode(code)
     }
     setLoading(false)
   }
@@ -76,6 +80,7 @@ export default function AdminDashboard() {
     setIsAuthenticated(false)
   }
 
+  // 👈 Poin 2: Query tetap .select('*') karena Supabase RLS otomatis memfilter data sesuai tenant admin yang login!
   const fetchReservations = async () => {
     setLoading(true)
     const { data, error } = await supabase
@@ -246,7 +251,6 @@ export default function AdminDashboard() {
   const reportData = useMemo(() => {
     let weekInfo = { startStr: '', endStr: '' }
 
-    // 1. Filter Berdasarkan Tanggal
     const dateFiltered = reservations.filter((item) => {
       const itemDate = item.booking_date
 
@@ -266,13 +270,11 @@ export default function AdminDashboard() {
       return true
     })
 
-    // 2. Filter Khusus Laporan Keuangan: Hanya "Completed" dan "Cancelled with Refund"
     const financialItems = dateFiltered.filter((item) => {
       const s = (item.status || '').toLowerCase()
       return isCompleted(s) || s.startsWith('cancelled')
     })
 
-    // 3. LOGIKA BARU: Omzet Bruto = Completed + Transaksi Refund (Uang yang sempat masuk)
     let grossRevenue = 0
     let totalRefund = 0
 
@@ -283,12 +285,11 @@ export default function AdminDashboard() {
       if (isCompleted(s)) {
         grossRevenue += price
       } else if (s === 'cancelled_refunded' || s === 'cancelled_need_refund') {
-        grossRevenue += price // Uang masuk di awal
-        totalRefund += price  // Uang keluar saat direfund
+        grossRevenue += price
+        totalRefund += price
       }
     })
 
-    // Omzet Netto = Gross Revenue - Total Refund
     const netRevenue = grossRevenue - totalRefund
 
     return {
@@ -334,7 +335,7 @@ export default function AdminDashboard() {
         </style>
       </head>
       <body>
-        <div class="title">LAPORAN KEUANGAN & OMZET NETTO - M CUT BARBERSHOP</div>
+        <div class="title">LAPORAN KEUANGAN & OMZET NETTO - ${tenantCode || 'BARBERSHOP'}</div>
         <div class="subtitle">Periode: ${labelPeriode} | Tanggal Cetak: ${new Date().toLocaleDateString('id-ID')}</div>
         
         <table>
@@ -400,7 +401,7 @@ export default function AdminDashboard() {
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.setAttribute('download', `Laporan_Keuangan_MCUT_${reportPeriod.toUpperCase()}_${new Date().toISOString().split('T')[0]}.xls`)
+    link.setAttribute('download', `Laporan_Keuangan_${tenantCode}_${reportPeriod.toUpperCase()}_${new Date().toISOString().split('T')[0]}.xls`)
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
@@ -427,7 +428,7 @@ export default function AdminDashboard() {
       <!DOCTYPE html>
       <html>
       <head>
-        <title>Laporan Keuangan M CUT Barbershop</title>
+        <title>Laporan Keuangan ${tenantCode} Barbershop</title>
         <style>
           @page { size: A4 portrait; margin: 15mm; }
           body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 11px; color: #111; margin: 0; padding: 0; }
@@ -453,7 +454,7 @@ export default function AdminDashboard() {
       </head>
       <body>
         <div class="header">
-          <h1>M CUT BARBERSHOP</h1>
+          <h1>${tenantCode} BARBERSHOP</h1>
           <p>LAPORAN KEUANGAN & OMZET NETTO</p>
         </div>
 
@@ -523,7 +524,7 @@ export default function AdminDashboard() {
         </div>
 
         <div class="footer">
-          <p>Dicetak oleh Admin M CUT Barbershop</p>
+          <p>Dicetak oleh Admin ${tenantCode} Barbershop</p>
           <div class="signature-space"></div>
           <p>__________________________</p>
         </div>
@@ -626,7 +627,11 @@ export default function AdminDashboard() {
   useEffect(() => {
     const checkSession = async () => {
       const { data } = await supabase.auth.getSession()
-      if (data.session) setIsAuthenticated(true)
+      if (data.session) {
+        setIsAuthenticated(true)
+        const code = data.session.user.app_metadata?.client_code || 'MCUT'
+        setTenantCode(code)
+      }
     }
     checkSession()
   }, [])
@@ -644,7 +649,7 @@ export default function AdminDashboard() {
               ADMIN DASHBOARD
             </span>
             <h1 className="text-2xl font-black text-white tracking-wide uppercase mt-2">
-              M CUT Barbershop
+              Barbershop Portal
             </h1>
             <p className="text-xs text-zinc-400">Silakan login untuk mengelola sistem reservasi</p>
           </div>
@@ -655,7 +660,7 @@ export default function AdminDashboard() {
               <input
                 type="email"
                 required
-                placeholder="admin@mcutbarbershop.com"
+                placeholder="admin@barbershop.com"
                 className="w-full px-4 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-amber-500 transition"
                 value={emailInput}
                 onChange={(e) => setEmailInput(e.target.value)}
@@ -690,15 +695,15 @@ export default function AdminDashboard() {
     <div className="min-h-screen bg-zinc-950 p-4 md:p-8 text-zinc-100 font-sans relative">
       <div className="max-w-7xl mx-auto space-y-6">
 
-        {/* Header Dashboard */}
+        {/* Header Dashboard Dinamis Sesuai Tenant */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-zinc-900 border border-zinc-800 p-6 rounded-2xl shadow-xl gap-4">
           <div>
             <div className="flex items-center space-x-2">
               <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-500/10 text-amber-500 border border-amber-500/20">
-                PANEL UTAMA
+                TENANT: {tenantCode}
               </span>
               <h1 className="text-xl sm:text-2xl font-black text-white tracking-wide uppercase">
-                M CUT Barbershop
+                {tenantCode} Barbershop
               </h1>
             </div>
             <p className="text-xs text-zinc-400 mt-1">Kelola dan pantau pesanan masuk secara real-time</p>
@@ -788,7 +793,7 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* PENARIKAN LAPORAN KEUANGAN: FORMAT TAMPILAN TERBARU */}
+        {/* PENARIKAN LAPORAN KEUANGAN */}
         <div className="bg-zinc-900 border border-amber-500/30 p-5 rounded-2xl shadow-xl space-y-4">
           <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
             <div>
@@ -872,7 +877,7 @@ export default function AdminDashboard() {
               )}
             </div>
 
-            {/* SISI KANAN: BOX INFO OMZET & TOMBOL EXPORT Tepat DI BAWAHNYA */}
+            {/* SISI KANAN: BOX INFO OMZET & TOMBOL EXPORT */}
             <div className="md:col-span-6 space-y-3">
               <div className="bg-zinc-950 border border-zinc-800 p-4 rounded-xl grid grid-cols-2 gap-4 text-xs">
                 <div>
@@ -892,7 +897,7 @@ export default function AdminDashboard() {
                 </div>
               </div>
 
-              {/* TOMBOL EXPORT (PAS DI BAWAH BOX OMZET) */}
+              {/* TOMBOL EXPORT */}
               <div className="grid grid-cols-2 gap-3">
                 <button
                   onClick={exportReportToCSV}
@@ -993,7 +998,7 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* TABEL DATA DENGAN CLICKABLE HEADER UNTUK SORTING */}
+        {/* TABEL DATA */}
         <div className="bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden">
           {loading ? (
             <div className="p-12 text-center text-zinc-500 text-xs">Memuat data reservasi...</div>
@@ -1065,7 +1070,7 @@ export default function AdminDashboard() {
                     const cleanPhone = item.whatsapp_number ? item.whatsapp_number.replace(/^0/, '62') : ''
                     
                     const refundWaMsg = encodeURIComponent(
-                      `Halo Kak ${item.customer_name}, mohon maaf reservasi Kamu di M CUT Barbershop pada tanggal ${formatDateID(item.booking_date)} jam ${item.booking_time} WIB kami batalkan.\n\n` +
+                      `Halo Kak ${item.customer_name}, mohon maaf reservasi Kamu di ${tenantCode} Barbershop pada tanggal ${formatDateID(item.booking_date)} jam ${item.booking_time} WIB kami batalkan.\n\n` +
                       `Karena Kakak sudah melakukan pembayaran, mohon infokan Nomor Rekening / E-Wallet Kakak agar dana sebesar Rp ${getServicePrice(item.service_name).toLocaleString('id-ID')} bisa kami refund segera ya. Terima kasih!`
                     )
 
@@ -1073,7 +1078,14 @@ export default function AdminDashboard() {
                       <tr key={item.id} className="hover:bg-zinc-800/40 transition">
                         <td className="p-4 font-semibold text-zinc-200">{item.booking_date}</td>
                         <td className="p-4 font-mono text-zinc-400">{item.booking_time} WIB</td>
-                        <td className="p-4 font-bold text-white">{item.customer_name}</td>
+                        <td className="p-4 font-bold text-white">
+                          {item.customer_name}
+                          {item.client_code && (
+                            <span className="ml-2 text-[9px] bg-zinc-800 text-amber-400 border border-zinc-700 px-1.5 py-0.5 rounded font-mono">
+                              {item.client_code}
+                            </span>
+                          )}
+                        </td>
                         <td className="p-4">
                           <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2.5 py-1 rounded-md text-[11px] font-semibold">
                             {item.service_name}
