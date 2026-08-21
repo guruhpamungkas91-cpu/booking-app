@@ -133,20 +133,20 @@ export default function AdminDashboard() {
     return `${d}/${m}/${y}`
   }
 
-  // 2. HELPER UNTUK MENGHITUNG RENTANG MINGGUAN (Senin s/d Minggu)
-  const getWeekRange = (dateString: string) => {
-    if (!dateString) return { startStr: '', endStr: '' }
-    const [year, month, day] = dateString.split('-').map(Number)
-    const targetDate = new Date(year, month - 1, day)
+  // Helper Cek Apakah Status Selesai
+  const isCompleted = (status?: string) => {
+    const s = (status || '').toString().trim().toLowerCase()
+    return s === 'completed' || s === 'selesai'
+  }
 
-    const currentDay = targetDate.getDay() // 0: Minggu, 1: Senin, dst.
-    const diffToMonday = targetDate.getDate() - currentDay + (currentDay === 0 ? -6 : 1)
+  // 2. HELPER MINGGUAN: Tanggal awal s/d Tanggal awal + 6 hari (Total 7 hari)
+  const getWeekRangeFromStart = (startDateString: string) => {
+    if (!startDateString) return { startStr: '', endStr: '' }
+    const [year, month, day] = startDateString.split('-').map(Number)
+    const startDateObj = new Date(year, month - 1, day)
 
-    const monday = new Date(targetDate)
-    monday.setDate(diffToMonday)
-
-    const sunday = new Date(monday)
-    sunday.setDate(monday.getDate() + 6)
+    const endDateObj = new Date(startDateObj)
+    endDateObj.setDate(startDateObj.getDate() + 6)
 
     const formatYMD = (d: Date) => {
       const y = d.getFullYear()
@@ -156,8 +156,8 @@ export default function AdminDashboard() {
     }
 
     return {
-      startStr: formatYMD(monday),
-      endStr: formatYMD(sunday),
+      startStr: formatYMD(startDateObj),
+      endStr: formatYMD(endDateObj),
     }
   }
 
@@ -165,10 +165,9 @@ export default function AdminDashboard() {
   const stats = useMemo(() => {
     const totalBookings = reservations.length
 
+    // TOTAL OMZET HANYA DARI TRANSAKSI 'COMPLETED'
     const totalRevenue = reservations.reduce((sum, item) => {
-      const s = (item.status || '').toString().trim().toLowerCase()
-      // Menghitung omzet dari transaksi yang tidak dibatalkan
-      if (s !== 'cancelled' && s !== 'batal') {
+      if (isCompleted(item.status)) {
         return sum + getServicePrice(item.service_name)
       }
       return sum
@@ -184,10 +183,7 @@ export default function AdminDashboard() {
       return s === 'confirmed' || s === 'dikonfirmasi'
     }).length
 
-    const completedCount = reservations.filter((b) => {
-      const s = (b.status || '').toString().trim().toLowerCase()
-      return s === 'completed' || s === 'selesai'
-    }).length
+    const completedCount = reservations.filter((b) => isCompleted(b.status)).length
 
     const cancelledCount = reservations.filter((b) => {
       const s = (b.status || '').toString().trim().toLowerCase()
@@ -206,19 +202,19 @@ export default function AdminDashboard() {
     }
   }, [reservations])
 
-  // 4. LOGIKA PENARIKAN LAPORAN (REPORT FILTER AKURAT TANPA BUG TIMEZONE)
+  // 4. LOGIKA PENARIKAN LAPORAN
   const reportData = useMemo(() => {
     let weekInfo = { startStr: '', endStr: '' }
 
     const filtered = reservations.filter((item) => {
-      const itemDate = item.booking_date // Format String: YYYY-MM-DD
+      const itemDate = item.booking_date // Format YYYY-MM-DD
 
       if (reportPeriod === 'daily') {
         return itemDate === reportDate
       }
 
       if (reportPeriod === 'weekly') {
-        weekInfo = getWeekRange(reportDate)
+        weekInfo = getWeekRangeFromStart(reportDate)
         return itemDate >= weekInfo.startStr && itemDate <= weekInfo.endStr
       }
 
@@ -235,10 +231,9 @@ export default function AdminDashboard() {
       return true
     })
 
-    // Hitung total omzet laporan (Abaikan transaksi yang dibatalkan)
+    // OMZET PERIODE INI HANYA DARI TRANSAKSI 'COMPLETED'
     const totalRevenue = filtered.reduce((sum, item) => {
-      const s = (item.status || '').toString().trim().toLowerCase()
-      if (s !== 'cancelled' && s !== 'batal') {
+      if (isCompleted(item.status)) {
         return sum + getServicePrice(item.service_name)
       }
       return sum
@@ -248,7 +243,7 @@ export default function AdminDashboard() {
       items: filtered,
       totalRevenue,
       count: filtered.length,
-      weekInfo: reportPeriod === 'weekly' ? getWeekRange(reportDate) : null,
+      weekInfo: reportPeriod === 'weekly' ? getWeekRangeFromStart(reportDate) : null,
     }
   }, [reservations, reportPeriod, reportDate, reportStartDate, reportEndDate])
 
@@ -416,7 +411,7 @@ export default function AdminDashboard() {
                 Rp {stats.totalRevenue.toLocaleString('id-ID')}
               </h3>
               <p className="text-[10px] text-emerald-400/80 font-medium mt-1">
-                {stats.totalBookings - stats.cancelledCount} transaksi aktif
+                {stats.completedCount} transaksi selesai
               </p>
             </div>
           </div>
@@ -503,7 +498,7 @@ export default function AdminDashboard() {
               <div className="md:col-span-4">
                 <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
                   {reportPeriod === 'daily' && 'Pilih Tanggal:'}
-                  {reportPeriod === 'weekly' && 'Pilih Tanggal dalam Minggu Ini:'}
+                  {reportPeriod === 'weekly' && 'Pilih Tanggal Awal (7 Hari):'}
                   {reportPeriod === 'monthly' && 'Pilih Bulan & Tahun:'}
                 </label>
 
@@ -517,7 +512,7 @@ export default function AdminDashboard() {
                   className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-zinc-200 focus:outline-none focus:border-amber-500"
                 />
 
-                {/* INFO EKSPLISIT RENTANG MINGGUAN */}
+                {/* INFO RENTANG MINGGUAN (7 HARI DARI TANGGAL AWAL) */}
                 {reportPeriod === 'weekly' && reportData.weekInfo && (
                   <p className="text-[11px] text-amber-400 font-semibold mt-1">
                     📅 Periode: {formatDateID(reportData.weekInfo.startStr)} s/d {formatDateID(reportData.weekInfo.endStr)}
