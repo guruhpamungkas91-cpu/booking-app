@@ -283,7 +283,6 @@ export default function AdminDashboard() {
       if (isCompleted(s)) {
         grossRevenue += price
       } else if (s === 'cancelled_refunded' || s === 'cancelled_need_refund') {
-        // Transaksi batal yang membutuhkan/sudah refund dimasukkan sebagai refund pengurang
         totalRefund += price
       }
     })
@@ -300,7 +299,7 @@ export default function AdminDashboard() {
     }
   }, [reservations, reportPeriod, reportDate, reportStartDate, reportEndDate])
 
-  // EXPORT LAPORAN KEUANGAN RAPI
+  // EXPORT LAPORAN KEUANGAN UNTUK EXCEL (.XLS)
   const exportReportToCSV = () => {
     if (reportData.items.length === 0) {
       alert('Tidak ada transaksi Completed / Refund pada periode laporan ini!')
@@ -405,6 +404,141 @@ export default function AdminDashboard() {
     document.body.removeChild(link)
   }
 
+  // FITUR CETAK / SIMPAN KE PDF (A4 READY)
+  const handlePrintPDF = () => {
+    if (reportData.items.length === 0) {
+      alert('Tidak ada transaksi Completed / Refund pada periode laporan ini!')
+      return
+    }
+
+    let labelPeriode = ''
+    if (reportPeriod === 'daily') labelPeriode = `Harian (${formatDateID(reportDate)})`
+    else if (reportPeriod === 'weekly' && reportData.weekInfo) {
+      labelPeriode = `Mingguan (${formatDateID(reportData.weekInfo.startStr)} s/d ${formatDateID(reportData.weekInfo.endStr)})`
+    } else if (reportPeriod === 'monthly') labelPeriode = `Bulanan (${reportDate.substring(0, 7)})`
+    else labelPeriode = `Custom (${formatDateID(reportStartDate)} s/d ${formatDateID(reportEndDate)})`
+
+    const printWindow = window.open('', '_blank')
+    if (!printWindow) return
+
+    const printHtml = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Laporan Keuangan M CUT Barbershop</title>
+        <style>
+          @page { size: A4 portrait; margin: 15mm; }
+          body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 11px; color: #111; margin: 0; padding: 0; }
+          .header { text-align: center; margin-bottom: 20px; border-b: 2px solid #000; padding-bottom: 10px; }
+          .header h1 { margin: 0; font-size: 18px; text-transform: uppercase; letter-spacing: 1px; }
+          .header p { margin: 4px 0 0 0; color: #555; font-size: 11px; }
+          .info-table { width: 100%; margin-bottom: 15px; font-size: 11px; }
+          .info-table td { padding: 3px 0; }
+          table.data-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+          table.data-table th { background-color: #f3f4f6; color: #111; font-weight: bold; border: 1px solid #d1d5db; padding: 6px; text-align: left; font-size: 10px; text-transform: uppercase; }
+          table.data-table td { border: 1px solid #e5e7eb; padding: 6px; }
+          .center { text-align: center; }
+          .right { text-align: right; }
+          .bold { font-weight: bold; }
+          .text-red { color: #dc2626; }
+          .text-green { color: #059669; }
+          .summary-box { margin-top: 20px; float: right; width: 40%; }
+          .summary-table { width: 100%; border-collapse: collapse; }
+          .summary-table td { padding: 5px; border-bottom: 1px solid #e5e7eb; }
+          .footer { margin-top: 50px; text-align: right; clear: both; }
+          .signature-space { height: 50px; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h1>M CUT BARBERSHOP</h1>
+          <p>LAPORAN KEUANGAN & TRANSAKSI BERSIH</p>
+        </div>
+
+        <table class="info-table">
+          <tr>
+            <td><strong>Periode Laporan:</strong> ${labelPeriode}</td>
+            <td class="right"><strong>Tanggal Cetak:</strong> ${new Date().toLocaleDateString('id-ID')}</td>
+          </tr>
+        </table>
+
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th class="center" width="5%">No</th>
+              <th class="center" width="12%">Tanggal</th>
+              <th class="center" width="10%">Jam</th>
+              <th>Nama Pelanggan</th>
+              <th>Layanan</th>
+              <th class="center">Bayar</th>
+              <th class="center">Status</th>
+              <th class="right">Nominal</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${reportData.items
+              .map((item, index) => {
+                const harga = getServicePrice(item.service_name)
+                const s = (item.status || '').toLowerCase()
+                const isRefund = s === 'cancelled_refunded' || s === 'cancelled_need_refund'
+
+                return `
+                <tr>
+                  <td class="center">${index + 1}</td>
+                  <td class="center">${item.booking_date}</td>
+                  <td class="center">${item.booking_time}</td>
+                  <td class="bold">${item.customer_name}</td>
+                  <td>${item.service_name}</td>
+                  <td class="center">${item.payment_method || 'QRIS'}</td>
+                  <td class="center bold ${isRefund ? 'text-red' : 'text-green'}">
+                    ${isCompleted(s) ? 'COMPLETED' : 'REFUND'}
+                  </td>
+                  <td class="right bold ${isRefund ? 'text-red' : ''}">
+                    ${isRefund ? `- Rp ${harga.toLocaleString('id-ID')}` : `Rp ${harga.toLocaleString('id-ID')}`}
+                  </td>
+                </tr>
+              `
+              })
+              .join('')}
+          </tbody>
+        </table>
+
+        <div class="summary-box">
+          <table class="summary-table">
+            <tr>
+              <td>Omzet Bruto:</td>
+              <td class="right bold text-green">Rp ${reportData.grossRevenue.toLocaleString('id-ID')}</td>
+            </tr>
+            <tr>
+              <td>Total Refund:</td>
+              <td class="right bold text-red">- Rp ${reportData.totalRefund.toLocaleString('id-ID')}</td>
+            </tr>
+            <tr style="border-top: 2px solid #000; font-size: 12px;">
+              <td class="bold">Omzet Bersih:</td>
+              <td class="right bold text-green">Rp ${reportData.netRevenue.toLocaleString('id-ID')}</td>
+            </tr>
+          </table>
+        </div>
+
+        <div class="footer">
+          <p>Dicetak oleh Admin M CUT Barbershop</p>
+          <div class="signature-space"></div>
+          <p>__________________________</p>
+        </div>
+
+        <script>
+          window.onload = function() {
+            window.print();
+          }
+        </script>
+      </body>
+      </html>
+    `
+
+    printWindow.document.write(printHtml)
+    printWindow.document.close()
+  }
+
   // Dapatkan daftar unik untuk dropdown filter
   const uniqueServices = useMemo(() => {
     const list = new Set(reservations.map((r) => r.service_name).filter(Boolean))
@@ -420,36 +554,20 @@ export default function AdminDashboard() {
   useEffect(() => {
     let result = [...reservations]
 
-    // 1. Filter Tanggal
-    if (startDate) {
-      result = result.filter((item) => item.booking_date >= startDate)
-    }
-    if (endDate) {
-      result = result.filter((item) => item.booking_date <= endDate)
-    }
+    if (startDate) result = result.filter((item) => item.booking_date >= startDate)
+    if (endDate) result = result.filter((item) => item.booking_date <= endDate)
 
-    // 2. Filter Status
     if (statusFilter !== 'all') {
       result = result.filter((item) => {
         const s = (item.status || 'pending').toLowerCase()
-        if (statusFilter === 'cancelled') {
-          return s.startsWith('cancelled')
-        }
+        if (statusFilter === 'cancelled') return s.startsWith('cancelled')
         return s === statusFilter.toLowerCase()
       })
     }
 
-    // 3. Filter Layanan
-    if (serviceFilter !== 'all') {
-      result = result.filter((item) => item.service_name === serviceFilter)
-    }
+    if (serviceFilter !== 'all') result = result.filter((item) => item.service_name === serviceFilter)
+    if (paymentFilter !== 'all') result = result.filter((item) => (item.payment_method || 'QRIS') === paymentFilter)
 
-    // 4. Filter Metode Bayar
-    if (paymentFilter !== 'all') {
-      result = result.filter((item) => (item.payment_method || 'QRIS') === paymentFilter)
-    }
-
-    // 5. Filter Pencarian Text
     if (searchTerm) {
       const term = searchTerm.toLowerCase()
       result = result.filter((item) =>
@@ -459,7 +577,6 @@ export default function AdminDashboard() {
       )
     }
 
-    // 6. Logika Sorting Berdasarkan Kolom Header
     result.sort((a, b) => {
       let valA: any = ''
       let valB: any = ''
@@ -495,7 +612,6 @@ export default function AdminDashboard() {
     setFilteredReservations(result)
   }, [startDate, endDate, statusFilter, serviceFilter, paymentFilter, searchTerm, sortField, sortOrder, reservations])
 
-  // Function Handler Toggle Klik Header Tabel
   const handleSort = (field: SortField) => {
     if (sortField === field) {
       setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')
@@ -505,24 +621,18 @@ export default function AdminDashboard() {
     }
   }
 
-  // Cek Session Auth Supabase
   useEffect(() => {
     const checkSession = async () => {
       const { data } = await supabase.auth.getSession()
-      if (data.session) {
-        setIsAuthenticated(true)
-      }
+      if (data.session) setIsAuthenticated(true)
     }
     checkSession()
   }, [])
 
   useEffect(() => {
-    if (isAuthenticated) {
-      fetchReservations()
-    }
+    if (isAuthenticated) fetchReservations()
   }, [isAuthenticated])
 
-  // Tampilan Belum Login
   if (!isAuthenticated) {
     return (
       <main className="min-h-screen bg-zinc-950 flex items-center justify-center p-4 font-sans text-zinc-100">
@@ -574,7 +684,6 @@ export default function AdminDashboard() {
     )
   }
 
-  // Tampilan Sudah Login
   return (
     <div className="min-h-screen bg-zinc-950 p-4 md:p-8 text-zinc-100 font-sans relative">
       <div className="max-w-7xl mx-auto space-y-6">
@@ -677,7 +786,7 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* FITUR PENARIKAN LAPORAN KEUANGAN & OMZET BERSIH */}
+        {/* PENARIKAN LAPORAN KEUANGAN: EXCEL & CETAK PDF */}
         <div className="bg-zinc-900 border border-amber-500/30 p-5 rounded-2xl shadow-xl space-y-4">
           <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
             <div>
@@ -685,7 +794,7 @@ export default function AdminDashboard() {
                 <span>📊 Penarikan Laporan Keuangan (Omzet Bersih)</span>
               </h2>
               <p className="text-xs text-zinc-400">
-                Mengambil data riil (Completed & Refund) untuk menghitung Omzet Bruto dikurangi Refund.
+                Data siap diexport ke Excel atau dicetak langsung/disimpan sebagai PDF resmi.
               </p>
             </div>
           </div>
@@ -757,7 +866,7 @@ export default function AdminDashboard() {
               </>
             )}
 
-            <div className="md:col-span-4 bg-zinc-950 border border-zinc-800 p-3 rounded-xl grid grid-cols-2 gap-2 text-xs">
+            <div className="md:col-span-3 bg-zinc-950 border border-zinc-800 p-3 rounded-xl grid grid-cols-2 gap-2 text-xs">
               <div>
                 <p className="text-[10px] text-zinc-400 uppercase font-bold">Omzet Bruto</p>
                 <p className="text-sm font-bold text-zinc-200">
@@ -775,12 +884,20 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            <div className="md:col-span-2">
+            {/* DUA TOMBOL: EXCEL & PRINT/PDF */}
+            <div className="md:col-span-3 flex gap-2">
               <button
                 onClick={exportReportToCSV}
-                className="w-full bg-emerald-500 hover:bg-emerald-400 text-zinc-950 px-4 py-2.5 rounded-xl font-bold transition text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-500/10"
+                className="w-1/2 bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-2.5 rounded-xl font-bold transition text-xs flex items-center justify-center gap-1 shadow-lg shadow-emerald-600/10"
               >
-                <span>📥 Download Excel</span>
+                <span>📥 Excel</span>
+              </button>
+
+              <button
+                onClick={handlePrintPDF}
+                className="w-1/2 bg-amber-500 hover:bg-amber-400 text-zinc-950 px-3 py-2.5 rounded-xl font-bold transition text-xs flex items-center justify-center gap-1 shadow-lg shadow-amber-500/10"
+              >
+                <span>🖨️ Cetak / PDF</span>
               </button>
             </div>
           </div>
@@ -789,7 +906,6 @@ export default function AdminDashboard() {
         {/* SEARCH & FILTER TABEL DATA */}
         <div className="bg-zinc-900 border border-zinc-800 p-4 sm:p-5 rounded-2xl shadow-xl flex flex-wrap gap-4 items-end justify-between">
           <div className="flex flex-wrap gap-3 items-end w-full">
-            {/* Pencarian Text */}
             <div className="w-full sm:w-52">
               <label className="block text-xs font-semibold text-zinc-400 mb-1.5">Pencarian Tabel:</label>
               <input
@@ -801,7 +917,6 @@ export default function AdminDashboard() {
               />
             </div>
 
-            {/* Filter Status */}
             <div>
               <label className="block text-xs font-semibold text-zinc-400 mb-1.5">Filter Status:</label>
               <select
@@ -818,7 +933,6 @@ export default function AdminDashboard() {
               </select>
             </div>
 
-            {/* OPSI FILTER LAYANAN */}
             <div>
               <label className="block text-xs font-semibold text-zinc-400 mb-1.5">Filter Layanan:</label>
               <select
@@ -835,7 +949,6 @@ export default function AdminDashboard() {
               </select>
             </div>
 
-            {/* OPSI FILTER METODE BAYAR */}
             <div>
               <label className="block text-xs font-semibold text-zinc-400 mb-1.5">Filter Metode Bayar:</label>
               <select
@@ -852,7 +965,6 @@ export default function AdminDashboard() {
               </select>
             </div>
 
-            {/* Reset Filter Button */}
             {(startDate || endDate || statusFilter !== 'all' || serviceFilter !== 'all' || paymentFilter !== 'all' || searchTerm) && (
               <button
                 onClick={() => {
@@ -883,7 +995,6 @@ export default function AdminDashboard() {
                 <thead>
                   <tr className="bg-zinc-950 border-b border-zinc-800 text-[11px] font-bold text-zinc-400 uppercase tracking-wider select-none">
                     
-                    {/* Header Klik Urutkan Tanggal */}
                     <th onClick={() => handleSort('booking_date')} className="p-4 cursor-pointer hover:text-amber-400 transition">
                       <div className="flex items-center gap-1">
                         <span>Tanggal Booking</span>
@@ -891,7 +1002,6 @@ export default function AdminDashboard() {
                       </div>
                     </th>
 
-                    {/* Header Klik Urutkan Jam */}
                     <th onClick={() => handleSort('booking_time')} className="p-4 cursor-pointer hover:text-amber-400 transition">
                       <div className="flex items-center gap-1">
                         <span>Jam</span>
@@ -899,7 +1009,6 @@ export default function AdminDashboard() {
                       </div>
                     </th>
 
-                    {/* Header Klik Urutkan Nama */}
                     <th onClick={() => handleSort('customer_name')} className="p-4 cursor-pointer hover:text-amber-400 transition">
                       <div className="flex items-center gap-1">
                         <span>Nama Pelanggan</span>
@@ -907,7 +1016,6 @@ export default function AdminDashboard() {
                       </div>
                     </th>
 
-                    {/* Header Klik Urutkan Layanan */}
                     <th onClick={() => handleSort('service_name')} className="p-4 cursor-pointer hover:text-amber-400 transition">
                       <div className="flex items-center gap-1">
                         <span>Layanan</span>
@@ -915,7 +1023,6 @@ export default function AdminDashboard() {
                       </div>
                     </th>
 
-                    {/* Header Klik Urutkan Harga */}
                     <th onClick={() => handleSort('price')} className="p-4 cursor-pointer hover:text-amber-400 transition text-emerald-400">
                       <div className="flex items-center gap-1">
                         <span>Harga</span>
@@ -923,7 +1030,6 @@ export default function AdminDashboard() {
                       </div>
                     </th>
 
-                    {/* Header Klik Urutkan Metode Bayar */}
                     <th onClick={() => handleSort('payment_method')} className="p-4 cursor-pointer hover:text-amber-400 transition">
                       <div className="flex items-center gap-1">
                         <span>Metode Bayar</span>
@@ -933,7 +1039,6 @@ export default function AdminDashboard() {
 
                     <th className="p-4">WhatsApp</th>
 
-                    {/* Header Klik Urutkan Status */}
                     <th onClick={() => handleSort('status')} className="p-4 cursor-pointer hover:text-amber-400 transition">
                       <div className="flex items-center gap-1">
                         <span>Status</span>
@@ -949,7 +1054,6 @@ export default function AdminDashboard() {
                     const currentStatus = item.status || 'pending'
                     const cleanPhone = item.whatsapp_number ? item.whatsapp_number.replace(/^0/, '62') : ''
                     
-                    // Pesan WA khusus Minta Rekening Refund
                     const refundWaMsg = encodeURIComponent(
                       `Halo Kak ${item.customer_name}, mohon maaf reservasi Kamu di M CUT Barbershop pada tanggal ${formatDateID(item.booking_date)} jam ${item.booking_time} WIB kami batalkan.\n\n` +
                       `Karena Kakak sudah melakukan pembayaran, mohon infokan Nomor Rekening / E-Wallet Kakak agar dana sebesar Rp ${getServicePrice(item.service_name).toLocaleString('id-ID')} bisa kami refund segera ya. Terima kasih!`
@@ -1011,7 +1115,6 @@ export default function AdminDashboard() {
                               <option value="cancelled">🔴 Cancelled</option>
                             </select>
 
-                            {/* Sub-badge Khusus Jika Membutuhkan Refund */}
                             {currentStatus === 'cancelled_need_refund' && (
                               <div className="flex flex-col gap-1 mt-1">
                                 <span className="bg-amber-500/10 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded text-[10px] font-extrabold flex items-center gap-1">
@@ -1034,7 +1137,6 @@ export default function AdminDashboard() {
                               </div>
                             )}
 
-                            {/* Sub-badge Jika Refund Sudah Selesai */}
                             {currentStatus === 'cancelled_refunded' && (
                               <span className="bg-zinc-800 text-zinc-400 border border-zinc-700 px-2 py-0.5 rounded text-[10px] font-semibold block w-max">
                                 ✓ Refund Selesai
