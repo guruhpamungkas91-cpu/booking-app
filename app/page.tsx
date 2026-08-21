@@ -2,14 +2,39 @@
 
 export const dynamic = 'force-dynamic'
 
-import { useState, Suspense } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useState, useEffect, Suspense } from 'react'
 import { supabase } from './lib/supabase'
 
+// Configuration mapping berdasarkan domain / hostname
+const TENANT_CONFIG: Record<string, { clientCode: string; name: string; adminWa: string }> = {
+  'sem-barbershop.vercel.app': {
+    clientCode: 'SEM',
+    name: 'SEM Barbershop',
+    adminWa: '6285899997828'
+  },
+  'mcut-barbershop.vercel.app': {
+    clientCode: 'MCUT',
+    name: 'MCUT Barbershop',
+    adminWa: '628123456789'
+  }
+}
+
 function BookingFormContent() {
-  const searchParams = useSearchParams()
-  // Ambil client_code dari URL parameter ?client=MCUT, default 'MCUT'
-  const clientCode = searchParams.get('client') || 'MCUT'
+  const [tenant, setTenant] = useState({
+    clientCode: 'MCUT',
+    name: 'MCUT Barbershop',
+    adminWa: '6285899997828'
+  })
+
+  // Deteksi domain saat komponen dimuat di browser
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const hostname = window.location.hostname
+      if (TENANT_CONFIG[hostname]) {
+        setTenant(TENANT_CONFIG[hostname])
+      }
+    }
+  }, [])
 
   const [formData, setFormData] = useState({
     customer_name: '',
@@ -20,9 +45,6 @@ function BookingFormContent() {
     payment_method: 'QRIS',
   })
   const [loading, setLoading] = useState(false)
-
-  // Nomor WA Admin
-  const ADMIN_WA_NUMBER = '6285899997828'
 
   const services = [
     { name: 'Potong Rambut', price: 'Rp 50.000', desc: 'Gunting + Styling + Washing' },
@@ -38,7 +60,7 @@ function BookingFormContent() {
       {
         ...formData,
         status: 'pending',
-        client_code: clientCode // 👈 Otomatis terikat ke tenant terkait
+        client_code: tenant.clientCode // 👈 Terikat ke tenant dari domain
       }
     ])
 
@@ -50,7 +72,7 @@ function BookingFormContent() {
 
     // 2. Format Pesan WhatsApp
     const message = encodeURIComponent(
-      `Halo Admin *${clientCode} Barbershop*, saya mau konfirmasi reservasi:\n\n` +
+      `Halo Admin *${tenant.clientCode} Barbershop*, saya mau konfirmasi reservasi:\n\n` +
         `📌 *Nama:* ${formData.customer_name}\n` +
         `📞 *WA:* ${formData.whatsapp_number}\n` +
         `✂️ *Layanan:* ${formData.service_name}\n` +
@@ -60,8 +82,8 @@ function BookingFormContent() {
         `Mohon diproses ya, terima kasih!`
     )
 
-    // 3. Redirect ke WA
-    const waUrl = `https://wa.me/${ADMIN_WA_NUMBER}?text=${message}`
+    // 3. Redirect ke WA Admin sesuai domain
+    const waUrl = `https://wa.me/${tenant.adminWa}?text=${message}`
     window.location.href = waUrl
   }
 
@@ -77,7 +99,7 @@ function BookingFormContent() {
             </svg>
           </div>
           <h1 className="text-3xl font-black tracking-wider text-white uppercase">
-            {clientCode}
+            {tenant.clientCode}
           </h1>
           <p className="text-xs font-semibold text-amber-500 uppercase tracking-widest mt-0.5">
             Barbershop
@@ -234,7 +256,7 @@ function BookingFormContent() {
 
                 <div className="p-4 bg-white rounded-2xl inline-block shadow-2xl border border-zinc-300">
                   <img
-                    src={`/${clientCode}.png`}
+                    src={`/${tenant.clientCode}.png`}
                     onError={(e) => { e.currentTarget.src = '/MCUT.png' }}
                     alt="QRIS Code"
                     className="w-64 h-64 sm:w-72 sm:h-72 mx-auto object-contain image-render-crisp"
@@ -250,7 +272,7 @@ function BookingFormContent() {
                 <div className="bg-zinc-900 p-3 rounded-xl border border-zinc-800 flex items-center justify-between">
                   <div>
                     <p className="text-lg font-mono font-bold text-amber-400 tracking-wider">123-456-7890</p>
-                    <p className="text-xs text-zinc-400 mt-0.5">a.n. {clientCode} Barbershop</p>
+                    <p className="text-xs text-zinc-400 mt-0.5">a.n. {tenant.clientCode} Barbershop</p>
                   </div>
                 </div>
               </div>
