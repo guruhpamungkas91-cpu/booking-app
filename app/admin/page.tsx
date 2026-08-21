@@ -83,19 +83,33 @@ export default function AdminDashboard() {
   // 👈 Poin 2: Query tetap .select('*') karena Supabase RLS otomatis memfilter data sesuai tenant admin yang login!
   const fetchReservations = async () => {
     setLoading(true)
-    const { data, error } = await supabase
-      .from('Reservations')
-      .select('*')
-      .order('created_at', { ascending: false })
+    // 1. Ambil data user yang sedang login
+  const { data: { user } } = await supabase.auth.getUser()
+  
+  // 2. Ambil client_code dari app_metadata
+  const userClientCode = user?.app_metadata?.client_code
 
-    if (error) {
-      alert('Gagal mengambil data: ' + error.message)
-    } else {
-      setReservations(data || [])
-      setFilteredReservations(data || [])
-    }
-    setLoading(false)
+  // 3. Query data dengan filter client_code
+  let query = supabase
+    .from('Reservations')
+    .select('*')
+    .order('created_at', { ascending: false })
+
+  // Jika user punya client_code, filter berdasarkan client_code tersebut
+  if (userClientCode) {
+    query = query.eq('client_code', userClientCode)
   }
+
+  const { data, error } = await query
+
+  if (error) {
+    alert('Gagal mengambil data: ' + error.message)
+  } else {
+    setReservations(data || [])
+    setFilteredReservations(data || [])
+  }
+  setLoading(false)
+}
 
   // Function Mengubah Status Umum
   const updateStatusInDB = async (id: number, newStatus: string) => {
