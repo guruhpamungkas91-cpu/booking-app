@@ -17,6 +17,9 @@ interface Reservation {
   status: string
 }
 
+type SortField = 'booking_date' | 'booking_time' | 'customer_name' | 'service_name' | 'price' | 'payment_method' | 'status'
+type SortOrder = 'asc' | 'desc'
+
 export default function AdminDashboard() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
 
@@ -28,11 +31,17 @@ export default function AdminDashboard() {
   const [filteredReservations, setFilteredReservations] = useState<Reservation[]>([])
   const [loading, setLoading] = useState(false)
 
-  // State Filter & Search Tabel Utama
+  // State Filter Tabel Utama
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
+  const [serviceFilter, setServiceFilter] = useState('all')
+  const [paymentFilter, setPaymentFilter] = useState('all')
+
+  // State Sorting Tabel
+  const [sortField, setSortField] = useState<SortField>('booking_date')
+  const [sortOrder, setSortOrder] = useState<SortOrder>('desc')
 
   // State Khusus Penarikan Laporan / Report
   const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly' | 'custom'>('daily')
@@ -113,7 +122,7 @@ export default function AdminDashboard() {
     }
   }
 
-  // 1. MAPPING HARGA LAYANAN
+  // MAPPING HARGA LAYANAN
   const SERVICE_PRICES: Record<string, number> = {
     'Potong Rambut': 50000,
     'Coloring': 120000,
@@ -133,13 +142,13 @@ export default function AdminDashboard() {
     return `${d}/${m}/${y}`
   }
 
-  // Helper Cek Apakah Status Selesai
+  // Helper Cek Status Selesai
   const isCompleted = (status?: string) => {
     const s = (status || '').toString().trim().toLowerCase()
     return s === 'completed' || s === 'selesai'
   }
 
-  // 2. HELPER MINGGUAN: Tanggal awal s/d Tanggal awal + 6 hari (Total 7 hari)
+  // HELPER MINGGUAN: Tanggal awal s/d Tanggal awal + 6 hari (7 hari)
   const getWeekRangeFromStart = (startDateString: string) => {
     if (!startDateString) return { startStr: '', endStr: '' }
     const [year, month, day] = startDateString.split('-').map(Number)
@@ -161,11 +170,10 @@ export default function AdminDashboard() {
     }
   }
 
-  // 3. STATISTIK CARDS UTAMA
+  // STATISTIK CARDS UTAMA
   const stats = useMemo(() => {
     const totalBookings = reservations.length
 
-    // TOTAL OMZET HANYA DARI TRANSAKSI 'COMPLETED'
     const totalRevenue = reservations.reduce((sum, item) => {
       if (isCompleted(item.status)) {
         return sum + getServicePrice(item.service_name)
@@ -202,12 +210,12 @@ export default function AdminDashboard() {
     }
   }, [reservations])
 
-  // 4. LOGIKA PENARIKAN LAPORAN
+  // LOGIKA PENARIKAN LAPORAN
   const reportData = useMemo(() => {
     let weekInfo = { startStr: '', endStr: '' }
 
     const filtered = reservations.filter((item) => {
-      const itemDate = item.booking_date // Format YYYY-MM-DD
+      const itemDate = item.booking_date
 
       if (reportPeriod === 'daily') {
         return itemDate === reportDate
@@ -219,7 +227,7 @@ export default function AdminDashboard() {
       }
 
       if (reportPeriod === 'monthly') {
-        const selectedYearMonth = reportDate.substring(0, 7) // "YYYY-MM"
+        const selectedYearMonth = reportDate.substring(0, 7)
         return itemDate.startsWith(selectedYearMonth)
       }
 
@@ -231,7 +239,6 @@ export default function AdminDashboard() {
       return true
     })
 
-    // OMZET PERIODE INI HANYA DARI TRANSAKSI 'COMPLETED'
     const totalRevenue = filtered.reduce((sum, item) => {
       if (isCompleted(item.status)) {
         return sum + getServicePrice(item.service_name)
@@ -254,7 +261,6 @@ export default function AdminDashboard() {
       return
     }
 
-    // Tentukan Judul Periode Laporan
     let labelPeriode = ''
     if (reportPeriod === 'daily') labelPeriode = `Harian (${formatDateID(reportDate)})`
     else if (reportPeriod === 'weekly' && reportData.weekInfo) {
@@ -262,7 +268,6 @@ export default function AdminDashboard() {
     } else if (reportPeriod === 'monthly') labelPeriode = `Bulanan (${reportDate.substring(0, 7)})`
     else labelPeriode = `Custom (${formatDateID(reportStartDate)} s/d ${formatDateID(reportEndDate)})`
 
-    // Buat Template HTML untuk Excel biar Ada Tabel Rapi & Total
     const htmlContent = `
       <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
       <head>
@@ -316,7 +321,6 @@ export default function AdminDashboard() {
               })
               .join('')}
             
-            <!-- BARIS TOTAL OMZET & TRANSAKSI -->
             <tr class="total-row">
               <td colspan="8" style="text-align: right; font-weight: bold;">TOTAL TRANSAKSI COMPLETED / SELESAI:</td>
               <td class="num" style="color: #059669; font-size: 13px;">Rp ${reportData.totalRevenue.toLocaleString('id-ID')}</td>
@@ -331,7 +335,6 @@ export default function AdminDashboard() {
       </html>
     `
 
-    // Download sebagai file file .xls (Excel)
     const blob = new Blob([htmlContent], { type: 'application/vnd.ms-excel;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
@@ -342,19 +345,45 @@ export default function AdminDashboard() {
     document.body.removeChild(link)
   }
 
-  // 5. LOGIKA FILTER TABEL UTAMA
+  // Dapatkan daftar unik untuk dropdown filter
+  const uniqueServices = useMemo(() => {
+    const list = new Set(reservations.map((r) => r.service_name).filter(Boolean))
+    return Array.from(list)
+  }, [reservations])
+
+  const uniquePayments = useMemo(() => {
+    const list = new Set(reservations.map((r) => r.payment_method || 'QRIS').filter(Boolean))
+    return Array.from(list)
+  }, [reservations])
+
+  // LOGIKA FILTER + SORTING TABEL UTAMA
   useEffect(() => {
     let result = [...reservations]
 
+    // 1. Filter Tanggal
     if (startDate) {
       result = result.filter((item) => item.booking_date >= startDate)
     }
     if (endDate) {
       result = result.filter((item) => item.booking_date <= endDate)
     }
+
+    // 2. Filter Status
     if (statusFilter !== 'all') {
       result = result.filter((item) => (item.status || 'pending').toLowerCase() === statusFilter.toLowerCase())
     }
+
+    // 3. Filter Layanan
+    if (serviceFilter !== 'all') {
+      result = result.filter((item) => item.service_name === serviceFilter)
+    }
+
+    // 4. Filter Metode Bayar
+    if (paymentFilter !== 'all') {
+      result = result.filter((item) => (item.payment_method || 'QRIS') === paymentFilter)
+    }
+
+    // 5. Filter Pencarian Text
     if (searchTerm) {
       const term = searchTerm.toLowerCase()
       result = result.filter((item) =>
@@ -364,8 +393,51 @@ export default function AdminDashboard() {
       )
     }
 
+    // 6. Logika Sorting Berdasarkan Kolom Header
+    result.sort((a, b) => {
+      let valA: any = ''
+      let valB: any = ''
+
+      if (sortField === 'booking_date') {
+        valA = a.booking_date
+        valB = b.booking_date
+      } else if (sortField === 'booking_time') {
+        valA = a.booking_time
+        valB = b.booking_time
+      } else if (sortField === 'customer_name') {
+        valA = (a.customer_name || '').toLowerCase()
+        valB = (b.customer_name || '').toLowerCase()
+      } else if (sortField === 'service_name') {
+        valA = (a.service_name || '').toLowerCase()
+        valB = (b.service_name || '').toLowerCase()
+      } else if (sortField === 'price') {
+        valA = getServicePrice(a.service_name)
+        valB = getServicePrice(b.service_name)
+      } else if (sortField === 'payment_method') {
+        valA = (a.payment_method || 'QRIS').toLowerCase()
+        valB = (b.payment_method || 'QRIS').toLowerCase()
+      } else if (sortField === 'status') {
+        valA = (a.status || 'pending').toLowerCase()
+        valB = (b.status || 'pending').toLowerCase()
+      }
+
+      if (valA < valB) return sortOrder === 'asc' ? -1 : 1
+      if (valA > valB) return sortOrder === 'asc' ? 1 : -1
+      return 0
+    })
+
     setFilteredReservations(result)
-  }, [startDate, endDate, statusFilter, searchTerm, reservations])
+  }, [startDate, endDate, statusFilter, serviceFilter, paymentFilter, searchTerm, sortField, sortOrder, reservations])
+
+  // Function Handler Toggle Klik Header Tabel
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortField(field)
+      setSortOrder('asc')
+    }
+  }
 
   // Cek Session Auth Supabase
   useEffect(() => {
@@ -533,7 +605,7 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* --- FITUR PENARIKAN LAPORAN & OMZET --- */}
+        {/* FITUR PENARIKAN LAPORAN & OMZET */}
         <div className="bg-zinc-900 border border-amber-500/30 p-5 rounded-2xl shadow-xl space-y-4">
           <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
             <div>
@@ -545,7 +617,6 @@ export default function AdminDashboard() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
-            {/* Opsi Tipe Laporan */}
             <div className="md:col-span-3">
               <label className="block text-xs font-semibold text-zinc-300 mb-1.5">Tipe Laporan:</label>
               <div className="grid grid-cols-2 gap-1.5 p-1 bg-zinc-950 rounded-xl border border-zinc-800">
@@ -565,7 +636,6 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            {/* Input Tanggal / Rentang Berdasarkan Tipe Laporan */}
             {reportPeriod !== 'custom' ? (
               <div className="md:col-span-4">
                 <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
@@ -584,7 +654,6 @@ export default function AdminDashboard() {
                   className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-zinc-200 focus:outline-none focus:border-amber-500"
                 />
 
-                {/* INFO RENTANG MINGGUAN (7 HARI DARI TANGGAL AWAL) */}
                 {reportPeriod === 'weekly' && reportData.weekInfo && (
                   <p className="text-[11px] text-amber-400 font-semibold mt-1">
                     📅 Periode: {formatDateID(reportData.weekInfo.startStr)} s/d {formatDateID(reportData.weekInfo.endStr)}
@@ -614,7 +683,6 @@ export default function AdminDashboard() {
               </>
             )}
 
-            {/* Box Omzet & Total Transaksi */}
             <div className="md:col-span-3 bg-zinc-950 border border-zinc-800 p-3 rounded-xl flex items-center justify-between">
               <div>
                 <p className="text-[10px] text-zinc-400 uppercase font-bold">Omzet Periode Ini</p>
@@ -628,22 +696,22 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            {/* Tombol Export CSV */}
             <div className="md:col-span-2">
               <button
                 onClick={exportReportToCSV}
                 className="w-full bg-emerald-500 hover:bg-emerald-400 text-zinc-950 px-4 py-2.5 rounded-xl font-bold transition text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-500/10"
               >
-                <span>📥 Download CSV</span>
+                <span>📥 Download Excel</span>
               </button>
             </div>
           </div>
         </div>
 
-        {/* --- SEARCH & FILTER TABEL DATA --- */}
+        {/* SEARCH & FILTER TABEL DATA (TAMBAH FILTER LAYANAN & METODE BAYAR) */}
         <div className="bg-zinc-900 border border-zinc-800 p-4 sm:p-5 rounded-2xl shadow-xl flex flex-wrap gap-4 items-end justify-between">
-          <div className="flex flex-wrap gap-3 items-end w-full lg:w-auto">
-            <div className="w-full sm:w-64">
+          <div className="flex flex-wrap gap-3 items-end w-full">
+            {/* Pencarian Text */}
+            <div className="w-full sm:w-52">
               <label className="block text-xs font-semibold text-zinc-400 mb-1.5">Pencarian Tabel:</label>
               <input
                 type="text"
@@ -654,6 +722,7 @@ export default function AdminDashboard() {
               />
             </div>
 
+            {/* Filter Status */}
             <div>
               <label className="block text-xs font-semibold text-zinc-400 mb-1.5">Filter Status:</label>
               <select
@@ -669,12 +738,49 @@ export default function AdminDashboard() {
               </select>
             </div>
 
-            {(startDate || endDate || statusFilter !== 'all' || searchTerm) && (
+            {/* OPSI FILTER LAYANAN */}
+            <div>
+              <label className="block text-xs font-semibold text-zinc-400 mb-1.5">Filter Layanan:</label>
+              <select
+                value={serviceFilter}
+                onChange={(e) => setServiceFilter(e.target.value)}
+                className="px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-zinc-200 focus:outline-none focus:border-amber-500"
+              >
+                <option value="all">Semua Layanan</option>
+                {uniqueServices.map((svc) => (
+                  <option key={svc} value={svc}>
+                    ✂️ {svc}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* OPSI FILTER METODE BAYAR */}
+            <div>
+              <label className="block text-xs font-semibold text-zinc-400 mb-1.5">Filter Metode Bayar:</label>
+              <select
+                value={paymentFilter}
+                onChange={(e) => setPaymentFilter(e.target.value)}
+                className="px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-zinc-200 focus:outline-none focus:border-amber-500"
+              >
+                <option value="all">Semua Metode</option>
+                {uniquePayments.map((pay) => (
+                  <option key={pay} value={pay}>
+                    💳 {pay}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Reset Filter Button */}
+            {(startDate || endDate || statusFilter !== 'all' || serviceFilter !== 'all' || paymentFilter !== 'all' || searchTerm) && (
               <button
                 onClick={() => {
                   setStartDate('')
                   setEndDate('')
                   setStatusFilter('all')
+                  setServiceFilter('all')
+                  setPaymentFilter('all')
                   setSearchTerm('')
                 }}
                 className="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700 px-3 py-2 rounded-xl text-xs font-medium transition"
@@ -685,7 +791,7 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* --- TABEL DATA --- */}
+        {/* TABEL DATA DENGAN CLICKABLE HEADER UNTUK SORTING */}
         <div className="bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden">
           {loading ? (
             <div className="p-12 text-center text-zinc-500 text-xs">Memuat data reservasi...</div>
@@ -695,15 +801,66 @@ export default function AdminDashboard() {
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="bg-zinc-950 border-b border-zinc-800 text-[11px] font-bold text-zinc-400 uppercase tracking-wider">
-                    <th className="p-4">Tanggal Booking</th>
-                    <th className="p-4">Jam</th>
-                    <th className="p-4">Nama Pelanggan</th>
-                    <th className="p-4">Layanan</th>
-                    <th className="p-4 text-emerald-400">Harga</th>
-                    <th className="p-4">Metode Bayar</th>
+                  <tr className="bg-zinc-950 border-b border-zinc-800 text-[11px] font-bold text-zinc-400 uppercase tracking-wider select-none">
+                    
+                    {/* Header Klik Urutkan Tanggal */}
+                    <th onClick={() => handleSort('booking_date')} className="p-4 cursor-pointer hover:text-amber-400 transition">
+                      <div className="flex items-center gap-1">
+                        <span>Tanggal Booking</span>
+                        {sortField === 'booking_date' && (sortOrder === 'asc' ? '▲' : '▼')}
+                      </div>
+                    </th>
+
+                    {/* Header Klik Urutkan Jam */}
+                    <th onClick={() => handleSort('booking_time')} className="p-4 cursor-pointer hover:text-amber-400 transition">
+                      <div className="flex items-center gap-1">
+                        <span>Jam</span>
+                        {sortField === 'booking_time' && (sortOrder === 'asc' ? '▲' : '▼')}
+                      </div>
+                    </th>
+
+                    {/* Header Klik Urutkan Nama */}
+                    <th onClick={() => handleSort('customer_name')} className="p-4 cursor-pointer hover:text-amber-400 transition">
+                      <div className="flex items-center gap-1">
+                        <span>Nama Pelanggan</span>
+                        {sortField === 'customer_name' && (sortOrder === 'asc' ? '▲' : '▼')}
+                      </div>
+                    </th>
+
+                    {/* Header Klik Urutkan Layanan */}
+                    <th onClick={() => handleSort('service_name')} className="p-4 cursor-pointer hover:text-amber-400 transition">
+                      <div className="flex items-center gap-1">
+                        <span>Layanan</span>
+                        {sortField === 'service_name' && (sortOrder === 'asc' ? '▲' : '▼')}
+                      </div>
+                    </th>
+
+                    {/* Header Klik Urutkan Harga */}
+                    <th onClick={() => handleSort('price')} className="p-4 cursor-pointer hover:text-amber-400 transition text-emerald-400">
+                      <div className="flex items-center gap-1">
+                        <span>Harga</span>
+                        {sortField === 'price' && (sortOrder === 'asc' ? '▲' : '▼')}
+                      </div>
+                    </th>
+
+                    {/* Header Klik Urutkan Metode Bayar */}
+                    <th onClick={() => handleSort('payment_method')} className="p-4 cursor-pointer hover:text-amber-400 transition">
+                      <div className="flex items-center gap-1">
+                        <span>Metode Bayar</span>
+                        {sortField === 'payment_method' && (sortOrder === 'asc' ? '▲' : '▼')}
+                      </div>
+                    </th>
+
                     <th className="p-4">WhatsApp</th>
-                    <th className="p-4">Status</th>
+
+                    {/* Header Klik Urutkan Status */}
+                    <th onClick={() => handleSort('status')} className="p-4 cursor-pointer hover:text-amber-400 transition">
+                      <div className="flex items-center gap-1">
+                        <span>Status</span>
+                        {sortField === 'status' && (sortOrder === 'asc' ? '▲' : '▼')}
+                      </div>
+                    </th>
+
                     <th className="p-4 text-center">Aksi</th>
                   </tr>
                 </thead>
