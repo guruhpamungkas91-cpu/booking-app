@@ -20,7 +20,7 @@ interface Reservation {
 export default function AdminDashboard() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
 
-  // State untuk Login Supabase Auth
+  // State Login Supabase
   const [emailInput, setEmailInput] = useState('')
   const [passwordInput, setPasswordInput] = useState('')
 
@@ -28,19 +28,19 @@ export default function AdminDashboard() {
   const [filteredReservations, setFilteredReservations] = useState<Reservation[]>([])
   const [loading, setLoading] = useState(false)
 
-  // State untuk Filter & Search Tabel Utama
+  // State Filter & Search Tabel Utama
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
 
-  // --- STATE KHUSUS PENARIKAN REPORT / LAPORAN ---
+  // State Khusus Penarikan Laporan / Report
   const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly' | 'custom'>('daily')
-  const [reportDate, setReportDate] = useState(new Date().toISOString().split('T')[0]) // Default hari ini
+  const [reportDate, setReportDate] = useState(new Date().toISOString().split('T')[0])
   const [reportStartDate, setReportStartDate] = useState('')
   const [reportEndDate, setReportEndDate] = useState('')
 
-  // LOGIN MENGGUNAKAN SUPABASE AUTH
+  // Login
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
@@ -58,7 +58,7 @@ export default function AdminDashboard() {
     setLoading(false)
   }
 
-  // LOGOUT SUPABASE AUTH
+  // Logout
   const handleLogout = async () => {
     await supabase.auth.signOut()
     setIsAuthenticated(false)
@@ -93,7 +93,6 @@ export default function AdminDashboard() {
     }
   }
 
-  // FITUR HAPUS DATA RESERVASI
   const handleDelete = async (id: number, customerName: string) => {
     const isConfirmed = window.confirm(
       `Apakah kamu yakin ingin menghapus data reservasi atas nama "${customerName}"?`
@@ -127,53 +126,73 @@ export default function AdminDashboard() {
     return SERVICE_PRICES[serviceName] ?? 50000
   }
 
-  // 2. USEMEMO UNTUK STATISTIK KESELURUHAN (HEADER CARDS)
+  // Helper Format Tanggal Indonesia (DD/MM/YYYY)
+  const formatDateID = (dateStr: string) => {
+    if (!dateStr) return ''
+    const [y, m, d] = dateStr.split('-')
+    return `${d}/${m}/${y}`
+  }
+
+  // 2. HELPER UNTUK MENGHITUNG RENTANG MINGGUAN (Senin s/d Minggu)
+  const getWeekRange = (dateString: string) => {
+    if (!dateString) return { startStr: '', endStr: '' }
+    const [year, month, day] = dateString.split('-').map(Number)
+    const targetDate = new Date(year, month - 1, day)
+
+    const currentDay = targetDate.getDay() // 0: Minggu, 1: Senin, dst.
+    const diffToMonday = targetDate.getDate() - currentDay + (currentDay === 0 ? -6 : 1)
+
+    const monday = new Date(targetDate)
+    monday.setDate(diffToMonday)
+
+    const sunday = new Date(monday)
+    sunday.setDate(monday.getDate() + 6)
+
+    const formatYMD = (d: Date) => {
+      const y = d.getFullYear()
+      const m = String(d.getMonth() + 1).padStart(2, '0')
+      const date = String(d.getDate()).padStart(2, '0')
+      return `${y}-${m}-${date}`
+    }
+
+    return {
+      startStr: formatYMD(monday),
+      endStr: formatYMD(sunday),
+    }
+  }
+
+  // 3. STATISTIK CARDS UTAMA
   const stats = useMemo(() => {
     const totalBookings = reservations.length
 
     const totalRevenue = reservations.reduce((sum, item) => {
-      const isCompleted = item.status && (
-        item.status.toString().trim().toLowerCase() === 'completed' || 
-        item.status.toString().trim().toLowerCase() === 'selesai'
-      )
-      
-      if (isCompleted) {
+      const s = (item.status || '').toString().trim().toLowerCase()
+      // Menghitung omzet dari transaksi yang tidak dibatalkan
+      if (s !== 'cancelled' && s !== 'batal') {
         return sum + getServicePrice(item.service_name)
       }
       return sum
     }, 0)
 
     const pendingCount = reservations.filter((r) => {
-      if (!r.status) return true
-      const cleanStatus = r.status.toString().trim().toLowerCase()
-      return cleanStatus === '' || cleanStatus === 'pending' || cleanStatus === 'menunggu'
+      const s = (r.status || '').toString().trim().toLowerCase()
+      return s === '' || s === 'pending' || s === 'menunggu'
     }).length
 
     const confirmedCount = reservations.filter((b) => {
-      if (!b.status) return false
-      const s = b.status.toString().trim().toLowerCase()
+      const s = (b.status || '').toString().trim().toLowerCase()
       return s === 'confirmed' || s === 'dikonfirmasi'
     }).length
 
     const completedCount = reservations.filter((b) => {
-      if (!b.status) return false
-      const s = b.status.toString().trim().toLowerCase()
+      const s = (b.status || '').toString().trim().toLowerCase()
       return s === 'completed' || s === 'selesai'
     }).length
 
     const cancelledCount = reservations.filter((b) => {
-      if (!b.status) return false
-      const s = b.status.toString().trim().toLowerCase()
+      const s = (b.status || '').toString().trim().toLowerCase()
       return s === 'cancelled' || s === 'batal'
     }).length
-
-    const completedPercentage = totalBookings > 0 
-      ? Math.round((completedCount / totalBookings) * 100) 
-      : 0
-
-    const cancelledPercentage = totalBookings > 0 
-      ? Math.round((cancelledCount / totalBookings) * 100) 
-      : 0
 
     return {
       totalBookings,
@@ -181,69 +200,55 @@ export default function AdminDashboard() {
       confirmedCount,
       completedCount,
       cancelledCount,
-      completedPercentage,
-      cancelledPercentage,
+      completedPercentage: totalBookings > 0 ? Math.round((completedCount / totalBookings) * 100) : 0,
+      cancelledPercentage: totalBookings > 0 ? Math.round((cancelledCount / totalBookings) * 100) : 0,
       totalRevenue,
     }
   }, [reservations])
 
-  // 3. LOGIKA FILTER PENARIKAN LAPORAN (REPORT FILTER)
+  // 4. LOGIKA PENARIKAN LAPORAN (REPORT FILTER AKURAT TANPA BUG TIMEZONE)
   const reportData = useMemo(() => {
-    if (!reportDate && reportPeriod !== 'custom') return { items: [], totalRevenue: 0, count: 0 }
-
-    const target = new Date(reportDate)
+    let weekInfo = { startStr: '', endStr: '' }
 
     const filtered = reservations.filter((item) => {
-      const bookingDate = new Date(item.booking_date)
+      const itemDate = item.booking_date // Format String: YYYY-MM-DD
 
       if (reportPeriod === 'daily') {
-        return item.booking_date === reportDate
-      } 
-      
+        return itemDate === reportDate
+      }
+
       if (reportPeriod === 'weekly') {
-        // Menghitung awal & akhir minggu dari tanggal pilihan (Senin-Minggu)
-        const day = target.getDay() // 0 = Minggu
-        const diffToMonday = target.getDate() - day + (day === 0 ? -6 : 1)
-        
-        const monday = new Date(target)
-        monday.setDate(diffToMonday)
-        monday.setHours(0, 0, 0, 0)
+        weekInfo = getWeekRange(reportDate)
+        return itemDate >= weekInfo.startStr && itemDate <= weekInfo.endStr
+      }
 
-        const sunday = new Date(monday)
-        sunday.setDate(monday.getDate() + 6)
-        sunday.setHours(23, 59, 59, 999)
-
-        return bookingDate >= monday && bookingDate <= sunday
-      } 
-      
       if (reportPeriod === 'monthly') {
-        return (
-          bookingDate.getFullYear() === target.getFullYear() &&
-          bookingDate.getMonth() === target.getMonth()
-        )
-      } 
-      
+        const selectedYearMonth = reportDate.substring(0, 7) // "YYYY-MM"
+        return itemDate.startsWith(selectedYearMonth)
+      }
+
       if (reportPeriod === 'custom') {
         if (!reportStartDate || !reportEndDate) return true
-        return item.booking_date >= reportStartDate && item.booking_date <= reportEndDate
+        return itemDate >= reportStartDate && itemDate <= reportEndDate
       }
 
       return true
     })
 
-    // Omzet Laporan hanya dihitung dari status Completed / Selesai
+    // Hitung total omzet laporan (Abaikan transaksi yang dibatalkan)
     const totalRevenue = filtered.reduce((sum, item) => {
-      const isCompleted = item.status && (
-        item.status.toString().trim().toLowerCase() === 'completed' || 
-        item.status.toString().trim().toLowerCase() === 'selesai'
-      )
-      return isCompleted ? sum + getServicePrice(item.service_name) : sum
+      const s = (item.status || '').toString().trim().toLowerCase()
+      if (s !== 'cancelled' && s !== 'batal') {
+        return sum + getServicePrice(item.service_name)
+      }
+      return sum
     }, 0)
 
     return {
       items: filtered,
       totalRevenue,
       count: filtered.length,
+      weekInfo: reportPeriod === 'weekly' ? getWeekRange(reportDate) : null,
     }
   }, [reservations, reportPeriod, reportDate, reportStartDate, reportEndDate])
 
@@ -270,7 +275,7 @@ export default function AdminDashboard() {
     document.body.removeChild(link)
   }
 
-  // 4. LOGIKA FITUR FILTER TABEL UTAMA (SEARCH & FILTER TANGGAL & STATUS)
+  // 5. LOGIKA FILTER TABEL UTAMA
   useEffect(() => {
     let result = [...reservations]
 
@@ -295,7 +300,7 @@ export default function AdminDashboard() {
     setFilteredReservations(result)
   }, [startDate, endDate, statusFilter, searchTerm, reservations])
 
-  // CEK SESSION AKTIF DARI SUPABASE
+  // Cek Session Auth Supabase
   useEffect(() => {
     const checkSession = async () => {
       const { data } = await supabase.auth.getSession()
@@ -312,7 +317,7 @@ export default function AdminDashboard() {
     }
   }, [isAuthenticated])
 
-  // TAMPILAN JIKA BELUM LOGIN
+  // Tampilan Belum Login
   if (!isAuthenticated) {
     return (
       <main className="min-h-screen bg-zinc-950 flex items-center justify-center p-4 font-sans text-zinc-100">
@@ -364,7 +369,7 @@ export default function AdminDashboard() {
     )
   }
 
-  // TAMPILAN JIKA SUDAH LOGIN
+  // Tampilan Sudah Login
   return (
     <div className="min-h-screen bg-zinc-950 p-4 md:p-8 text-zinc-100 font-sans">
       <div className="max-w-7xl mx-auto space-y-6">
@@ -411,7 +416,7 @@ export default function AdminDashboard() {
                 Rp {stats.totalRevenue.toLocaleString('id-ID')}
               </h3>
               <p className="text-[10px] text-emerald-400/80 font-medium mt-1">
-                {stats.completedCount} transaksi selesai
+                {stats.totalBookings - stats.cancelledCount} transaksi aktif
               </p>
             </div>
           </div>
@@ -461,7 +466,7 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* --- FITUR PENARIKAN LAPORAN (REPORT GENERATOR) --- */}
+        {/* --- FITUR PENARIKAN LAPORAN & OMZET --- */}
         <div className="bg-zinc-900 border border-amber-500/30 p-5 rounded-2xl shadow-xl space-y-4">
           <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
             <div>
@@ -473,7 +478,7 @@ export default function AdminDashboard() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
-            {/* Opsi Periode (Harian, Mingguan, Bulanan, Custom) */}
+            {/* Opsi Tipe Laporan */}
             <div className="md:col-span-3">
               <label className="block text-xs font-semibold text-zinc-300 mb-1.5">Tipe Laporan:</label>
               <div className="grid grid-cols-2 gap-1.5 p-1 bg-zinc-950 rounded-xl border border-zinc-800">
@@ -493,14 +498,15 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            {/* Input Tanggal Berdasarkan Periode */}
+            {/* Input Tanggal / Rentang Berdasarkan Tipe Laporan */}
             {reportPeriod !== 'custom' ? (
               <div className="md:col-span-4">
                 <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
                   {reportPeriod === 'daily' && 'Pilih Tanggal:'}
-                  {reportPeriod === 'weekly' && 'Pilih Tanggal Acuan Minggu:'}
+                  {reportPeriod === 'weekly' && 'Pilih Tanggal dalam Minggu Ini:'}
                   {reportPeriod === 'monthly' && 'Pilih Bulan & Tahun:'}
                 </label>
+
                 <input
                   type={reportPeriod === 'monthly' ? 'month' : 'date'}
                   value={reportPeriod === 'monthly' ? reportDate.substring(0, 7) : reportDate}
@@ -510,6 +516,13 @@ export default function AdminDashboard() {
                   }}
                   className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-zinc-200 focus:outline-none focus:border-amber-500"
                 />
+
+                {/* INFO EKSPLISIT RENTANG MINGGUAN */}
+                {reportPeriod === 'weekly' && reportData.weekInfo && (
+                  <p className="text-[11px] text-amber-400 font-semibold mt-1">
+                    📅 Periode: {formatDateID(reportData.weekInfo.startStr)} s/d {formatDateID(reportData.weekInfo.endStr)}
+                  </p>
+                )}
               </div>
             ) : (
               <>
@@ -534,7 +547,7 @@ export default function AdminDashboard() {
               </>
             )}
 
-            {/* Hasil Ringkasan Omzet Periode Ini */}
+            {/* Box Omzet & Total Transaksi */}
             <div className="md:col-span-3 bg-zinc-950 border border-zinc-800 p-3 rounded-xl flex items-center justify-between">
               <div>
                 <p className="text-[10px] text-zinc-400 uppercase font-bold">Omzet Periode Ini</p>
@@ -548,7 +561,7 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            {/* Tombol Export */}
+            {/* Tombol Export CSV */}
             <div className="md:col-span-2">
               <button
                 onClick={exportReportToCSV}
@@ -560,10 +573,9 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* --- CONTROL BOX (FILTER & SEARCH BAR TABEL UTAMA) --- */}
+        {/* --- SEARCH & FILTER TABEL DATA --- */}
         <div className="bg-zinc-900 border border-zinc-800 p-4 sm:p-5 rounded-2xl shadow-xl flex flex-wrap gap-4 items-end justify-between">
           <div className="flex flex-wrap gap-3 items-end w-full lg:w-auto">
-            {/* Search Input */}
             <div className="w-full sm:w-64">
               <label className="block text-xs font-semibold text-zinc-400 mb-1.5">Pencarian Tabel:</label>
               <input
@@ -575,7 +587,6 @@ export default function AdminDashboard() {
               />
             </div>
 
-            {/* Filter Status */}
             <div>
               <label className="block text-xs font-semibold text-zinc-400 mb-1.5">Filter Status:</label>
               <select
