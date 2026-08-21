@@ -108,7 +108,6 @@ export default function AdminDashboard() {
 
   const handleStatusChange = (item: Reservation, newStatus: string) => {
     if (newStatus === 'cancelled') {
-      // Munculkan Modal Pilihan Refund
       setCancelModalItem(item)
     } else {
       updateStatusInDB(item.id, newStatus)
@@ -243,54 +242,68 @@ export default function AdminDashboard() {
     }
   }, [reservations])
 
-  // LOGIKA PENARIKAN LAPORAN
+  // LOGIKA PENARIKAN LAPORAN KEUANGAN (KHUSUS COMPLETED & CANCELLED/REFUND)
   const reportData = useMemo(() => {
     let weekInfo = { startStr: '', endStr: '' }
 
-    const filtered = reservations.filter((item) => {
+    // 1. Filter Berdasarkan Tanggal
+    const dateFiltered = reservations.filter((item) => {
       const itemDate = item.booking_date
 
-      if (reportPeriod === 'daily') {
-        return itemDate === reportDate
-      }
-
+      if (reportPeriod === 'daily') return itemDate === reportDate
       if (reportPeriod === 'weekly') {
         weekInfo = getWeekRangeFromStart(reportDate)
         return itemDate >= weekInfo.startStr && itemDate <= weekInfo.endStr
       }
-
       if (reportPeriod === 'monthly') {
         const selectedYearMonth = reportDate.substring(0, 7)
         return itemDate.startsWith(selectedYearMonth)
       }
-
       if (reportPeriod === 'custom') {
         if (!reportStartDate || !reportEndDate) return true
         return itemDate >= reportStartDate && itemDate <= reportEndDate
       }
-
       return true
     })
 
-    const totalRevenue = filtered.reduce((sum, item) => {
-      if (isCompleted(item.status)) {
-        return sum + getServicePrice(item.service_name)
+    // 2. Filter Khusus Laporan Keuangan: Hanya "Completed" dan "Cancelled"
+    const financialItems = dateFiltered.filter((item) => {
+      const s = (item.status || '').toLowerCase()
+      return isCompleted(s) || s.startsWith('cancelled')
+    })
+
+    // 3. Hitung Omzet Bruto, Refund, dan Omzet Bersih
+    let grossRevenue = 0
+    let totalRefund = 0
+
+    financialItems.forEach((item) => {
+      const price = getServicePrice(item.service_name)
+      const s = (item.status || '').toLowerCase()
+
+      if (isCompleted(s)) {
+        grossRevenue += price
+      } else if (s === 'cancelled_refunded' || s === 'cancelled_need_refund') {
+        // Transaksi batal yang membutuhkan/sudah refund dimasukkan sebagai refund pengurang
+        totalRefund += price
       }
-      return sum
-    }, 0)
+    })
+
+    const netRevenue = grossRevenue - totalRefund
 
     return {
-      items: filtered,
-      totalRevenue,
-      count: filtered.length,
+      items: financialItems,
+      grossRevenue,
+      totalRefund,
+      netRevenue,
+      count: financialItems.length,
       weekInfo: reportPeriod === 'weekly' ? getWeekRangeFromStart(reportDate) : null,
     }
   }, [reservations, reportPeriod, reportDate, reportStartDate, reportEndDate])
 
-  // EXPORT LAPORAN TERFORMAT DENGAN TOTAL OMZET & TABEL RAPI
+  // EXPORT LAPORAN KEUANGAN RAPI
   const exportReportToCSV = () => {
     if (reportData.items.length === 0) {
-      alert('Tidak ada data transaksi pada periode laporan ini!')
+      alert('Tidak ada transaksi Completed / Refund pada periode laporan ini!')
       return
     }
 
@@ -309,15 +322,18 @@ export default function AdminDashboard() {
           table { border-collapse: collapse; width: 100%; font-family: Arial, sans-serif; font-size: 12px; }
           th { background-color: #f59e0b; color: #ffffff; font-weight: bold; text-align: center; border: 1px solid #cccccc; padding: 8px; }
           td { border: 1px solid #cccccc; padding: 6px 10px; text-align: left; }
-          .num { text-align: right; }
+          .num { text-align: right; font-weight: font-semibold; }
           .center { text-align: center; }
           .total-row { background-color: #fef3c7; font-weight: bold; }
+          .net-row { background-color: #d1fae5; font-weight: bold; font-size: 13px; }
           .title { font-size: 16px; font-weight: bold; margin-bottom: 4px; }
           .subtitle { font-size: 12px; color: #555555; margin-bottom: 12px; }
+          .status-completed { color: #059669; font-weight: bold; }
+          .status-refund { color: #dc2626; font-weight: bold; }
         </style>
       </head>
       <body>
-        <div class="title">LAPORAN PENJUALAN & OMZET - M CUT BARBERSHOP</div>
+        <div class="title">LAPORAN KEUANGAN & OMZET BERSIH - M CUT BARBERSHOP</div>
         <div class="subtitle">Periode: ${labelPeriode} | Tanggal Cetak: ${new Date().toLocaleDateString('id-ID')}</div>
         
         <table>
@@ -330,14 +346,17 @@ export default function AdminDashboard() {
               <th>Layanan</th>
               <th>Metode Bayar</th>
               <th>WhatsApp</th>
-              <th>Status</th>
-              <th>Harga / Nominal</th>
+              <th>Status Transaksi</th>
+              <th>Nominal (Rp)</th>
             </tr>
           </thead>
           <tbody>
             ${reportData.items
               .map((item, index) => {
                 const harga = getServicePrice(item.service_name)
+                const s = (item.status || '').toLowerCase()
+                const isRefund = s === 'cancelled_refunded' || s === 'cancelled_need_refund'
+
                 return `
                 <tr>
                   <td class="center">${index + 1}</td>
@@ -347,20 +366,28 @@ export default function AdminDashboard() {
                   <td>${item.service_name}</td>
                   <td class="center">${item.payment_method || 'QRIS'}</td>
                   <td>'${item.whatsapp_number}</td>
-                  <td class="center">${item.status || 'pending'}</td>
-                  <td class="num">Rp ${harga.toLocaleString('id-ID')}</td>
+                  <td class="center ${isRefund ? 'status-refund' : 'status-completed'}">
+                    ${isCompleted(s) ? 'COMPLETED' : isRefund ? 'CANCELLED (REFUND)' : 'CANCELLED'}
+                  </td>
+                  <td class="num" style="color: ${isRefund ? '#dc2626' : '#000000'};">
+                    ${isRefund ? `- Rp ${harga.toLocaleString('id-ID')}` : `Rp ${harga.toLocaleString('id-ID')}`}
+                  </td>
                 </tr>
               `
               })
               .join('')}
             
             <tr class="total-row">
-              <td colspan="8" style="text-align: right; font-weight: bold;">TOTAL TRANSAKSI COMPLETED / SELESAI:</td>
-              <td class="num" style="color: #059669; font-size: 13px;">Rp ${reportData.totalRevenue.toLocaleString('id-ID')}</td>
+              <td colspan="8" style="text-align: right;">TOTAL OMZET BRUTO (COMPLETED):</td>
+              <td class="num" style="color: #059669;">Rp ${reportData.grossRevenue.toLocaleString('id-ID')}</td>
             </tr>
             <tr class="total-row">
-              <td colspan="8" style="text-align: right; font-weight: bold;">TOTAL JUMLAH BOOKING PERIODE INI:</td>
-              <td class="center" style="font-weight: bold;">${reportData.count} Booking</td>
+              <td colspan="8" style="text-align: right; color: #dc2626;">TOTAL PENGEMBALIAN DANA (REFUND):</td>
+              <td class="num" style="color: #dc2626;">- Rp ${reportData.totalRefund.toLocaleString('id-ID')}</td>
+            </tr>
+            <tr class="net-row">
+              <td colspan="8" style="text-align: right; font-weight: bold; color: #065f46;">TOTAL OMZET BERSIH (NETT REVENUE):</td>
+              <td class="num" style="color: #065f46; font-size: 14px;">Rp ${reportData.netRevenue.toLocaleString('id-ID')}</td>
             </tr>
           </tbody>
         </table>
@@ -372,7 +399,7 @@ export default function AdminDashboard() {
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.setAttribute('download', `Laporan_Omzet_MCUT_${reportPeriod.toUpperCase()}_${new Date().toISOString().split('T')[0]}.xls`)
+    link.setAttribute('download', `Laporan_Keuangan_MCUT_${reportPeriod.toUpperCase()}_${new Date().toISOString().split('T')[0]}.xls`)
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
@@ -650,14 +677,16 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* FITUR PENARIKAN LAPORAN & OMZET */}
+        {/* FITUR PENARIKAN LAPORAN KEUANGAN & OMZET BERSIH */}
         <div className="bg-zinc-900 border border-amber-500/30 p-5 rounded-2xl shadow-xl space-y-4">
           <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
             <div>
               <h2 className="text-base font-extrabold text-amber-400 flex items-center gap-2">
-                <span>📊 Penarikan Laporan & Omzet</span>
+                <span>📊 Penarikan Laporan Keuangan (Omzet Bersih)</span>
               </h2>
-              <p className="text-xs text-zinc-400">Pilih periode laporan untuk menghitung omzet dan mengunduh file CSV/Excel</p>
+              <p className="text-xs text-zinc-400">
+                Mengambil data riil (Completed & Refund) untuk menghitung Omzet Bruto dikurangi Refund.
+              </p>
             </div>
           </div>
 
@@ -682,7 +711,7 @@ export default function AdminDashboard() {
             </div>
 
             {reportPeriod !== 'custom' ? (
-              <div className="md:col-span-4">
+              <div className="md:col-span-3">
                 <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
                   {reportPeriod === 'daily' && 'Pilih Tanggal:'}
                   {reportPeriod === 'weekly' && 'Pilih Tanggal Awal (7 Hari):'}
@@ -728,16 +757,21 @@ export default function AdminDashboard() {
               </>
             )}
 
-            <div className="md:col-span-3 bg-zinc-950 border border-zinc-800 p-3 rounded-xl flex items-center justify-between">
+            <div className="md:col-span-4 bg-zinc-950 border border-zinc-800 p-3 rounded-xl grid grid-cols-2 gap-2 text-xs">
               <div>
-                <p className="text-[10px] text-zinc-400 uppercase font-bold">Omzet Periode Ini</p>
-                <p className="text-lg font-black text-emerald-400">
-                  Rp {reportData.totalRevenue.toLocaleString('id-ID')}
+                <p className="text-[10px] text-zinc-400 uppercase font-bold">Omzet Bruto</p>
+                <p className="text-sm font-bold text-zinc-200">
+                  Rp {reportData.grossRevenue.toLocaleString('id-ID')}
+                </p>
+                <p className="text-[10px] text-red-400 mt-0.5">
+                  Refund: -Rp {reportData.totalRefund.toLocaleString('id-ID')}
                 </p>
               </div>
-              <div className="text-right">
-                <p className="text-[10px] text-zinc-400 uppercase font-bold">Total Transaksi</p>
-                <p className="text-sm font-extrabold text-white">{reportData.count} Booking</p>
+              <div className="text-right border-l border-zinc-800 pl-2">
+                <p className="text-[10px] text-emerald-400 uppercase font-extrabold">Omzet Bersih</p>
+                <p className="text-base font-black text-emerald-400">
+                  Rp {reportData.netRevenue.toLocaleString('id-ID')}
+                </p>
               </div>
             </div>
 
