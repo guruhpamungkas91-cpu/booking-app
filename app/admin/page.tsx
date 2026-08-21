@@ -23,7 +23,38 @@ type SortOrder = 'asc' | 'desc'
 
 export default function AdminDashboard() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
-  const [tenantCode, setTenantCode] = useState<string>('')
+  const [tenantCode, setTenantCode] = useState<string>('MCUT')
+
+  // Helper untuk mendapatkan tenant code dari URL / Subdomain
+  const getTenantFromURL = (): string => {
+    if (typeof window === 'undefined') return 'MCUT'
+    
+    // 1. Cek query parameter (Contoh: ?client=sem atau ?tenant=mcut)
+    const urlParams = new URLSearchParams(window.location.search)
+    const clientParam = urlParams.get('client') || urlParams.get('tenant')
+    if (clientParam) {
+      return clientParam.toUpperCase()
+    }
+
+    // 2. Cek Subdomain (Contoh: sem.barbershop.com -> SEM, mcut.barbershop.com -> MCUT)
+    const hostname = window.location.hostname
+    const parts = hostname.split('.')
+    if (parts.length > 2) {
+      const subdomain = parts[0].toUpperCase()
+      if (subdomain !== 'WWW' && subdomain !== 'LOCALHOST') {
+        return subdomain
+      }
+    }
+
+    // Default fallback
+    return 'MCUT'
+  }
+
+  // Detect URL Tenant saat kompoenen dimuat di browser
+  useEffect(() => {
+    const currentTenant = getTenantFromURL()
+    setTenantCode(currentTenant)
+  }, [])
 
   // State Login Supabase
   const [emailInput, setEmailInput] = useState('')
@@ -68,8 +99,9 @@ export default function AdminDashboard() {
       alert('Login gagal: ' + error.message)
     } else if (data.session) {
       setIsAuthenticated(true)
-      const code = data.session.user.app_metadata?.client_code || 'MCUT'
-      setTenantCode(code)
+      // Utamakan client_code dari URL/subdomain, jika tidak ada baru gunakan dari user metadata
+      const activeTenant = getTenantFromURL() || data.session.user.app_metadata?.client_code || 'MCUT'
+      setTenantCode(activeTenant)
     }
     setLoading(false)
   }
@@ -80,36 +112,34 @@ export default function AdminDashboard() {
     setIsAuthenticated(false)
   }
 
-  // 👈 Poin 2: Query tetap .select('*') karena Supabase RLS otomatis memfilter data sesuai tenant admin yang login!
+  // 👈 Fetch Data dengan Filter Tenant Dinamis Sesuai URL & Auth
   const fetchReservations = async () => {
     setLoading(true)
-    // 1. Ambil data user yang sedang login
-  const { data: { user } } = await supabase.auth.getUser()
-  
-  // 2. Ambil client_code dari app_metadata
-  const userClientCode = user?.app_metadata?.client_code
+    
+    // 1. Dapatkan tenant aktif berdasarkan URL atau state
+    const activeTenantCode = tenantCode || getTenantFromURL()
 
-  // 3. Query data dengan filter client_code
-  let query = supabase
-    .from('Reservations')
-    .select('*')
-    .order('created_at', { ascending: false })
+    // 2. Query data dengan filter client_code
+    let query = supabase
+      .from('Reservations')
+      .select('*')
+      .order('created_at', { ascending: false })
 
-  // Jika user punya client_code, filter berdasarkan client_code tersebut
-  if (userClientCode) {
-    query = query.eq('client_code', userClientCode)
+    // Filter data reservasi sesuai tenant URL/User yang aktif
+    if (activeTenantCode) {
+      query = query.eq('client_code', activeTenantCode)
+    }
+
+    const { data, error } = await query
+
+    if (error) {
+      alert('Gagal mengambil data: ' + error.message)
+    } else {
+      setReservations(data || [])
+      setFilteredReservations(data || [])
+    }
+    setLoading(false)
   }
-
-  const { data, error } = await query
-
-  if (error) {
-    alert('Gagal mengambil data: ' + error.message)
-  } else {
-    setReservations(data || [])
-    setFilteredReservations(data || [])
-  }
-  setLoading(false)
-}
 
   // Function Mengubah Status Umum
   const updateStatusInDB = async (id: number, newStatus: string) => {
@@ -643,8 +673,8 @@ export default function AdminDashboard() {
       const { data } = await supabase.auth.getSession()
       if (data.session) {
         setIsAuthenticated(true)
-        const code = data.session.user.app_metadata?.client_code || 'MCUT'
-        setTenantCode(code)
+        const activeTenant = getTenantFromURL() || data.session.user.app_metadata?.client_code || 'MCUT'
+        setTenantCode(activeTenant)
       }
     }
     checkSession()
@@ -652,7 +682,7 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     if (isAuthenticated) fetchReservations()
-  }, [isAuthenticated])
+  }, [isAuthenticated, tenantCode])
 
   if (!isAuthenticated) {
     return (
@@ -660,10 +690,10 @@ export default function AdminDashboard() {
         <div className="max-w-md w-full bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl p-6 sm:p-8 space-y-6">
           <div className="text-center space-y-1">
             <span className="px-3 py-1 rounded-full text-[11px] font-extrabold bg-amber-500/10 text-amber-500 border border-amber-500/20 tracking-wider">
-              ADMIN DASHBOARD
+              ADMIN DASHBOARD ({tenantCode})
             </span>
             <h1 className="text-2xl font-black text-white tracking-wide uppercase mt-2">
-              Barbershop Portal
+              {tenantCode} Barbershop Portal
             </h1>
             <p className="text-xs text-zinc-400">Silakan login untuk mengelola sistem reservasi</p>
           </div>
