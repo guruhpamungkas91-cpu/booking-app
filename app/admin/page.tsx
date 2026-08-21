@@ -247,24 +247,96 @@ export default function AdminDashboard() {
     }
   }, [reservations, reportPeriod, reportDate, reportStartDate, reportEndDate])
 
-  // EXPORT LAPORAN KHUSUS PERIODE KE CSV
+  // EXPORT LAPORAN TERFORMAT DENGAN TOTAL OMZET & TABEL RAPI
   const exportReportToCSV = () => {
     if (reportData.items.length === 0) {
       alert('Tidak ada data transaksi pada periode laporan ini!')
       return
     }
 
-    const headers = ['Tanggal Booking,Jam,Nama Pelanggan,Layanan,Harga,Metode Bayar,WhatsApp,Status\n']
-    const rows = reportData.items.map(
-      (item) =>
-        `"${item.booking_date}","${item.booking_time}","${item.customer_name}","${item.service_name}","${getServicePrice(item.service_name)}","${item.payment_method || 'QRIS'}","${item.whatsapp_number}","${item.status || 'pending'}"`
-    )
+    // Tentukan Judul Periode Laporan
+    let labelPeriode = ''
+    if (reportPeriod === 'daily') labelPeriode = `Harian (${formatDateID(reportDate)})`
+    else if (reportPeriod === 'weekly' && reportData.weekInfo) {
+      labelPeriode = `Mingguan (${formatDateID(reportData.weekInfo.startStr)} s/d ${formatDateID(reportData.weekInfo.endStr)})`
+    } else if (reportPeriod === 'monthly') labelPeriode = `Bulanan (${reportDate.substring(0, 7)})`
+    else labelPeriode = `Custom (${formatDateID(reportStartDate)} s/d ${formatDateID(reportEndDate)})`
 
-    const csvContent = 'data:text/csv;charset=utf-8,' + headers.concat(rows).join('\n')
-    const encodedUri = encodeURI(csvContent)
+    // Buat Template HTML untuk Excel biar Ada Tabel Rapi & Total
+    const htmlContent = `
+      <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+      <head>
+        <meta charset="utf-8">
+        <style>
+          table { border-collapse: collapse; width: 100%; font-family: Arial, sans-serif; font-size: 12px; }
+          th { background-color: #f59e0b; color: #ffffff; font-weight: bold; text-align: center; border: 1px solid #cccccc; padding: 8px; }
+          td { border: 1px solid #cccccc; padding: 6px 10px; text-align: left; }
+          .num { text-align: right; }
+          .center { text-align: center; }
+          .total-row { background-color: #fef3c7; font-weight: bold; }
+          .title { font-size: 16px; font-weight: bold; margin-bottom: 4px; }
+          .subtitle { font-size: 12px; color: #555555; margin-bottom: 12px; }
+        </style>
+      </head>
+      <body>
+        <div class="title">LAPORAN PENJUALAN & OMZET - M CUT BARBERSHOP</div>
+        <div class="subtitle">Periode: ${labelPeriode} | Tanggal Cetak: ${new Date().toLocaleDateString('id-ID')}</div>
+        
+        <table>
+          <thead>
+            <tr>
+              <th>No</th>
+              <th>Tanggal Booking</th>
+              <th>Jam</th>
+              <th>Nama Pelanggan</th>
+              <th>Layanan</th>
+              <th>Metode Bayar</th>
+              <th>WhatsApp</th>
+              <th>Status</th>
+              <th>Harga / Nominal</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${reportData.items
+              .map((item, index) => {
+                const harga = getServicePrice(item.service_name)
+                return `
+                <tr>
+                  <td class="center">${index + 1}</td>
+                  <td class="center">${item.booking_date}</td>
+                  <td class="center">${item.booking_time} WIB</td>
+                  <td>${item.customer_name}</td>
+                  <td>${item.service_name}</td>
+                  <td class="center">${item.payment_method || 'QRIS'}</td>
+                  <td>'${item.whatsapp_number}</td>
+                  <td class="center">${item.status || 'pending'}</td>
+                  <td class="num">Rp ${harga.toLocaleString('id-ID')}</td>
+                </tr>
+              `
+              })
+              .join('')}
+            
+            <!-- BARIS TOTAL OMZET & TRANSAKSI -->
+            <tr class="total-row">
+              <td colspan="8" style="text-align: right; font-weight: bold;">TOTAL TRANSAKSI COMPLETED / SELESAI:</td>
+              <td class="num" style="color: #059669; font-size: 13px;">Rp ${reportData.totalRevenue.toLocaleString('id-ID')}</td>
+            </tr>
+            <tr class="total-row">
+              <td colspan="8" style="text-align: right; font-weight: bold;">TOTAL JUMLAH BOOKING PERIODE INI:</td>
+              <td class="center" style="font-weight: bold;">${reportData.count} Booking</td>
+            </tr>
+          </tbody>
+        </table>
+      </body>
+      </html>
+    `
+
+    // Download sebagai file file .xls (Excel)
+    const blob = new Blob([htmlContent], { type: 'application/vnd.ms-excel;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
-    link.setAttribute('href', encodedUri)
-    link.setAttribute('download', `Laporan_Omzet_${reportPeriod.toUpperCase()}_${new Date().toISOString().split('T')[0]}.csv`)
+    link.href = url
+    link.setAttribute('download', `Laporan_Omzet_MCUT_${reportPeriod.toUpperCase()}_${new Date().toISOString().split('T')[0]}.xls`)
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
