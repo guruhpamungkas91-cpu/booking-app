@@ -43,6 +43,9 @@ export default function AdminDashboard() {
   const [sortField, setSortField] = useState<SortField>('booking_date')
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc')
 
+  // State Modal Refund
+  const [cancelModalItem, setCancelModalItem] = useState<Reservation | null>(null)
+
   // State Khusus Penarikan Laporan / Report
   const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly' | 'custom'>('daily')
   const [reportDate, setReportDate] = useState(new Date().toISOString().split('T')[0])
@@ -89,7 +92,8 @@ export default function AdminDashboard() {
     setLoading(false)
   }
 
-  const handleStatusChange = async (id: number, newStatus: string) => {
+  // Function Mengubah Status Umum
+  const updateStatusInDB = async (id: number, newStatus: string) => {
     const { error } = await supabase
       .from('Reservations')
       .update({ status: newStatus })
@@ -100,6 +104,30 @@ export default function AdminDashboard() {
     } else {
       fetchReservations()
     }
+  }
+
+  const handleStatusChange = (item: Reservation, newStatus: string) => {
+    if (newStatus === 'cancelled') {
+      // Munculkan Modal Pilihan Refund
+      setCancelModalItem(item)
+    } else {
+      updateStatusInDB(item.id, newStatus)
+    }
+  }
+
+  // Handler Keputusan Modal Refund
+  const handleConfirmCancel = async (needRefund: boolean) => {
+    if (!cancelModalItem) return
+    const statusText = needRefund ? 'cancelled_need_refund' : 'cancelled'
+    await updateStatusInDB(cancelModalItem.id, statusText)
+    setCancelModalItem(null)
+  }
+
+  // Handler Selesai Refund
+  const handleCompleteRefund = async (id: number) => {
+    const isConfirmed = window.confirm('Apakah kamu yakin refund untuk pesanan ini sudah ditransfer balik ke pelanggan?')
+    if (!isConfirmed) return
+    await updateStatusInDB(id, 'cancelled_refunded')
   }
 
   const handleDelete = async (id: number, customerName: string) => {
@@ -195,7 +223,11 @@ export default function AdminDashboard() {
 
     const cancelledCount = reservations.filter((b) => {
       const s = (b.status || '').toString().trim().toLowerCase()
-      return s === 'cancelled' || s === 'batal'
+      return s.startsWith('cancelled') || s === 'batal'
+    }).length
+
+    const needRefundCount = reservations.filter((b) => {
+      return (b.status || '').toLowerCase() === 'cancelled_need_refund'
     }).length
 
     return {
@@ -204,6 +236,7 @@ export default function AdminDashboard() {
       confirmedCount,
       completedCount,
       cancelledCount,
+      needRefundCount,
       completedPercentage: totalBookings > 0 ? Math.round((completedCount / totalBookings) * 100) : 0,
       cancelledPercentage: totalBookings > 0 ? Math.round((cancelledCount / totalBookings) * 100) : 0,
       totalRevenue,
@@ -370,7 +403,13 @@ export default function AdminDashboard() {
 
     // 2. Filter Status
     if (statusFilter !== 'all') {
-      result = result.filter((item) => (item.status || 'pending').toLowerCase() === statusFilter.toLowerCase())
+      result = result.filter((item) => {
+        const s = (item.status || 'pending').toLowerCase()
+        if (statusFilter === 'cancelled') {
+          return s.startsWith('cancelled')
+        }
+        return s === statusFilter.toLowerCase()
+      })
     }
 
     // 3. Filter Layanan
@@ -510,7 +549,7 @@ export default function AdminDashboard() {
 
   // Tampilan Sudah Login
   return (
-    <div className="min-h-screen bg-zinc-950 p-4 md:p-8 text-zinc-100 font-sans">
+    <div className="min-h-screen bg-zinc-950 p-4 md:p-8 text-zinc-100 font-sans relative">
       <div className="max-w-7xl mx-auto space-y-6">
 
         {/* Header Dashboard */}
@@ -598,9 +637,15 @@ export default function AdminDashboard() {
             <p className="text-xs font-semibold text-rose-400 uppercase tracking-wider">Pembatalan</p>
             <div className="flex items-baseline justify-between mt-2">
               <h3 className="text-3xl font-black text-rose-400">{stats.cancelledCount}</h3>
-              <span className="text-xs font-bold text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded-md border border-rose-500/20">
-                {stats.cancelledPercentage}%
-              </span>
+              {stats.needRefundCount > 0 ? (
+                <span className="text-[10px] font-extrabold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/20 animate-pulse">
+                  {stats.needRefundCount} Perlu Refund
+                </span>
+              ) : (
+                <span className="text-xs font-bold text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded-md border border-rose-500/20">
+                  {stats.cancelledPercentage}%
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -707,7 +752,7 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* SEARCH & FILTER TABEL DATA (TAMBAH FILTER LAYANAN & METODE BAYAR) */}
+        {/* SEARCH & FILTER TABEL DATA */}
         <div className="bg-zinc-900 border border-zinc-800 p-4 sm:p-5 rounded-2xl shadow-xl flex flex-wrap gap-4 items-end justify-between">
           <div className="flex flex-wrap gap-3 items-end w-full">
             {/* Pencarian Text */}
@@ -734,7 +779,8 @@ export default function AdminDashboard() {
                 <option value="pending">🟡 Pending</option>
                 <option value="confirmed">🟢 Confirmed</option>
                 <option value="completed">🔵 Completed</option>
-                <option value="cancelled">🔴 Cancelled</option>
+                <option value="cancelled">🔴 Cancelled (Semua)</option>
+                <option value="cancelled_need_refund">⚠️ Cancelled (Need Refund)</option>
               </select>
             </div>
 
@@ -868,6 +914,12 @@ export default function AdminDashboard() {
                   {filteredReservations.map((item) => {
                     const currentStatus = item.status || 'pending'
                     const cleanPhone = item.whatsapp_number ? item.whatsapp_number.replace(/^0/, '62') : ''
+                    
+                    // Pesan WA khusus Minta Rekening Refund
+                    const refundWaMsg = encodeURIComponent(
+                      `Halo Kak ${item.customer_name}, mohon maaf reservasi Kamu di M CUT Barbershop pada tanggal ${formatDateID(item.booking_date)} jam ${item.booking_time} WIB kami batalkan.\n\n` +
+                      `Karena Kakak sudah melakukan pembayaran, mohon infokan Nomor Rekening / E-Wallet Kakak agar dana sebesar Rp ${getServicePrice(item.service_name).toLocaleString('id-ID')} bisa kami refund segera ya. Terima kasih!`
+                    )
 
                     return (
                       <tr key={item.id} className="hover:bg-zinc-800/40 transition">
@@ -901,24 +953,60 @@ export default function AdminDashboard() {
                           </a>
                         </td>
                         <td className="p-4">
-                          <select
-                            value={currentStatus}
-                            onChange={(e) => handleStatusChange(item.id, e.target.value)}
-                            className={`p-1.5 rounded-lg text-xs font-bold border bg-zinc-950 focus:outline-none cursor-pointer ${
-                              currentStatus === 'confirmed'
-                                ? 'text-blue-400 border-blue-500/40'
-                                : currentStatus === 'completed'
-                                ? 'text-emerald-400 border-emerald-500/40'
-                                : currentStatus === 'cancelled'
-                                ? 'text-red-400 border-red-500/40'
-                                : 'text-amber-400 border-amber-500/40'
-                            }`}
-                          >
-                            <option value="pending">🟡 Pending</option>
-                            <option value="confirmed">🟢 Confirmed</option>
-                            <option value="completed">🔵 Completed</option>
-                            <option value="cancelled">🔴 Cancelled</option>
-                          </select>
+                          <div className="space-y-1.5">
+                            <select
+                              value={
+                                currentStatus.startsWith('cancelled')
+                                  ? 'cancelled'
+                                  : currentStatus
+                              }
+                              onChange={(e) => handleStatusChange(item, e.target.value)}
+                              className={`p-1.5 rounded-lg text-xs font-bold border bg-zinc-950 focus:outline-none cursor-pointer ${
+                                currentStatus === 'confirmed'
+                                  ? 'text-blue-400 border-blue-500/40'
+                                  : currentStatus === 'completed'
+                                  ? 'text-emerald-400 border-emerald-500/40'
+                                  : currentStatus.startsWith('cancelled')
+                                  ? 'text-red-400 border-red-500/40'
+                                  : 'text-amber-400 border-amber-500/40'
+                              }`}
+                            >
+                              <option value="pending">🟡 Pending</option>
+                              <option value="confirmed">🟢 Confirmed</option>
+                              <option value="completed">🔵 Completed</option>
+                              <option value="cancelled">🔴 Cancelled</option>
+                            </select>
+
+                            {/* Sub-badge Khusus Jika Membutuhkan Refund */}
+                            {currentStatus === 'cancelled_need_refund' && (
+                              <div className="flex flex-col gap-1 mt-1">
+                                <span className="bg-amber-500/10 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded text-[10px] font-extrabold flex items-center gap-1">
+                                  <span>⚠️</span> PERLU REFUND
+                                </span>
+                                <a
+                                  href={`https://wa.me/${cleanPhone}?text=${refundWaMsg}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 px-2 py-1 rounded text-[10px] font-bold text-center block transition"
+                                >
+                                  💬 Minta Rekening (WA)
+                                </a>
+                                <button
+                                  onClick={() => handleCompleteRefund(item.id)}
+                                  className="bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 border border-blue-500/30 px-2 py-1 rounded text-[10px] font-bold transition"
+                                >
+                                  ✅ Selesai Refund
+                                </button>
+                              </div>
+                            )}
+
+                            {/* Sub-badge Jika Refund Sudah Selesai */}
+                            {currentStatus === 'cancelled_refunded' && (
+                              <span className="bg-zinc-800 text-zinc-400 border border-zinc-700 px-2 py-0.5 rounded text-[10px] font-semibold block w-max">
+                                ✓ Refund Selesai
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="p-4 text-center">
                           <button
@@ -938,6 +1026,53 @@ export default function AdminDashboard() {
         </div>
 
       </div>
+
+      {/* MODAL POP-UP KONFIRMASI PEMBATALAN & REFUND */}
+      {cancelModalItem && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 max-w-md w-full space-y-4 shadow-2xl animate-in fade-in zoom-in duration-150">
+            <div className="text-center space-y-2">
+              <span className="text-3xl">💸</span>
+              <h3 className="text-base font-extrabold text-white">Konfirmasi Pembatalan & Refund</h3>
+              <p className="text-xs text-zinc-400 leading-relaxed">
+                Kamu membatalkan reservasi atas nama <strong className="text-amber-400">{cancelModalItem.customer_name}</strong>. Apakah transaksi ini perlu refund uang pelanggan?
+              </p>
+            </div>
+
+            <div className="bg-zinc-950 border border-zinc-800 p-3 rounded-xl text-xs space-y-1">
+              <div className="flex justify-between text-zinc-400">
+                <span>Layanan:</span>
+                <span className="text-zinc-200 font-semibold">{cancelModalItem.service_name}</span>
+              </div>
+              <div className="flex justify-between text-zinc-400">
+                <span>Metode Bayar:</span>
+                <span className="text-zinc-200 font-semibold">{cancelModalItem.payment_method || 'QRIS'}</span>
+              </div>
+              <div className="flex justify-between text-zinc-400">
+                <span>Nominal:</span>
+                <span className="text-emerald-400 font-bold">
+                  Rp {getServicePrice(cancelModalItem.service_name).toLocaleString('id-ID')}
+                </span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 pt-2">
+              <button
+                onClick={() => handleConfirmCancel(false)}
+                className="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-bold py-2.5 px-4 rounded-xl text-xs transition border border-zinc-700"
+              >
+                Tidak (Belum Bayar)
+              </button>
+              <button
+                onClick={() => handleConfirmCancel(true)}
+                className="bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold py-2.5 px-4 rounded-xl text-xs transition shadow-lg shadow-amber-500/10"
+              >
+                Ya, Perlu Refund 💸
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
