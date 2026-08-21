@@ -24,6 +24,7 @@ type SortOrder = 'asc' | 'desc'
 export default function AdminDashboard() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [tenantCode, setTenantCode] = useState<string>('')
+  const [brandTitle, setBrandTitle] = useState<string>('BARBERSHOP')
 
   // State Login Supabase
   const [emailInput, setEmailInput] = useState('')
@@ -56,9 +57,21 @@ export default function AdminDashboard() {
 
   // Helper Sanitasi Client Code
   const sanitizeClientCode = (code?: string) => {
-    if (!code) return 'MCUT'
+    if (!code) return ''
     return code.replace(/[^a-zA-Z0-9]/g, '').toUpperCase()
   }
+
+  // Deteksi Nama Brand/Tenant Berdasarkan Hostname URL
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const hostname = window.location.hostname.toLowerCase()
+      if (hostname.includes('sem')) {
+        setBrandTitle('SEM')
+      } else if (hostname.includes('mcut')) {
+        setBrandTitle('MCUT')
+      }
+    }
+  }, [])
 
   // Login
   const handleLogin = async (e: React.FormEvent) => {
@@ -74,7 +87,7 @@ export default function AdminDashboard() {
       alert('Login gagal: ' + error.message)
     } else if (data.session) {
       setIsAuthenticated(true)
-      const rawCode = data.session.user.app_metadata?.client_code || 'MCUT'
+      const rawCode = data.session.user.app_metadata?.client_code || ''
       const cleanCode = sanitizeClientCode(rawCode)
       setTenantCode(cleanCode)
     }
@@ -92,7 +105,6 @@ export default function AdminDashboard() {
     setLoading(true)
     const { data: { user } } = await supabase.auth.getUser()
     
-    // Pembersihan client_code (contoh: "SEM-BARBERSHOP" -> "SEMBARBERSHOP")
     const rawClientCode = user?.app_metadata?.client_code
     const userClientCode = rawClientCode ? sanitizeClientCode(rawClientCode) : null
 
@@ -199,7 +211,7 @@ export default function AdminDashboard() {
     return s === 'completed' || s === 'selesai'
   }
 
-  // HELPER MINGGUAN: Tanggal awal s/d Tanggal awal + 6 hari (7 hari)
+  // HELPER MINGGUAN
   const getWeekRangeFromStart = (startDateString: string) => {
     if (!startDateString) return { startStr: '', endStr: '' }
     const [year, month, day] = startDateString.split('-').map(Number)
@@ -335,6 +347,8 @@ export default function AdminDashboard() {
     } else if (reportPeriod === 'monthly') labelPeriode = `Bulanan (${reportDate.substring(0, 7)})`
     else labelPeriode = `Custom (${formatDateID(reportStartDate)} s/d ${formatDateID(reportEndDate)})`
 
+    const displayBrand = brandTitle || tenantCode || 'BARBERSHOP'
+
     const htmlContent = `
       <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
       <head>
@@ -354,7 +368,7 @@ export default function AdminDashboard() {
         </style>
       </head>
       <body>
-        <div class="title">LAPORAN KEUANGAN & OMZET NETTO - ${tenantCode || 'BARBERSHOP'}</div>
+        <div class="title">LAPORAN KEUANGAN & OMZET NETTO - ${displayBrand} BARBERSHOP</div>
         <div class="subtitle">Periode: ${labelPeriode} | Tanggal Cetak: ${new Date().toLocaleDateString('id-ID')}</div>
         
         <table>
@@ -420,13 +434,13 @@ export default function AdminDashboard() {
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.setAttribute('download', `Laporan_Keuangan_${tenantCode}_${reportPeriod.toUpperCase()}_${new Date().toISOString().split('T')[0]}.xls`)
+    link.setAttribute('download', `Laporan_Keuangan_${displayBrand}_${reportPeriod.toUpperCase()}_${new Date().toISOString().split('T')[0]}.xls`)
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
   }
 
-  // FITUR CETAK / SIMPAN KE PDF (A4 READY)
+  // FITUR CETAK / SIMPAN KE PDF
   const handlePrintPDF = () => {
     if (reportData.items.length === 0) {
       alert('Tidak ada transaksi Completed / Refund pada periode laporan ini!')
@@ -440,6 +454,7 @@ export default function AdminDashboard() {
     } else if (reportPeriod === 'monthly') labelPeriode = `Bulanan (${reportDate.substring(0, 7)})`
     else labelPeriode = `Custom (${formatDateID(reportStartDate)} s/d ${formatDateID(reportEndDate)})`
 
+    const displayBrand = brandTitle || tenantCode || 'BARBERSHOP'
     const printWindow = window.open('', '_blank')
     if (!printWindow) return
 
@@ -447,7 +462,7 @@ export default function AdminDashboard() {
       <!DOCTYPE html>
       <html>
       <head>
-        <title>Laporan Keuangan ${tenantCode} Barbershop</title>
+        <title>Laporan Keuangan ${displayBrand} Barbershop</title>
         <style>
           @page { size: A4 portrait; margin: 15mm; }
           body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 11px; color: #111; margin: 0; padding: 0; }
@@ -473,7 +488,7 @@ export default function AdminDashboard() {
       </head>
       <body>
         <div class="header">
-          <h1>${tenantCode} BARBERSHOP</h1>
+          <h1>${displayBrand} BARBERSHOP</h1>
           <p>LAPORAN KEUANGAN & OMZET NETTO</p>
         </div>
 
@@ -543,7 +558,7 @@ export default function AdminDashboard() {
         </div>
 
         <div class="footer">
-          <p>Dicetak oleh Admin ${tenantCode} Barbershop</p>
+          <p>Dicetak oleh Admin ${displayBrand} Barbershop</p>
           <div class="signature-space"></div>
           <p>__________________________</p>
         </div>
@@ -561,7 +576,7 @@ export default function AdminDashboard() {
     printWindow.document.close()
   }
 
-  // Dapatkan daftar unik untuk dropdown filter
+  // Dropdown filter
   const uniqueServices = useMemo(() => {
     const list = new Set(reservations.map((r) => r.service_name).filter(Boolean))
     return Array.from(list)
@@ -572,7 +587,7 @@ export default function AdminDashboard() {
     return Array.from(list)
   }, [reservations])
 
-  // LOGIKA FILTER + SORTING TABEL UTAMA
+  // FILTER + SORTING TABEL
   useEffect(() => {
     let result = [...reservations]
 
@@ -648,7 +663,7 @@ export default function AdminDashboard() {
       const { data } = await supabase.auth.getSession()
       if (data.session) {
         setIsAuthenticated(true)
-        const rawCode = data.session.user.app_metadata?.client_code || 'MCUT'
+        const rawCode = data.session.user.app_metadata?.client_code || ''
         const cleanCode = sanitizeClientCode(rawCode)
         setTenantCode(cleanCode)
       }
@@ -669,7 +684,7 @@ export default function AdminDashboard() {
               ADMIN DASHBOARD
             </span>
             <h1 className="text-2xl font-black text-white tracking-wide uppercase mt-2">
-              Barbershop Portal
+              {brandTitle ? `${brandTitle} BARBERSHOP` : 'BARBERSHOP PORTAL'}
             </h1>
             <p className="text-xs text-zinc-400">Silakan login untuk mengelola sistem reservasi</p>
           </div>
@@ -715,17 +730,12 @@ export default function AdminDashboard() {
     <div className="min-h-screen bg-zinc-950 p-4 md:p-8 text-zinc-100 font-sans relative">
       <div className="max-w-7xl mx-auto space-y-6">
 
-        {/* Header Dashboard Dinamis Sesuai Tenant */}
+        {/* Header Dashboard Clean */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-zinc-900 border border-zinc-800 p-6 rounded-2xl shadow-xl gap-4">
           <div>
-            <div className="flex items-center space-x-2">
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-500/10 text-amber-500 border border-amber-500/20">
-                TENANT: {tenantCode}
-              </span>
-              <h1 className="text-xl sm:text-2xl font-black text-white tracking-wide uppercase">
-                {tenantCode} BARBERSHOP
-              </h1>
-            </div>
+            <h1 className="text-xl sm:text-2xl font-black text-white tracking-wide uppercase">
+              {brandTitle ? `${brandTitle} BARBERSHOP` : tenantCode ? `${tenantCode} BARBERSHOP` : 'BARBERSHOP'}
+            </h1>
             <p className="text-xs text-zinc-400 mt-1">Kelola dan pantau pesanan masuk secara real-time</p>
           </div>
 
@@ -827,8 +837,6 @@ export default function AdminDashboard() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-start">
-            
-            {/* SISI KIRI: FILTER PERIODE LAPORAN */}
             <div className="md:col-span-6 space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-zinc-300 mb-1.5">Tipe Laporan:</label>
@@ -897,7 +905,6 @@ export default function AdminDashboard() {
               )}
             </div>
 
-            {/* SISI KANAN: BOX INFO OMZET & TOMBOL EXPORT */}
             <div className="md:col-span-6 space-y-3">
               <div className="bg-zinc-950 border border-zinc-800 p-4 rounded-xl grid grid-cols-2 gap-4 text-xs">
                 <div>
@@ -917,7 +924,6 @@ export default function AdminDashboard() {
                 </div>
               </div>
 
-              {/* TOMBOL EXPORT */}
               <div className="grid grid-cols-2 gap-3">
                 <button
                   onClick={exportReportToCSV}
@@ -1088,9 +1094,10 @@ export default function AdminDashboard() {
                   {filteredReservations.map((item) => {
                     const currentStatus = item.status || 'pending'
                     const cleanPhone = item.whatsapp_number ? item.whatsapp_number.replace(/^0/, '62') : ''
+                    const displayBrand = brandTitle || tenantCode || 'BARBERSHOP'
                     
                     const refundWaMsg = encodeURIComponent(
-                      `Halo Kak ${item.customer_name}, mohon maaf reservasi Kamu di ${tenantCode} Barbershop pada tanggal ${formatDateID(item.booking_date)} jam ${item.booking_time} WIB kami batalkan.\n\n` +
+                      `Halo Kak ${item.customer_name}, mohon maaf reservasi Kamu di ${displayBrand} Barbershop pada tanggal ${formatDateID(item.booking_date)} jam ${item.booking_time} WIB kami batalkan.\n\n` +
                       `Karena Kakak sudah melakukan pembayaran, mohon infokan Nomor Rekening / E-Wallet Kakak agar dana sebesar Rp ${getServicePrice(item.service_name).toLocaleString('id-ID')} bisa kami refund segera ya. Terima kasih!`
                     )
 
@@ -1100,11 +1107,6 @@ export default function AdminDashboard() {
                         <td className="p-4 font-mono text-zinc-400">{item.booking_time} WIB</td>
                         <td className="p-4 font-bold text-white">
                           {item.customer_name}
-                          {item.client_code && (
-                            <span className="ml-2 text-[9px] bg-zinc-800 text-amber-400 border border-zinc-700 px-1.5 py-0.5 rounded font-mono">
-                              {item.client_code}
-                            </span>
-                          )}
                         </td>
                         <td className="p-4">
                           <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2.5 py-1 rounded-md text-[11px] font-semibold">
