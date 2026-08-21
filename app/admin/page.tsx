@@ -15,7 +15,7 @@ interface Reservation {
   booking_time: string
   payment_method?: string
   status: string
-  client_code?: string // 👈 Tambahan field client_code
+  client_code?: string
 }
 
 type SortField = 'booking_date' | 'booking_time' | 'customer_name' | 'service_name' | 'price' | 'payment_method' | 'status'
@@ -23,38 +23,7 @@ type SortOrder = 'asc' | 'desc'
 
 export default function AdminDashboard() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
-  const [tenantCode, setTenantCode] = useState<string>('MCUT')
-
-  // Helper untuk mendapatkan tenant code dari URL / Subdomain
-  const getTenantFromURL = (): string => {
-    if (typeof window === 'undefined') return 'MCUT'
-    
-    // 1. Cek query parameter (Contoh: ?client=sem atau ?tenant=mcut)
-    const urlParams = new URLSearchParams(window.location.search)
-    const clientParam = urlParams.get('client') || urlParams.get('tenant')
-    if (clientParam) {
-      return clientParam.toUpperCase()
-    }
-
-    // 2. Cek Subdomain (Contoh: sem.barbershop.com -> SEM, mcut.barbershop.com -> MCUT)
-    const hostname = window.location.hostname
-    const parts = hostname.split('.')
-    if (parts.length > 2) {
-      const subdomain = parts[0].toUpperCase()
-      if (subdomain !== 'WWW' && subdomain !== 'LOCALHOST') {
-        return subdomain
-      }
-    }
-
-    // Default fallback
-    return 'MCUT'
-  }
-
-  // Detect URL Tenant saat kompoenen dimuat di browser
-  useEffect(() => {
-    const currentTenant = getTenantFromURL()
-    setTenantCode(currentTenant)
-  }, [])
+  const [tenantCode, setTenantCode] = useState<string>('')
 
   // State Login Supabase
   const [emailInput, setEmailInput] = useState('')
@@ -85,6 +54,12 @@ export default function AdminDashboard() {
   const [reportStartDate, setReportStartDate] = useState('')
   const [reportEndDate, setReportEndDate] = useState('')
 
+  // Helper Sanitasi Client Code
+  const sanitizeClientCode = (code?: string) => {
+    if (!code) return 'MCUT'
+    return code.replace(/[^a-zA-Z0-9]/g, '').toUpperCase()
+  }
+
   // Login
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -99,9 +74,9 @@ export default function AdminDashboard() {
       alert('Login gagal: ' + error.message)
     } else if (data.session) {
       setIsAuthenticated(true)
-      // Utamakan client_code dari URL/subdomain, jika tidak ada baru gunakan dari user metadata
-      const activeTenant = getTenantFromURL() || data.session.user.app_metadata?.client_code || 'MCUT'
-      setTenantCode(activeTenant)
+      const rawCode = data.session.user.app_metadata?.client_code || 'MCUT'
+      const cleanCode = sanitizeClientCode(rawCode)
+      setTenantCode(cleanCode)
     }
     setLoading(false)
   }
@@ -112,22 +87,22 @@ export default function AdminDashboard() {
     setIsAuthenticated(false)
   }
 
-  // 👈 Fetch Data dengan Filter Tenant Dinamis Sesuai URL & Auth
+  // Fetch Reservations
   const fetchReservations = async () => {
     setLoading(true)
+    const { data: { user } } = await supabase.auth.getUser()
     
-    // 1. Dapatkan tenant aktif berdasarkan URL atau state
-    const activeTenantCode = tenantCode || getTenantFromURL()
+    // Pembersihan client_code (contoh: "SEM-BARBERSHOP" -> "SEMBARBERSHOP")
+    const rawClientCode = user?.app_metadata?.client_code
+    const userClientCode = rawClientCode ? sanitizeClientCode(rawClientCode) : null
 
-    // 2. Query data dengan filter client_code
     let query = supabase
       .from('Reservations')
       .select('*')
       .order('created_at', { ascending: false })
 
-    // Filter data reservasi sesuai tenant URL/User yang aktif
-    if (activeTenantCode) {
-      query = query.eq('client_code', activeTenantCode)
+    if (userClientCode) {
+      query = query.eq('client_code', userClientCode)
     }
 
     const { data, error } = await query
@@ -673,8 +648,9 @@ export default function AdminDashboard() {
       const { data } = await supabase.auth.getSession()
       if (data.session) {
         setIsAuthenticated(true)
-        const activeTenant = getTenantFromURL() || data.session.user.app_metadata?.client_code || 'MCUT'
-        setTenantCode(activeTenant)
+        const rawCode = data.session.user.app_metadata?.client_code || 'MCUT'
+        const cleanCode = sanitizeClientCode(rawCode)
+        setTenantCode(cleanCode)
       }
     }
     checkSession()
@@ -682,7 +658,7 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     if (isAuthenticated) fetchReservations()
-  }, [isAuthenticated, tenantCode])
+  }, [isAuthenticated])
 
   if (!isAuthenticated) {
     return (
@@ -690,10 +666,10 @@ export default function AdminDashboard() {
         <div className="max-w-md w-full bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl p-6 sm:p-8 space-y-6">
           <div className="text-center space-y-1">
             <span className="px-3 py-1 rounded-full text-[11px] font-extrabold bg-amber-500/10 text-amber-500 border border-amber-500/20 tracking-wider">
-              ADMIN DASHBOARD ({tenantCode})
+              ADMIN DASHBOARD
             </span>
             <h1 className="text-2xl font-black text-white tracking-wide uppercase mt-2">
-              {tenantCode} Barbershop Portal
+              Barbershop Portal
             </h1>
             <p className="text-xs text-zinc-400">Silakan login untuk mengelola sistem reservasi</p>
           </div>
@@ -742,20 +718,15 @@ export default function AdminDashboard() {
         {/* Header Dashboard Dinamis Sesuai Tenant */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-zinc-900 border border-zinc-800 p-6 rounded-2xl shadow-xl gap-4">
           <div>
-            {/* 1. Badge Tenant (Di atas biar gak padat) */}
-            <div className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-500/10 text-amber-500 border border-amber-500/20 mb-2 tracking-wider">
-              TENANT: {tenantCode}
+            <div className="flex items-center space-x-2">
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-500/10 text-amber-500 border border-amber-500/20">
+                TENANT: {tenantCode}
+              </span>
+              <h1 className="text-xl sm:text-2xl font-black text-white tracking-wide uppercase">
+                {tenantCode} BARBERSHOP
+              </h1>
             </div>
-
-            {/* 2. Judul Brand (Clean & Standout) */}
-            <h1 className="text-xl sm:text-2xl font-black text-white tracking-wide uppercase">
-              {tenantCode} BARBERSHOP
-            </h1>
-
-            {/* 3. Subtitle */}
-            <p className="text-xs text-zinc-400 mt-1">
-              Kelola dan pantau pesanan masuk secara real-time
-            </p>
+            <p className="text-xs text-zinc-400 mt-1">Kelola dan pantau pesanan masuk secara real-time</p>
           </div>
 
           <div className="space-x-3 w-full md:w-auto flex justify-end">
@@ -777,7 +748,6 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        
         {/* STATS CARDS GRID */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
           <div className="bg-gradient-to-br from-emerald-950/80 to-zinc-900 border border-emerald-500/40 p-5 rounded-2xl shadow-xl">
