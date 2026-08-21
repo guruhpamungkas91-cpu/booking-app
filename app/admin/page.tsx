@@ -28,11 +28,17 @@ export default function AdminDashboard() {
   const [filteredReservations, setFilteredReservations] = useState<Reservation[]>([])
   const [loading, setLoading] = useState(false)
 
-  // State untuk Filter & Search
+  // State untuk Filter & Search Tabel Utama
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
+
+  // --- STATE KHUSUS PENARIKAN REPORT / LAPORAN ---
+  const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly' | 'custom'>('daily')
+  const [reportDate, setReportDate] = useState(new Date().toISOString().split('T')[0]) // Default hari ini
+  const [reportStartDate, setReportStartDate] = useState('')
+  const [reportEndDate, setReportEndDate] = useState('')
 
   // LOGIN MENGGUNAKAN SUPABASE AUTH
   const handleLogin = async (e: React.FormEvent) => {
@@ -116,17 +122,15 @@ export default function AdminDashboard() {
     'Shaving': 35000,
   }
 
-  // Helper untuk ambil harga layanan (default ke 50.000 jika nama layanan tidak cocok/kosong)
   const getServicePrice = (serviceName?: string): number => {
     if (!serviceName) return 50000
     return SERVICE_PRICES[serviceName] ?? 50000
   }
 
-  // 2. UPDATED USEMEMO HOOK
+  // 2. USEMEMO UNTUK STATISTIK KESELURUHAN (HEADER CARDS)
   const stats = useMemo(() => {
     const totalBookings = reservations.length
 
-    // 1. HITUNG TOTAL OMZET (Hanya dihitung dari status Completed / Selesai)
     const totalRevenue = reservations.reduce((sum, item) => {
       const isCompleted = item.status && (
         item.status.toString().trim().toLowerCase() === 'completed' || 
@@ -139,46 +143,30 @@ export default function AdminDashboard() {
       return sum
     }, 0)
 
-    // 2. PENDING
     const pendingCount = reservations.filter((r) => {
       if (!r.status) return true
       const cleanStatus = r.status.toString().trim().toLowerCase()
       return cleanStatus === '' || cleanStatus === 'pending' || cleanStatus === 'menunggu'
     }).length
 
-    // 3. CONFIRMED
     const confirmedCount = reservations.filter((b) => {
       if (!b.status) return false
       const s = b.status.toString().trim().toLowerCase()
       return s === 'confirmed' || s === 'dikonfirmasi'
     }).length
 
-    // 4. COMPLETED
     const completedCount = reservations.filter((b) => {
       if (!b.status) return false
       const s = b.status.toString().trim().toLowerCase()
       return s === 'completed' || s === 'selesai'
     }).length
 
-    // 5. CANCELLED (TOTAL BATAL)
     const cancelledCount = reservations.filter((b) => {
       if (!b.status) return false
       const s = b.status.toString().trim().toLowerCase()
       return s === 'cancelled' || s === 'batal'
     }).length
 
-    // 6. PENERIMAAN 7 HARI TERAKHIR
-    const sevenDaysAgo = new Date()
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
-
-    const last7DaysCount = reservations.filter((b) => {
-      const rawDate = b.created_at || b.booking_date
-      if (!rawDate) return false
-      const dateToCheck = new Date(rawDate)
-      return !isNaN(dateToCheck.getTime()) && dateToCheck >= sevenDaysAgo
-    }).length
-
-    // 📈 KALKULASI PERSENTASE
     const completedPercentage = totalBookings > 0 
       ? Math.round((completedCount / totalBookings) * 100) 
       : 0
@@ -193,18 +181,96 @@ export default function AdminDashboard() {
       confirmedCount,
       completedCount,
       cancelledCount,
-      last7DaysCount,
       completedPercentage,
       cancelledPercentage,
       totalRevenue,
     }
   }, [reservations])
 
-  // Progress Bar Helper untuk Statistik Mingguan (Disempurnakan & Bebas Error)
-  const maxWeeklyTarget = Math.max(stats.last7DaysCount, 10)
-  const weeklyPercentage = Math.min(Math.round((stats.last7DaysCount / maxWeeklyTarget) * 100), 100)
+  // 3. LOGIKA FILTER PENARIKAN LAPORAN (REPORT FILTER)
+  const reportData = useMemo(() => {
+    if (!reportDate && reportPeriod !== 'custom') return { items: [], totalRevenue: 0, count: 0 }
 
-  // 3. LOGIKA FITUR FILTER (TANGGAL, SEARCH, & STATUS)
+    const target = new Date(reportDate)
+
+    const filtered = reservations.filter((item) => {
+      const bookingDate = new Date(item.booking_date)
+
+      if (reportPeriod === 'daily') {
+        return item.booking_date === reportDate
+      } 
+      
+      if (reportPeriod === 'weekly') {
+        // Menghitung awal & akhir minggu dari tanggal pilihan (Senin-Minggu)
+        const day = target.getDay() // 0 = Minggu
+        const diffToMonday = target.getDate() - day + (day === 0 ? -6 : 1)
+        
+        const monday = new Date(target)
+        monday.setDate(diffToMonday)
+        monday.setHours(0, 0, 0, 0)
+
+        const sunday = new Date(monday)
+        sunday.setDate(monday.getDate() + 6)
+        sunday.setHours(23, 59, 59, 999)
+
+        return bookingDate >= monday && bookingDate <= sunday
+      } 
+      
+      if (reportPeriod === 'monthly') {
+        return (
+          bookingDate.getFullYear() === target.getFullYear() &&
+          bookingDate.getMonth() === target.getMonth()
+        )
+      } 
+      
+      if (reportPeriod === 'custom') {
+        if (!reportStartDate || !reportEndDate) return true
+        return item.booking_date >= reportStartDate && item.booking_date <= reportEndDate
+      }
+
+      return true
+    })
+
+    // Omzet Laporan hanya dihitung dari status Completed / Selesai
+    const totalRevenue = filtered.reduce((sum, item) => {
+      const isCompleted = item.status && (
+        item.status.toString().trim().toLowerCase() === 'completed' || 
+        item.status.toString().trim().toLowerCase() === 'selesai'
+      )
+      return isCompleted ? sum + getServicePrice(item.service_name) : sum
+    }, 0)
+
+    return {
+      items: filtered,
+      totalRevenue,
+      count: filtered.length,
+    }
+  }, [reservations, reportPeriod, reportDate, reportStartDate, reportEndDate])
+
+  // EXPORT LAPORAN KHUSUS PERIODE KE CSV
+  const exportReportToCSV = () => {
+    if (reportData.items.length === 0) {
+      alert('Tidak ada data transaksi pada periode laporan ini!')
+      return
+    }
+
+    const headers = ['Tanggal Booking,Jam,Nama Pelanggan,Layanan,Harga,Metode Bayar,WhatsApp,Status\n']
+    const rows = reportData.items.map(
+      (item) =>
+        `"${item.booking_date}","${item.booking_time}","${item.customer_name}","${item.service_name}","${getServicePrice(item.service_name)}","${item.payment_method || 'QRIS'}","${item.whatsapp_number}","${item.status || 'pending'}"`
+    )
+
+    const csvContent = 'data:text/csv;charset=utf-8,' + headers.concat(rows).join('\n')
+    const encodedUri = encodeURI(csvContent)
+    const link = document.createElement('a')
+    link.setAttribute('href', encodedUri)
+    link.setAttribute('download', `Laporan_Omzet_${reportPeriod.toUpperCase()}_${new Date().toISOString().split('T')[0]}.csv`)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
+
+  // 4. LOGIKA FITUR FILTER TABEL UTAMA (SEARCH & FILTER TANGGAL & STATUS)
   useEffect(() => {
     let result = [...reservations]
 
@@ -228,29 +294,6 @@ export default function AdminDashboard() {
 
     setFilteredReservations(result)
   }, [startDate, endDate, statusFilter, searchTerm, reservations])
-
-  // LOGIKA FITUR EXPORT TO CSV / EXCEL (DILENGKAPI DENGAN KOLOM HARGA)
-  const exportToCSV = () => {
-    if (filteredReservations.length === 0) {
-      alert('Tidak ada data untuk diexport!')
-      return
-    }
-
-    const headers = ['Tanggal Booking,Jam,Nama Pelanggan,Layanan,Harga,Metode Bayar,WhatsApp,Status\n']
-    const rows = filteredReservations.map(
-      (item) =>
-        `"${item.booking_date}","${item.booking_time}","${item.customer_name}","${item.service_name}","${getServicePrice(item.service_name)}","${item.payment_method || 'QRIS'}","${item.whatsapp_number}","${item.status || 'pending'}"`
-    )
-
-    const csvContent = 'data:text/csv;charset=utf-8,' + headers.concat(rows).join('\n')
-    const encodedUri = encodeURI(csvContent)
-    const link = document.createElement('a')
-    link.setAttribute('href', encodedUri)
-    link.setAttribute('download', `reservasi_export_${new Date().toISOString().split('T')[0]}.csv`)
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-  }
 
   // CEK SESSION AKTIF DARI SUPABASE
   useEffect(() => {
@@ -359,10 +402,8 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* STATS CARDS GRID (6 CARDS DENGAN HIGHLIGHT OMZET) */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 mb-8">
-          
-          {/* CARD 1: TOTAL OMZET (DITAMBAHKAN) */}
+        {/* STATS CARDS GRID */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
           <div className="bg-gradient-to-br from-emerald-950/80 to-zinc-900 border border-emerald-500/40 p-5 rounded-2xl shadow-xl">
             <p className="text-xs font-bold text-emerald-400 uppercase tracking-wider">Total Omzet</p>
             <div className="mt-2">
@@ -375,7 +416,6 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          {/* CARD 2: TOTAL BOOKING */}
           <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl shadow-lg">
             <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Total Booking</p>
             <div className="flex items-baseline justify-between mt-2">
@@ -384,16 +424,14 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          {/* CARD 3: MENUNGGU */}
           <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl shadow-lg">
             <p className="text-xs font-semibold text-amber-400 uppercase tracking-wider">Menunggu</p>
             <div className="flex items-baseline justify-between mt-2">
               <h3 className="text-3xl font-black text-amber-400">{stats.pendingCount}</h3>
-              <span className="text-xs text-amber-500/80 font-medium">Perlu aksi</span>
+              <span className="text-xs text-amber-500/80 font-medium">Perlu Konfirmasi</span>
             </div>
           </div>
 
-          {/* CARD 4: DIKONFIRMASI */}
           <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl shadow-lg">
             <p className="text-xs font-semibold text-blue-400 uppercase tracking-wider">Dikonfirmasi</p>
             <div className="flex items-baseline justify-between mt-2">
@@ -402,7 +440,6 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          {/* CARD 5: SELESAI */}
           <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl shadow-lg">
             <p className="text-xs font-semibold text-emerald-400 uppercase tracking-wider">Selesai</p>
             <div className="flex items-baseline justify-between mt-2">
@@ -413,7 +450,6 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          {/* CARD 6: BATAL */}
           <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl shadow-lg">
             <p className="text-xs font-semibold text-rose-400 uppercase tracking-wider">Pembatalan</p>
             <div className="flex items-baseline justify-between mt-2">
@@ -423,15 +459,113 @@ export default function AdminDashboard() {
               </span>
             </div>
           </div>
-
         </div>
 
-        {/* --- CONTROL BOX (FILTER & SEARCH BAR) --- */}
+        {/* --- FITUR PENARIKAN LAPORAN (REPORT GENERATOR) --- */}
+        <div className="bg-zinc-900 border border-amber-500/30 p-5 rounded-2xl shadow-xl space-y-4">
+          <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+            <div>
+              <h2 className="text-base font-extrabold text-amber-400 flex items-center gap-2">
+                <span>📊 Penarikan Laporan & Omzet</span>
+              </h2>
+              <p className="text-xs text-zinc-400">Pilih periode laporan untuk menghitung omzet dan mengunduh file CSV/Excel</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
+            {/* Opsi Periode (Harian, Mingguan, Bulanan, Custom) */}
+            <div className="md:col-span-3">
+              <label className="block text-xs font-semibold text-zinc-300 mb-1.5">Tipe Laporan:</label>
+              <div className="grid grid-cols-2 gap-1.5 p-1 bg-zinc-950 rounded-xl border border-zinc-800">
+                {(['daily', 'weekly', 'monthly', 'custom'] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    onClick={() => setReportPeriod(mode)}
+                    className={`py-1.5 rounded-lg text-xs font-bold transition capitalize ${
+                      reportPeriod === mode
+                        ? 'bg-amber-500 text-zinc-950 shadow-md'
+                        : 'text-zinc-400 hover:text-white'
+                    }`}
+                  >
+                    {mode === 'daily' ? 'Harian' : mode === 'weekly' ? 'Mingguan' : mode === 'monthly' ? 'Bulanan' : 'Custom'}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Input Tanggal Berdasarkan Periode */}
+            {reportPeriod !== 'custom' ? (
+              <div className="md:col-span-4">
+                <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                  {reportPeriod === 'daily' && 'Pilih Tanggal:'}
+                  {reportPeriod === 'weekly' && 'Pilih Tanggal Acuan Minggu:'}
+                  {reportPeriod === 'monthly' && 'Pilih Bulan & Tahun:'}
+                </label>
+                <input
+                  type={reportPeriod === 'monthly' ? 'month' : 'date'}
+                  value={reportPeriod === 'monthly' ? reportDate.substring(0, 7) : reportDate}
+                  onChange={(e) => {
+                    const val = e.target.value
+                    setReportDate(reportPeriod === 'monthly' ? `${val}-01` : val)
+                  }}
+                  className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-zinc-200 focus:outline-none focus:border-amber-500"
+                />
+              </div>
+            ) : (
+              <>
+                <div className="md:col-span-2">
+                  <label className="block text-xs font-semibold text-zinc-300 mb-1.5">Dari Tanggal:</label>
+                  <input
+                    type="date"
+                    value={reportStartDate}
+                    onChange={(e) => setReportStartDate(e.target.value)}
+                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-zinc-200 focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <label className="block text-xs font-semibold text-zinc-300 mb-1.5">Sampai Tanggal:</label>
+                  <input
+                    type="date"
+                    value={reportEndDate}
+                    onChange={(e) => setReportEndDate(e.target.value)}
+                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-zinc-200 focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+              </>
+            )}
+
+            {/* Hasil Ringkasan Omzet Periode Ini */}
+            <div className="md:col-span-3 bg-zinc-950 border border-zinc-800 p-3 rounded-xl flex items-center justify-between">
+              <div>
+                <p className="text-[10px] text-zinc-400 uppercase font-bold">Omzet Periode Ini</p>
+                <p className="text-lg font-black text-emerald-400">
+                  Rp {reportData.totalRevenue.toLocaleString('id-ID')}
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-[10px] text-zinc-400 uppercase font-bold">Total Transaksi</p>
+                <p className="text-sm font-extrabold text-white">{reportData.count} Booking</p>
+              </div>
+            </div>
+
+            {/* Tombol Export */}
+            <div className="md:col-span-2">
+              <button
+                onClick={exportReportToCSV}
+                className="w-full bg-emerald-500 hover:bg-emerald-400 text-zinc-950 px-4 py-2.5 rounded-xl font-bold transition text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-500/10"
+              >
+                <span>📥 Download CSV</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* --- CONTROL BOX (FILTER & SEARCH BAR TABEL UTAMA) --- */}
         <div className="bg-zinc-900 border border-zinc-800 p-4 sm:p-5 rounded-2xl shadow-xl flex flex-wrap gap-4 items-end justify-between">
           <div className="flex flex-wrap gap-3 items-end w-full lg:w-auto">
             {/* Search Input */}
             <div className="w-full sm:w-64">
-              <label className="block text-xs font-semibold text-zinc-400 mb-1.5">Pencarian:</label>
+              <label className="block text-xs font-semibold text-zinc-400 mb-1.5">Pencarian Tabel:</label>
               <input
                 type="text"
                 placeholder="Cari nama, WA, atau layanan..."
@@ -443,7 +577,7 @@ export default function AdminDashboard() {
 
             {/* Filter Status */}
             <div>
-              <label className="block text-xs font-semibold text-zinc-400 mb-1.5">Status:</label>
+              <label className="block text-xs font-semibold text-zinc-400 mb-1.5">Filter Status:</label>
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
@@ -455,26 +589,6 @@ export default function AdminDashboard() {
                 <option value="completed">🔵 Completed</option>
                 <option value="cancelled">🔴 Cancelled</option>
               </select>
-            </div>
-
-            {/* Filter Tanggal */}
-            <div>
-              <label className="block text-xs font-semibold text-zinc-400 mb-1.5">Dari Tanggal:</label>
-              <input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-zinc-200 focus:outline-none focus:border-amber-500"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-zinc-400 mb-1.5">Sampai Tanggal:</label>
-              <input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-zinc-200 focus:outline-none focus:border-amber-500"
-              />
             </div>
 
             {(startDate || endDate || statusFilter !== 'all' || searchTerm) && (
@@ -491,13 +605,6 @@ export default function AdminDashboard() {
               </button>
             )}
           </div>
-
-          <button
-            onClick={exportToCSV}
-            className="bg-emerald-500/10 hover:bg-emerald-500 text-emerald-400 hover:text-zinc-950 border border-emerald-500/30 px-4 py-2 rounded-xl font-bold transition text-xs flex items-center gap-2 w-full sm:w-auto justify-center"
-          >
-            <span>📥 Export Excel (CSV)</span>
-          </button>
         </div>
 
         {/* --- TABEL DATA --- */}
@@ -515,7 +622,7 @@ export default function AdminDashboard() {
                     <th className="p-4">Jam</th>
                     <th className="p-4">Nama Pelanggan</th>
                     <th className="p-4">Layanan</th>
-                    <th className="p-4 text-emerald-400">Harga</th> {/* 👈 HEADER KOLOM HARGA */}
+                    <th className="p-4 text-emerald-400">Harga</th>
                     <th className="p-4">Metode Bayar</th>
                     <th className="p-4">WhatsApp</th>
                     <th className="p-4">Status</th>
@@ -537,12 +644,9 @@ export default function AdminDashboard() {
                             {item.service_name}
                           </span>
                         </td>
-                        
-                        {/* 👈 NILAI HARGA PER LAYANAN */}
                         <td className="p-4 font-semibold text-emerald-400">
                           Rp {getServicePrice(item.service_name).toLocaleString('id-ID')}
                         </td>
-
                         <td className="p-4">
                           <span className="bg-zinc-800 text-zinc-300 border border-zinc-700 px-2.5 py-1 rounded-md text-[11px] font-medium">
                             {item.payment_method || 'QRIS'}
@@ -600,5 +704,5 @@ export default function AdminDashboard() {
 
       </div>
     </div>
-  ) 
+  )
 }
