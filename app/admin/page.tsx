@@ -742,15 +742,20 @@ export default function AdminDashboard() {
         {/* Header Dashboard Dinamis Sesuai Tenant */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-zinc-900 border border-zinc-800 p-6 rounded-2xl shadow-xl gap-4">
           <div>
-            <div className="flex items-center space-x-2">
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-500/10 text-amber-500 border border-amber-500/20">
-                TENANT: {tenantCode}
-              </span>
-              <h1 className="text-xl sm:text-2xl font-black text-white tracking-wide uppercase">
-                {tenantCode} Barbershop
-              </h1>
+            {/* 1. Badge Tenant (Di atas biar gak padat) */}
+            <div className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-500/10 text-amber-500 border border-amber-500/20 mb-2 tracking-wider">
+              TENANT: {tenantCode}
             </div>
-            <p className="text-xs text-zinc-400 mt-1">Kelola dan pantau pesanan masuk secara real-time</p>
+
+            {/* 2. Judul Brand (Clean & Standout) */}
+            <h1 className="text-xl sm:text-2xl font-black text-white tracking-wide uppercase">
+              {tenantCode} BARBERSHOP
+            </h1>
+
+            {/* 3. Subtitle */}
+            <p className="text-xs text-zinc-400 mt-1">
+              Kelola dan pantau pesanan masuk secara real-time
+            </p>
           </div>
 
           <div className="space-x-3 w-full md:w-auto flex justify-end">
@@ -772,6 +777,7 @@ export default function AdminDashboard() {
           </div>
         </div>
 
+        
         {/* STATS CARDS GRID */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
           <div className="bg-gradient-to-br from-emerald-950/80 to-zinc-900 border border-emerald-500/40 p-5 rounded-2xl shadow-xl">
