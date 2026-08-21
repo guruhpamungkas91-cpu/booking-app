@@ -5,62 +5,89 @@ export const dynamic = 'force-dynamic'
 import { useState, useEffect, Suspense } from 'react'
 import { supabase } from './lib/supabase'
 
-// Configuration mapping berdasarkan domain / hostname
-const TENANT_CONFIG: Record<string, { clientCode: string; name: string; adminWa: string }> = {
+// Mapping domain ke konfigurasi tenant
+const TENANT_CONFIG: Record<string, { clientCode: string; adminWa: string }> = {
   'sem-barbershop.vercel.app': {
     clientCode: 'SEM',
-    name: 'SEM Barbershop',
-    adminWa: '6285899997828'
+    adminWa: '6282299997828'
   },
   'mcut-barbershop.vercel.app': {
     clientCode: 'MCUT',
-    name: 'MCUT Barbershop',
-    adminWa: '628123456789'
+    adminWa: '6285899997828'
   }
+}
+
+// Interface untuk data layanan
+interface ServiceItem {
+  id: number
+  client_code: string
+  name: string
+  price: string
+  desc: string
 }
 
 function BookingFormContent() {
   const [tenant, setTenant] = useState({
     clientCode: 'MCUT',
-    name: 'MCUT Barbershop',
     adminWa: '6285899997828'
   })
 
-  // Deteksi domain saat komponen dimuat di browser
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const hostname = window.location.hostname
-      if (TENANT_CONFIG[hostname]) {
-        setTenant(TENANT_CONFIG[hostname])
-      }
-    }
-  }, [])
+  const [services, setServices] = useState<ServiceItem[]>([])
+  const [fetchingServices, setFetchingServices] = useState(true)
 
   const [formData, setFormData] = useState({
     customer_name: '',
     whatsapp_number: '',
     booking_date: '',
     booking_time: '',
-    service_name: 'Potong Rambut',
+    service_name: '',
     payment_method: 'QRIS',
   })
   const [loading, setLoading] = useState(false)
 
-  const services = [
-    { name: 'Potong Rambut', price: 'Rp 50.000', desc: 'Gunting + Styling + Washing' },
-    { name: 'Coloring', price: 'Rp 120.000', desc: 'Pewarnaan Rambut Premium' },
-  ]
+  // 1. Deteksi domain & Ambil Layanan dari Supabase
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const hostname = window.location.hostname
+      const currentTenant = TENANT_CONFIG[hostname] || {
+        clientCode: 'MCUT',
+        adminWa: '6285899997828'
+      }
+
+      setTenant(currentTenant)
+
+      // Fetch layanan dari Supabase berdasarkan client_code
+      const fetchServices = async () => {
+        setFetchingServices(true)
+        const { data, error } = await supabase
+          .from('Services')
+          .select('*')
+          .eq('client_code', currentTenant.clientCode)
+
+        if (error) {
+          console.error('Gagal mengambil layanan:', error.message)
+        } else if (data && data.length > 0) {
+          setServices(data)
+          // Set pilihan layanan default ke item pertama
+          setFormData((prev) => ({ ...prev, service_name: data[0].name }))
+        }
+        setFetchingServices(false)
+      }
+
+      fetchServices()
+    }
+  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
 
-    // 1. SIMPAN DATA RESERVASI + CLIENT_CODE DARI TENANT
+    // SIMPAN DATA RESERVASI
     const { error } = await supabase.from('Reservations').insert([
       {
         ...formData,
         status: 'pending',
-        client_code: tenant.clientCode // 👈 Terikat ke tenant dari domain
+        client_code: tenant.clientCode
       }
     ])
 
@@ -70,7 +97,7 @@ function BookingFormContent() {
       return
     }
 
-    // 2. Format Pesan WhatsApp
+    // Format Pesan WhatsApp
     const message = encodeURIComponent(
       `Halo Admin *${tenant.clientCode} Barbershop*, saya mau konfirmasi reservasi:\n\n` +
         `📌 *Nama:* ${formData.customer_name}\n` +
@@ -82,7 +109,7 @@ function BookingFormContent() {
         `Mohon diproses ya, terima kasih!`
     )
 
-    // 3. Redirect ke WA Admin sesuai domain
+    // Redirect ke WA Admin
     const waUrl = `https://wa.me/${tenant.adminWa}?text=${message}`
     window.location.href = waUrl
   }
@@ -146,37 +173,44 @@ function BookingFormContent() {
             </div>
           </div>
 
-          {/* PILIH LAYANAN */}
+          {/* PILIH LAYANAN DINAMIS */}
           <div className="space-y-3 pt-2">
             <h2 className="text-xs font-bold text-zinc-400 uppercase tracking-wider">
               2. Pilih Layanan
             </h2>
-            <div className="grid grid-cols-1 gap-2.5">
-              {services.map((item) => {
-                const active = formData.service_name === item.name
-                return (
-                  <div
-                    key={item.name}
-                    onClick={() => setFormData({ ...formData, service_name: item.name })}
-                    className={`cursor-pointer p-3.5 rounded-xl border transition-all flex items-center justify-between ${
-                      active
-                        ? 'bg-amber-500/10 border-amber-500/60 text-white'
-                        : 'bg-zinc-950/60 border-zinc-800 text-zinc-400 hover:border-zinc-700'
-                    }`}
-                  >
-                    <div>
-                      <p className={`text-sm font-semibold ${active ? 'text-amber-400' : 'text-zinc-200'}`}>
-                        {item.name}
-                      </p>
-                      <p className="text-xs text-zinc-500 mt-0.5">{item.desc}</p>
+            
+            {fetchingServices ? (
+              <p className="text-xs text-zinc-500 animate-pulse">Memuat daftar layanan...</p>
+            ) : services.length === 0 ? (
+              <p className="text-xs text-zinc-500">Belum ada layanan tersedia.</p>
+            ) : (
+              <div className="grid grid-cols-1 gap-2.5">
+                {services.map((item) => {
+                  const active = formData.service_name === item.name
+                  return (
+                    <div
+                      key={item.id}
+                      onClick={() => setFormData({ ...formData, service_name: item.name })}
+                      className={`cursor-pointer p-3.5 rounded-xl border transition-all flex items-center justify-between ${
+                        active
+                          ? 'bg-amber-500/10 border-amber-500/60 text-white'
+                          : 'bg-zinc-950/60 border-zinc-800 text-zinc-400 hover:border-zinc-700'
+                      }`}
+                    >
+                      <div>
+                        <p className={`text-sm font-semibold ${active ? 'text-amber-400' : 'text-zinc-200'}`}>
+                          {item.name}
+                        </p>
+                        <p className="text-xs text-zinc-500 mt-0.5">{item.desc}</p>
+                      </div>
+                      <span className="text-xs font-bold text-zinc-300 bg-zinc-800/80 px-2.5 py-1 rounded-lg border border-zinc-700/50">
+                        {item.price}
+                      </span>
                     </div>
-                    <span className="text-xs font-bold text-zinc-300 bg-zinc-800/80 px-2.5 py-1 rounded-lg border border-zinc-700/50">
-                      {item.price}
-                    </span>
-                  </div>
-                )
-              })}
-            </div>
+                  )
+                })}
+              </div>
+            )}
           </div>
 
           {/* TANGGAL & JAM */}
