@@ -79,6 +79,7 @@ export default function AdminDashboard() {
     }
   }, [])
 
+  
   // AMBIL DATA TENANT (PAKET LANGGANAN & STAFF LABEL)
   const fetchTenantDetail = async (cleanCode: string) => {
     if (!cleanCode) return
@@ -90,7 +91,14 @@ export default function AdminDashboard() {
 
     if (!error && data) {
       if (data.subscription_plan) {
-        setSubscriptionPlan(data.subscription_plan.toUpperCase() as SubscriptionPlanType)
+        const planUpper = data.subscription_plan.toUpperCase()
+        if (planUpper.includes('PRO')) {
+          setSubscriptionPlan('PROFESIONAL')
+        } else if (planUpper.includes('PREMIUM')) {
+          setSubscriptionPlan('PREMIUM')
+        } else {
+          setSubscriptionPlan('BASIC')
+        }
       }
       if (data.staff_label) {
         setStaffLabel(data.staff_label)
@@ -131,35 +139,36 @@ export default function AdminDashboard() {
 
   // Fetch Reservations
   const fetchReservations = async () => {
-    setLoading(true)
-    const { data: { user } } = await supabase.auth.getUser()
-    
-    const rawClientCode = user?.app_metadata?.client_code
-    const userClientCode = rawClientCode ? sanitizeClientCode(rawClientCode) : null
+  setLoading(true)
+  const { data: { user } } = await supabase.auth.getUser()
+  
+  const rawClientCode = user?.app_metadata?.client_code || tenantCode
+  const userClientCode = rawClientCode ? sanitizeClientCode(rawClientCode) : null
 
-    if (userClientCode) {
-      fetchTenantDetail(userClientCode)
-    }
-
-    let query = supabase
-      .from('Reservations')
-      .select('*')
-      .order('created_at', { ascending: false })
-
-    if (userClientCode) {
-      query = query.eq('client_code', userClientCode)
-    }
-
-    const { data, error } = await query
-
-    if (error) {
-      alert('Gagal mengambil data: ' + error.message)
-    } else {
-      setReservations(data || [])
-      setFilteredReservations(data || [])
-    }
-    setLoading(false)
+  if (userClientCode) {
+    // Ambil ulang detail tenant (termasuk status paket terbaru dari Supabase)
+    await fetchTenantDetail(userClientCode)
   }
+
+  let query = supabase
+    .from('Reservations')
+    .select('*')
+    .order('created_at', { ascending: false })
+
+  if (userClientCode) {
+    query = query.eq('client_code', userClientCode)
+  }
+
+  const { data, error } = await query
+
+  if (error) {
+    alert('Gagal mengambil data: ' + error.message)
+  } else {
+    setReservations(data || [])
+    setFilteredReservations(data || [])
+  }
+  setLoading(false)
+}
 
   // Function Mengubah Status Umum
   const updateStatusInDB = async (id: number, newStatus: string) => {
