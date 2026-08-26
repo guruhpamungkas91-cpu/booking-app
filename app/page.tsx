@@ -5,19 +5,16 @@ export const dynamic = 'force-dynamic'
 import { useState, useEffect, Suspense } from 'react'
 import { supabase } from './lib/supabase'
 
-// Mapping domain ke konfigurasi tenant
-const TENANT_CONFIG: Record<string, { clientCode: string; adminWa: string }> = {
-  'sem-barbershop.vercel.app': {
-    clientCode: 'SEM',
-    adminWa: '6282299997828'
-  },
-  'mcut-barbershop.vercel.app': {
-    clientCode: 'MCUT',
-    adminWa: '6285899997828'
-  }
+// Interface Data Tenant & Service
+interface TenantData {
+  client_code: string
+  name: string
+  domain: string
+  admin_wa: string
+  qris_url?: string
+  bca_number?: string
 }
 
-// Interface untuk data layanan
 interface ServiceItem {
   id: number
   client_code: string
@@ -27,12 +24,9 @@ interface ServiceItem {
 }
 
 function BookingFormContent() {
-  const [tenant, setTenant] = useState({
-    clientCode: 'MCUT',
-    adminWa: '6285899997828'
-  })
-
+  const [tenant, setTenant] = useState<TenantData | null>(null)
   const [services, setServices] = useState<ServiceItem[]>([])
+  const [loadingTenant, setLoadingTenant] = useState(true)
   const [fetchingServices, setFetchingServices] = useState(true)
 
   const [formData, setFormData] = useState({
@@ -45,49 +39,65 @@ function BookingFormContent() {
   })
   const [loading, setLoading] = useState(false)
 
-  // 1. Deteksi domain & Ambil Layanan dari Supabase
+  // 1. Fetch Tenant dari Database Supabase berdasarkan Domain Browser
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const hostname = window.location.hostname
-      const currentTenant = TENANT_CONFIG[hostname] || {
-        clientCode: 'MCUT',
-        adminWa: '6285899997828'
-      }
+      const currentHost = window.location.hostname
 
-      setTenant(currentTenant)
-
-      // Fetch layanan dari Supabase berdasarkan client_code
-      const fetchServices = async () => {
-        setFetchingServices(true)
-        const { data, error } = await supabase
-          .from('Services')
+      const fetchTenantAndServices = async () => {
+        setLoadingTenant(true)
+        
+        // Query ke tabel Tenants
+        let { data: tenantData, error: tenantErr } = await supabase
+          .from('Tenants')
           .select('*')
-          .eq('client_code', currentTenant.clientCode)
+          .eq('domain', currentHost)
+          .single()
 
-        if (error) {
-          console.error('Gagal mengambil layanan:', error.message)
-        } else if (data && data.length > 0) {
-          setServices(data)
-          // Set pilihan layanan default ke item pertama
-          setFormData((prev) => ({ ...prev, service_name: data[0].name }))
+        // Fallback jika domain tidak ditemukan (misal di localhost tapi belum di-set di DB)
+        if (tenantErr || !tenantData) {
+          const { data: fallbackTenant } = await supabase
+            .from('Tenants')
+            .select('*')
+            .eq('client_code', 'MCUT')
+            .single()
+          tenantData = fallbackTenant
         }
-        setFetchingServices(false)
+
+        if (tenantData) {
+          setTenant(tenantData)
+
+          // Fetch Layanan berdasarkan client_code dari tenant tersebut
+          setFetchingServices(true)
+          const { data: serviceData } = await supabase
+            .from('Services')
+            .select('*')
+            .eq('client_code', tenantData.client_code)
+
+          if (serviceData && serviceData.length > 0) {
+            setServices(serviceData)
+            setFormData((prev) => ({ ...prev, service_name: serviceData[0].name }))
+          }
+          setFetchingServices(false)
+        }
+        setLoadingTenant(false)
       }
 
-      fetchServices()
+      fetchTenantAndServices()
     }
   }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!tenant) return
     setLoading(true)
 
-    // SIMPAN DATA RESERVASI
+    // SIMPAN DATA RESERVASI DENGAN CLIENT_CODE
     const { error } = await supabase.from('Reservations').insert([
       {
         ...formData,
         status: 'pending',
-        client_code: tenant.clientCode
+        client_code: tenant.client_code
       }
     ])
 
@@ -99,7 +109,7 @@ function BookingFormContent() {
 
     // Format Pesan WhatsApp
     const message = encodeURIComponent(
-      `Halo Admin *${tenant.clientCode} Barbershop*, saya mau konfirmasi reservasi:\n\n` +
+      `Halo Admin *${tenant.name}*, saya mau konfirmasi reservasi:\n\n` +
         `📌 *Nama:* ${formData.customer_name}\n` +
         `📞 *WA:* ${formData.whatsapp_number}\n` +
         `✂️ *Layanan:* ${formData.service_name}\n` +
@@ -109,9 +119,17 @@ function BookingFormContent() {
         `Mohon diproses ya, terima kasih!`
     )
 
-    // Redirect ke WA Admin
-    const waUrl = `https://wa.me/${tenant.adminWa}?text=${message}`
+    // Redirect ke WA Admin Tenant
+    const waUrl = `https://wa.me/${tenant.admin_wa}?text=${message}`
     window.location.href = waUrl
+  }
+
+  if (loadingTenant) {
+    return (
+      <div className="min-h-screen bg-zinc-950 text-amber-500 flex items-center justify-center font-medium">
+        Memuat data barbershop...
+      </div>
+    )
   }
 
   return (
@@ -126,11 +144,8 @@ function BookingFormContent() {
             </svg>
           </div>
           <h1 className="text-3xl font-black tracking-wider text-white uppercase">
-            {tenant.clientCode}
+            {tenant?.name}
           </h1>
-          <p className="text-xs font-semibold text-amber-500 uppercase tracking-widest mt-0.5">
-            Barbershop
-          </p>
           <p className="text-xs text-zinc-400 mt-2">
             Pesan jadwal potong rambut kamu secara instan
           </p>
@@ -173,7 +188,7 @@ function BookingFormContent() {
             </div>
           </div>
 
-          {/* PILIH LAYANAN DINAMIS */}
+          {/* PILIH LAYANAN */}
           <div className="space-y-3 pt-2">
             <h2 className="text-xs font-bold text-zinc-400 uppercase tracking-wider">
               2. Pilih Layanan
@@ -290,7 +305,7 @@ function BookingFormContent() {
 
                 <div className="p-4 bg-white rounded-2xl inline-block shadow-2xl border border-zinc-300">
                   <img
-                    src={`/${tenant.clientCode}.png`}
+                    src={tenant?.qris_url || `/MCUT.png`}
                     onError={(e) => { e.currentTarget.src = '/MCUT.png' }}
                     alt="QRIS Code"
                     className="w-64 h-64 sm:w-72 sm:h-72 mx-auto object-contain image-render-crisp"
@@ -305,8 +320,10 @@ function BookingFormContent() {
                 <p className="text-xs text-zinc-400">Silakan Transfer ke Rekening BCA:</p>
                 <div className="bg-zinc-900 p-3 rounded-xl border border-zinc-800 flex items-center justify-between">
                   <div>
-                    <p className="text-lg font-mono font-bold text-amber-400 tracking-wider">123-456-7890</p>
-                    <p className="text-xs text-zinc-400 mt-0.5">a.n. {tenant.clientCode} Barbershop</p>
+                    <p className="text-lg font-mono font-bold text-amber-400 tracking-wider">
+                      {tenant?.bca_number || '123-456-7890'}
+                    </p>
+                    <p className="text-xs text-zinc-400 mt-0.5">a.n. {tenant?.name}</p>
                   </div>
                 </div>
               </div>
