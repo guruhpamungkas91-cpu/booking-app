@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic'
 
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 
 interface Reservation {
@@ -79,24 +79,24 @@ export default function AdminDashboard() {
     }
   }, [])
 
-  
-  // AMBIL DATA TENANT (PAKET LANGGANAN & STAFF LABEL)
-  const fetchTenantDetail = async (cleanCode: string) => {
-    // 1. Coba cari berdasarkan client_code dulu
-    let { data, error } = await supabase
-      .from('Tenants')
-      .select('subscription_plan, staff_label, name, client_code')
-      .eq('client_code', cleanCode)
-      .maybeSingle()
+  // AMBIL DATA TENANT (PAKET LANGGANAN & STAFF LABEL) SECARA LIVE DARI DATABASE
+  const fetchTenantDetail = useCallback(async (cleanCode: string) => {
+    let query = supabase.from('Tenants').select('subscription_plan, staff_label, name, client_code')
 
-    // 2. Fallback: Ambil data row pertama jika client_code tidak cocok
+    if (cleanCode) {
+      query = query.eq('client_code', cleanCode)
+    }
+
+    let { data, error } = await query.maybeSingle()
+
+    // Fallback: Ambil baris pertama jika client_code tidak spesifik/tidak ditemukan
     if (!data) {
       const { data: firstRow, error: fallbackError } = await supabase
         .from('Tenants')
         .select('subscription_plan, staff_label, name, client_code')
         .limit(1)
         .maybeSingle()
-      
+
       data = firstRow
       error = fallbackError
     }
@@ -107,13 +107,13 @@ export default function AdminDashboard() {
     }
 
     if (data) {
-      console.log('Data Tenant Berhasil Diambil:', data)
-      
+      console.log('Data Tenant Terpercaya dari Supabase:', data)
+
       if (data.subscription_plan) {
         const planUpper = data.subscription_plan.trim().toUpperCase()
-        if (planUpper.includes('PRO')) {
+        if (planUpper.includes('PRO') || planUpper.includes('PROFESIONAL') || planUpper.includes('ENTERPRISE')) {
           setSubscriptionPlan('PROFESIONAL')
-        } else if (planUpper.includes('PREMIUM')) {
+        } else if (planUpper.includes('PREMIUM') || planUpper.includes('PROMO')) {
           setSubscriptionPlan('PREMIUM')
         } else {
           setSubscriptionPlan('BASIC')
@@ -121,10 +121,11 @@ export default function AdminDashboard() {
       }
       if (data.staff_label) setStaffLabel(data.staff_label)
       if (data.name) setBrandTitle(data.name)
+      if (data.client_code) setTenantCode(data.client_code)
     }
-  }
+  }, [])
 
-  // Login
+  // Login Handler
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
@@ -141,29 +142,27 @@ export default function AdminDashboard() {
       const rawCode = data.session.user.app_metadata?.client_code || ''
       const cleanCode = sanitizeClientCode(rawCode)
       setTenantCode(cleanCode)
-      fetchTenantDetail(cleanCode)
+      await fetchTenantDetail(cleanCode)
     }
     setLoading(false)
   }
 
-  // Logout
+  // Logout Handler
   const handleLogout = async () => {
     await supabase.auth.signOut()
     setIsAuthenticated(false)
   }
 
-  // Fetch Reservations
-  const fetchReservations = async () => {
+  // Fetch Reservations & Refresh Status Tenant Live
+  const fetchReservations = useCallback(async () => {
     setLoading(true)
     const { data: { user } } = await supabase.auth.getUser()
-    
-    const rawClientCode = user?.app_metadata?.client_code || tenantCode
-    const userClientCode = rawClientCode ? sanitizeClientCode(rawClientCode) : null
 
-    if (userClientCode) {
-      // Ambil ulang detail tenant (termasuk status paket terbaru dari Supabase)
-      await fetchTenantDetail(userClientCode)
-    }
+    const rawClientCode = user?.app_metadata?.client_code || tenantCode
+    const userClientCode = rawClientCode ? sanitizeClientCode(rawClientCode) : ''
+
+    // Panggil ulang detail tenant secara mendalam
+    await fetchTenantDetail(userClientCode)
 
     let query = supabase
       .from('Reservations')
@@ -183,9 +182,9 @@ export default function AdminDashboard() {
       setFilteredReservations(data || [])
     }
     setLoading(false)
-  }
+  }, [tenantCode, fetchTenantDetail])
 
-  // Function Mengubah Status Umum
+  // Update Status
   const updateStatusInDB = async (id: number, newStatus: string) => {
     const { error } = await supabase
       .from('Reservations')
@@ -207,7 +206,6 @@ export default function AdminDashboard() {
     }
   }
 
-  // Handler Keputusan Modal Refund
   const handleConfirmCancel = async (needRefund: boolean) => {
     if (!cancelModalItem) return
     const statusText = needRefund ? 'cancelled_need_refund' : 'cancelled'
@@ -215,7 +213,6 @@ export default function AdminDashboard() {
     setCancelModalItem(null)
   }
 
-  // Handler Selesai Refund
   const handleCompleteRefund = async (id: number) => {
     const isConfirmed = window.confirm('Apakah kamu yakin refund untuk pesanan ini sudah ditransfer balik ke pelanggan?')
     if (!isConfirmed) return
@@ -259,20 +256,17 @@ export default function AdminDashboard() {
     return SERVICE_PRICES[serviceName] ?? 50000
   }
 
-  // Helper Format Tanggal Indonesia (DD/MM/YYYY)
   const formatDateID = (dateStr: string) => {
     if (!dateStr) return ''
     const [y, m, d] = dateStr.split('-')
     return `${d}/${m}/${y}`
   }
 
-  // Helper Cek Status Selesai
   const isCompleted = (status?: string) => {
     const s = (status || '').toString().trim().toLowerCase()
     return s === 'completed' || s === 'selesai'
   }
 
-  // HELPER MINGGUAN
   const getWeekRangeFromStart = (startDateString: string) => {
     if (!startDateString) return { startStr: '', endStr: '' }
     const [year, month, day] = startDateString.split('-').map(Number)
@@ -294,7 +288,7 @@ export default function AdminDashboard() {
     }
   }
 
-  // STATISTIK CARDS UTAMA
+  // STATISTIK CARDS
   const stats = useMemo(() => {
     const totalBookings = reservations.length
 
@@ -339,7 +333,7 @@ export default function AdminDashboard() {
     }
   }, [reservations])
 
-  // LOGIKA PENARIKAN LAPORAN KEUANGAN
+  // LAPORAN KEUANGAN LOGIC
   const reportData = useMemo(() => {
     let weekInfo = { startStr: '', endStr: '' }
 
@@ -394,7 +388,7 @@ export default function AdminDashboard() {
     }
   }, [reservations, reportPeriod, reportDate, reportStartDate, reportEndDate])
 
-  // EXPORT LAPORAN KEUANGAN UNTUK EXCEL (.XLS)
+  // EXPORT EXCEL
   const exportReportToCSV = () => {
     if (subscriptionPlan === 'BASIC') {
       alert('Fitur Penarikan Laporan Excel hanya tersedia di Paket Premium & Profesional.')
@@ -506,7 +500,7 @@ export default function AdminDashboard() {
     document.body.removeChild(link)
   }
 
-  // FITUR CETAK / SIMPAN KE PDF
+  // CETAK PDF
   const handlePrintPDF = () => {
     if (subscriptionPlan === 'BASIC') {
       alert('Fitur Cetak / PDF Laporan hanya tersedia di Paket Premium & Profesional.')
@@ -647,7 +641,7 @@ export default function AdminDashboard() {
     printWindow.document.close()
   }
 
-  // Dropdown filter
+  // Dropdown list
   const uniqueServices = useMemo(() => {
     const list = new Set(reservations.map((r) => r.service_name).filter(Boolean))
     return Array.from(list)
@@ -658,7 +652,7 @@ export default function AdminDashboard() {
     return Array.from(list)
   }, [reservations])
 
-  // FILTER + SORTING TABEL
+  // FILTER & SORTING
   useEffect(() => {
     let result = [...reservations]
 
@@ -745,11 +739,11 @@ export default function AdminDashboard() {
       }
     }
     checkSession()
-  }, [])
+  }, [fetchTenantDetail])
 
   useEffect(() => {
     if (isAuthenticated) fetchReservations()
-  }, [isAuthenticated])
+  }, [isAuthenticated, fetchReservations])
 
   if (!isAuthenticated) {
     return (
@@ -806,14 +800,14 @@ export default function AdminDashboard() {
     <div className="min-h-screen bg-zinc-950 p-4 md:p-8 text-zinc-100 font-sans relative">
       <div className="max-w-7xl mx-auto space-y-6">
 
-        {/* Header Dashboard Clean + BADGE PAKET */}
+        {/* Header Dashboard */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-zinc-900 border border-zinc-800 p-6 rounded-2xl shadow-xl gap-4">
           <div>
             <div className="flex items-center space-x-3">
               <h1 className="text-xl sm:text-2xl font-black text-white tracking-wide uppercase">
                 {brandTitle || tenantCode || 'BARBERSHOP'}
               </h1>
-              {/* BADGE PENANDA PAKET */}
+              {/* BADGE PENANDA PAKET DENGAN INDIKATOR WARNA DEDIKASI */}
               <span className={`text-[10px] font-extrabold px-3 py-1 rounded-full border tracking-wider ${
                 subscriptionPlan === 'PROFESIONAL'
                   ? 'bg-purple-500/10 border-purple-500/30 text-purple-400'
@@ -1017,7 +1011,7 @@ export default function AdminDashboard() {
                 </div>
               </div>
 
-              {/* TOMBOL EXPORT / LOCK STATE */}
+              {/* TOMBOL EXPORT AKTIF UNTUK PREMIUM MAUPUN PROFESIONAL */}
               {subscriptionPlan !== 'BASIC' ? (
                 <div className="grid grid-cols-2 gap-3">
                   <button
@@ -1341,7 +1335,7 @@ export default function AdminDashboard() {
 
       </div>
 
-      {/* MODAL POP-UP KONFIRMASI PEMBATALAN & REFUND */}
+      {/* MODAL REFUND */}
       {cancelModalItem && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 max-w-md w-full space-y-4 shadow-2xl animate-in fade-in zoom-in duration-150">
