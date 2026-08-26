@@ -154,36 +154,36 @@ export default function AdminDashboard() {
 
   // Fetch Reservations
   const fetchReservations = async () => {
-  setLoading(true)
-  const { data: { user } } = await supabase.auth.getUser()
-  
-  const rawClientCode = user?.app_metadata?.client_code || tenantCode
-  const userClientCode = rawClientCode ? sanitizeClientCode(rawClientCode) : null
+    setLoading(true)
+    const { data: { user } } = await supabase.auth.getUser()
+    
+    const rawClientCode = user?.app_metadata?.client_code || tenantCode
+    const userClientCode = rawClientCode ? sanitizeClientCode(rawClientCode) : null
 
-  if (userClientCode) {
-    // Ambil ulang detail tenant (termasuk status paket terbaru dari Supabase)
-    await fetchTenantDetail(userClientCode)
+    if (userClientCode) {
+      // Ambil ulang detail tenant (termasuk status paket terbaru dari Supabase)
+      await fetchTenantDetail(userClientCode)
+    }
+
+    let query = supabase
+      .from('Reservations')
+      .select('*')
+      .order('created_at', { ascending: false })
+
+    if (userClientCode) {
+      query = query.eq('client_code', userClientCode)
+    }
+
+    const { data, error } = await query
+
+    if (error) {
+      alert('Gagal mengambil data: ' + error.message)
+    } else {
+      setReservations(data || [])
+      setFilteredReservations(data || [])
+    }
+    setLoading(false)
   }
-
-  let query = supabase
-    .from('Reservations')
-    .select('*')
-    .order('created_at', { ascending: false })
-
-  if (userClientCode) {
-    query = query.eq('client_code', userClientCode)
-  }
-
-  const { data, error } = await query
-
-  if (error) {
-    alert('Gagal mengambil data: ' + error.message)
-  } else {
-    setReservations(data || [])
-    setFilteredReservations(data || [])
-  }
-  setLoading(false)
-}
 
   // Function Mengubah Status Umum
   const updateStatusInDB = async (id: number, newStatus: string) => {
@@ -396,8 +396,8 @@ export default function AdminDashboard() {
 
   // EXPORT LAPORAN KEUANGAN UNTUK EXCEL (.XLS)
   const exportReportToCSV = () => {
-    if (subscriptionPlan !== 'PROFESIONAL') {
-      alert('Fitur Penarikan Laporan Excel hanya tersedia di Paket Profesional.')
+    if (subscriptionPlan === 'BASIC') {
+      alert('Fitur Penarikan Laporan Excel hanya tersedia di Paket Premium & Profesional.')
       return
     }
 
@@ -508,8 +508,8 @@ export default function AdminDashboard() {
 
   // FITUR CETAK / SIMPAN KE PDF
   const handlePrintPDF = () => {
-    if (subscriptionPlan !== 'PROFESIONAL') {
-      alert('Fitur Cetak / PDF Laporan hanya tersedia di Paket Profesional.')
+    if (subscriptionPlan === 'BASIC') {
+      alert('Fitur Cetak / PDF Laporan hanya tersedia di Paket Premium & Profesional.')
       return
     }
 
@@ -922,9 +922,9 @@ export default function AdminDashboard() {
                 Data siap diexport ke Excel atau dicetak langsung/disimpan sebagai PDF resmi.
               </p>
             </div>
-            {subscriptionPlan !== 'PROFESIONAL' && (
-              <span className="text-[10px] font-bold bg-purple-500/10 text-purple-400 border border-purple-500/30 px-2.5 py-1 rounded-full flex items-center gap-1">
-                <span>🔒</span> Khusus Paket Profesional
+            {subscriptionPlan === 'BASIC' && (
+              <span className="text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30 px-2.5 py-1 rounded-full flex items-center gap-1">
+                <span>🔒</span> Fitur Paket Premium & Profesional
               </span>
             )}
           </div>
@@ -1018,7 +1018,7 @@ export default function AdminDashboard() {
               </div>
 
               {/* TOMBOL EXPORT / LOCK STATE */}
-              {subscriptionPlan === 'PROFESIONAL' ? (
+              {subscriptionPlan !== 'BASIC' ? (
                 <div className="grid grid-cols-2 gap-3">
                   <button
                     onClick={exportReportToCSV}
@@ -1040,10 +1040,10 @@ export default function AdminDashboard() {
                     <span>🔒</span> Export Excel & Cetak PDF dikunci.
                   </span>
                   <a
-                    href="https://wa.me/628123456789?text=Halo%20Admin,%20saya%20ingin%20upgrade%20ke%20Paket%20Profesional"
+                    href="https://wa.me/628123456789?text=Halo%20Admin,%20saya%20ingin%20upgrade%20paket%20langganan"
                     target="_blank"
                     rel="noreferrer"
-                    className="text-[11px] font-bold bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/40 px-3 py-1.5 rounded-lg transition"
+                    className="text-[11px] font-bold bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 px-3 py-1.5 rounded-lg transition"
                   >
                     Upgrade Paket
                   </a>
