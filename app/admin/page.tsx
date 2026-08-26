@@ -89,11 +89,11 @@ export default function AdminDashboard() {
       .eq('client_code', cleanCode)
       .maybeSingle()
 
-    // 2. Fallback: Jika client_code di user login tidak cocok dengan DB, ambil data row pertama
+    // 2. Fallback: Ambil data row pertama jika client_code tidak cocok
     if (!data) {
       const { data: firstRow, error: fallbackError } = await supabase
         .from('Tenants')
-        .select('subscription_plan, staff_label, name')
+        .select('subscription_plan, staff_label, name, client_code')
         .limit(1)
         .maybeSingle()
       
