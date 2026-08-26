@@ -80,8 +80,13 @@ export default function AdminDashboard() {
   }, [])
 
   // AMBIL DATA TENANT (PAKET LANGGANAN & STAFF LABEL) SECARA LIVE DARI DATABASE
-  const fetchTenantDetail = useCallback(async (cleanCode: string) => {
-    let query = supabase.from('Tenants').select('subscription_plan, staff_label, name, client_code')
+  // AMBIL DATA TENANT LIVE DARI DATABASE SUPABASE
+const fetchTenantDetail = useCallback(async (cleanCode: string) => {
+  try {
+    // 1. Query utama ke tabel Tenants
+    let query = supabase
+      .from('Tenants')
+      .select('subscription_plan, staff_label, name, client_code')
 
     if (cleanCode) {
       query = query.eq('client_code', cleanCode)
@@ -89,41 +94,44 @@ export default function AdminDashboard() {
 
     let { data, error } = await query.maybeSingle()
 
-    // Fallback: Ambil baris pertama jika client_code tidak spesifik/tidak ditemukan
+    // 2. Fallback jika query dengan client_code spesifik tidak mengembalikan hasil
     if (!data) {
-      const { data: firstRow, error: fallbackError } = await supabase
+      const { data: firstRow } = await supabase
         .from('Tenants')
         .select('subscription_plan, staff_label, name, client_code')
         .limit(1)
         .maybeSingle()
 
       data = firstRow
-      error = fallbackError
     }
 
-    if (error) {
-      console.error('Error Supabase Tenant:', error.message)
-      return
-    }
+    if (data && data.subscription_plan) {
+      // Normalisasi teks dari database
+      const rawPlan = String(data.subscription_plan).trim().toUpperCase()
+      
+      console.log('STATUS PLAN DARI DATABASE SUPABASE:', rawPlan)
 
-    if (data) {
-      console.log('Data Tenant Terpercaya dari Supabase:', data)
-
-      if (data.subscription_plan) {
-        const planUpper = data.subscription_plan.trim().toUpperCase()
-        if (planUpper.includes('PRO') || planUpper.includes('PROFESIONAL') || planUpper.includes('ENTERPRISE')) {
-          setSubscriptionPlan('PROFESIONAL')
-        } else if (planUpper.includes('PREMIUM') || planUpper.includes('PROMO')) {
-          setSubscriptionPlan('PREMIUM')
-        } else {
-          setSubscriptionPlan('BASIC')
-        }
+      // Cek variasi kata "PROFESIONAL", "PROFESSIONAL", atau "PRO"
+      if (
+        rawPlan.includes('PROFESIONAL') || 
+        rawPlan.includes('PROFESSIONAL') || 
+        rawPlan.includes('PRO')
+      ) {
+        setSubscriptionPlan('PROFESIONAL')
+      } else if (rawPlan.includes('PREMIUM')) {
+        setSubscriptionPlan('PREMIUM')
+      } else {
+        setSubscriptionPlan('BASIC')
       }
+
       if (data.staff_label) setStaffLabel(data.staff_label)
       if (data.name) setBrandTitle(data.name)
       if (data.client_code) setTenantCode(data.client_code)
     }
-  }, [])
+  } catch (err) {
+    console.error('Error fetching tenant details:', err)
+  }
+}, [])
 
   // Login Handler
   const handleLogin = async (e: React.FormEvent) => {
@@ -728,18 +736,22 @@ export default function AdminDashboard() {
   }
 
   useEffect(() => {
-    const checkSession = async () => {
-      const { data } = await supabase.auth.getSession()
-      if (data.session) {
-        setIsAuthenticated(true)
-        const rawCode = data.session.user.app_metadata?.client_code || ''
-        const cleanCode = sanitizeClientCode(rawCode)
-        setTenantCode(cleanCode)
-        fetchTenantDetail(cleanCode)
-      }
+  const checkSession = async () => {
+    const { data } = await supabase.auth.getSession()
+    if (data?.session) {
+      setIsAuthenticated(true)
+      const rawCode = data.session.user.app_metadata?.client_code || ''
+      const cleanCode = sanitizeClientCode(rawCode)
+      setTenantCode(cleanCode)
+      // Panggil fetch detail live dari DB
+      await fetchTenantDetail(cleanCode)
+    } else {
+      // Jika tidak ada session, tetap coba ambil data tenant pertama untuk set UI
+      await fetchTenantDetail('')
     }
-    checkSession()
-  }, [fetchTenantDetail])
+  }
+  checkSession()
+}, [fetchTenantDetail])
 
   useEffect(() => {
     if (isAuthenticated) fetchReservations()
