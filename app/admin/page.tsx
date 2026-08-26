@@ -11,6 +11,7 @@ interface Reservation {
   customer_name: string
   whatsapp_number: string
   service_name: string
+  staff_name?: string
   booking_date: string
   booking_time: string
   payment_method?: string
@@ -18,13 +19,17 @@ interface Reservation {
   client_code?: string
 }
 
-type SortField = 'booking_date' | 'booking_time' | 'customer_name' | 'service_name' | 'price' | 'payment_method' | 'status'
+type SortField = 'booking_date' | 'booking_time' | 'customer_name' | 'service_name' | 'staff_name' | 'price' | 'payment_method' | 'status'
 type SortOrder = 'asc' | 'desc'
 
 export default function AdminDashboard() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [tenantCode, setTenantCode] = useState<string>('')
   const [brandTitle, setBrandTitle] = useState<string>('BARBERSHOP')
+
+  // STATE UNTUK KONTROL PAKET LANGGANAN & STAFF LABEL
+  const [subscriptionPlan, setSubscriptionPlan] = useState<'BASIC' | 'PREMIUM' | 'PROFESIONAL'>('BASIC')
+  const [staffLabel, setStaffLabel] = useState<string>('Capster / Staff')
 
   // State Login Supabase
   const [emailInput, setEmailInput] = useState('')
@@ -73,6 +78,28 @@ export default function AdminDashboard() {
     }
   }, [])
 
+  // AMBIL DATA TENANT (PAKET LANGGANAN & STAFF LABEL)
+  const fetchTenantDetail = async (cleanCode: string) => {
+    if (!cleanCode) return
+    const { data, error } = await supabase
+      .from('Tenants')
+      .select('subscription_plan, staff_label, name')
+      .eq('client_code', cleanCode)
+      .single()
+
+    if (!error && data) {
+      if (data.subscription_plan) {
+        setSubscriptionPlan(data.subscription_plan.toUpperCase() as any)
+      }
+      if (data.staff_label) {
+        setStaffLabel(data.staff_label)
+      }
+      if (data.name) {
+        setBrandTitle(data.name)
+      }
+    }
+  }
+
   // Login
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -90,6 +117,7 @@ export default function AdminDashboard() {
       const rawCode = data.session.user.app_metadata?.client_code || ''
       const cleanCode = sanitizeClientCode(rawCode)
       setTenantCode(cleanCode)
+      fetchTenantDetail(cleanCode)
     }
     setLoading(false)
   }
@@ -107,6 +135,10 @@ export default function AdminDashboard() {
     
     const rawClientCode = user?.app_metadata?.client_code
     const userClientCode = rawClientCode ? sanitizeClientCode(rawClientCode) : null
+
+    if (userClientCode) {
+      fetchTenantDetail(userClientCode)
+    }
 
     let query = supabase
       .from('Reservations')
@@ -195,6 +227,11 @@ export default function AdminDashboard() {
 
   const getServicePrice = (serviceName?: string): number => {
     if (!serviceName) return 50000
+    // Dukungan untuk multi-select layanan (dibatasi koma)
+    if (serviceName.includes(',')) {
+      const parts = serviceName.split(',').map((s) => s.trim())
+      return parts.reduce((acc, curr) => acc + (SERVICE_PRICES[curr] || 50000), 0)
+    }
     return SERVICE_PRICES[serviceName] ?? 50000
   }
 
@@ -335,6 +372,11 @@ export default function AdminDashboard() {
 
   // EXPORT LAPORAN KEUANGAN UNTUK EXCEL (.XLS)
   const exportReportToCSV = () => {
+    if (subscriptionPlan !== 'PROFESIONAL') {
+      alert('Fitur Penarikan Laporan Excel hanya tersedia di Paket Profesional.')
+      return
+    }
+
     if (reportData.items.length === 0) {
       alert('Tidak ada transaksi Completed / Refund pada periode laporan ini!')
       return
@@ -368,7 +410,7 @@ export default function AdminDashboard() {
         </style>
       </head>
       <body>
-        <div class="title">LAPORAN KEUANGAN & OMZET NETTO - ${displayBrand} BARBERSHOP</div>
+        <div class="title">LAPORAN KEUANGAN & OMZET NETTO - ${displayBrand}</div>
         <div class="subtitle">Periode: ${labelPeriode} | Tanggal Cetak: ${new Date().toLocaleDateString('id-ID')}</div>
         
         <table>
@@ -379,6 +421,7 @@ export default function AdminDashboard() {
               <th>Jam</th>
               <th>Nama Pelanggan</th>
               <th>Layanan</th>
+              ${subscriptionPlan !== 'BASIC' ? `<th>${staffLabel}</th>` : ''}
               <th>Metode Bayar</th>
               <th>WhatsApp</th>
               <th>Status Transaksi</th>
@@ -399,6 +442,7 @@ export default function AdminDashboard() {
                   <td class="center">${item.booking_time} WIB</td>
                   <td>${item.customer_name}</td>
                   <td>${item.service_name}</td>
+                  ${subscriptionPlan !== 'BASIC' ? `<td>${item.staff_name || '-'}</td>` : ''}
                   <td class="center">${item.payment_method || 'QRIS'}</td>
                   <td>'${item.whatsapp_number}</td>
                   <td class="center ${isRefund ? 'status-refund' : 'status-completed'}">
@@ -413,15 +457,15 @@ export default function AdminDashboard() {
               .join('')}
             
             <tr class="total-row">
-              <td colspan="8" style="text-align: right;">TOTAL OMZET BRUTO (UANG MASUK):</td>
+              <td colspan="${subscriptionPlan !== 'BASIC' ? 9 : 8}" style="text-align: right;">TOTAL OMZET BRUTO (UANG MASUK):</td>
               <td class="num" style="color: #059669;">Rp ${reportData.grossRevenue.toLocaleString('id-ID')}</td>
             </tr>
             <tr class="total-row">
-              <td colspan="8" style="text-align: right; color: #dc2626;">TOTAL PENGEMBALIAN DANA (REFUND):</td>
+              <td colspan="${subscriptionPlan !== 'BASIC' ? 9 : 8}" style="text-align: right; color: #dc2626;">TOTAL PENGEMBALIAN DANA (REFUND):</td>
               <td class="num" style="color: #dc2626;">- Rp ${reportData.totalRefund.toLocaleString('id-ID')}</td>
             </tr>
             <tr class="net-row">
-              <td colspan="8" style="text-align: right; font-weight: bold; color: #065f46;">TOTAL OMZET NETTO (PENDAPATAN BERSIH):</td>
+              <td colspan="${subscriptionPlan !== 'BASIC' ? 9 : 8}" style="text-align: right; font-weight: bold; color: #065f46;">TOTAL OMZET NETTO (PENDAPATAN BERSIH):</td>
               <td class="num" style="color: #065f46; font-size: 14px;">Rp ${reportData.netRevenue.toLocaleString('id-ID')}</td>
             </tr>
           </tbody>
@@ -442,6 +486,11 @@ export default function AdminDashboard() {
 
   // FITUR CETAK / SIMPAN KE PDF
   const handlePrintPDF = () => {
+    if (subscriptionPlan !== 'PROFESIONAL') {
+      alert('Fitur Cetak / PDF Laporan hanya tersedia di Paket Profesional.')
+      return
+    }
+
     if (reportData.items.length === 0) {
       alert('Tidak ada transaksi Completed / Refund pada periode laporan ini!')
       return
@@ -462,7 +511,7 @@ export default function AdminDashboard() {
       <!DOCTYPE html>
       <html>
       <head>
-        <title>Laporan Keuangan ${displayBrand} Barbershop</title>
+        <title>Laporan Keuangan ${displayBrand}</title>
         <style>
           @page { size: A4 portrait; margin: 15mm; }
           body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 11px; color: #111; margin: 0; padding: 0; }
@@ -488,7 +537,7 @@ export default function AdminDashboard() {
       </head>
       <body>
         <div class="header">
-          <h1>${displayBrand} BARBERSHOP</h1>
+          <h1>${displayBrand}</h1>
           <p>LAPORAN KEUANGAN & OMZET NETTO</p>
         </div>
 
@@ -507,6 +556,7 @@ export default function AdminDashboard() {
               <th class="center" width="10%">Jam</th>
               <th>Nama Pelanggan</th>
               <th>Layanan</th>
+              ${subscriptionPlan !== 'BASIC' ? `<th>${staffLabel}</th>` : ''}
               <th class="center">Bayar</th>
               <th class="center">Status</th>
               <th class="right">Nominal</th>
@@ -526,6 +576,7 @@ export default function AdminDashboard() {
                   <td class="center">${item.booking_time}</td>
                   <td class="bold">${item.customer_name}</td>
                   <td>${item.service_name}</td>
+                  ${subscriptionPlan !== 'BASIC' ? `<td>${item.staff_name || '-'}</td>` : ''}
                   <td class="center">${item.payment_method || 'QRIS'}</td>
                   <td class="center bold ${isRefund ? 'text-red' : 'text-green'}">
                     ${isCompleted(s) ? 'COMPLETED' : 'REFUND'}
@@ -558,7 +609,7 @@ export default function AdminDashboard() {
         </div>
 
         <div class="footer">
-          <p>Dicetak oleh Admin ${displayBrand} Barbershop</p>
+          <p>Dicetak oleh Admin ${displayBrand}</p>
           <div class="signature-space"></div>
           <p>__________________________</p>
         </div>
@@ -610,7 +661,8 @@ export default function AdminDashboard() {
       result = result.filter((item) =>
         item.customer_name?.toLowerCase().includes(term) ||
         item.whatsapp_number?.includes(term) ||
-        item.service_name?.toLowerCase().includes(term)
+        item.service_name?.toLowerCase().includes(term) ||
+        item.staff_name?.toLowerCase().includes(term)
       )
     }
 
@@ -630,6 +682,9 @@ export default function AdminDashboard() {
       } else if (sortField === 'service_name') {
         valA = (a.service_name || '').toLowerCase()
         valB = (b.service_name || '').toLowerCase()
+      } else if (sortField === 'staff_name') {
+        valA = (a.staff_name || '').toLowerCase()
+        valB = (b.staff_name || '').toLowerCase()
       } else if (sortField === 'price') {
         valA = getServicePrice(a.service_name)
         valB = getServicePrice(b.service_name)
@@ -666,6 +721,7 @@ export default function AdminDashboard() {
         const rawCode = data.session.user.app_metadata?.client_code || ''
         const cleanCode = sanitizeClientCode(rawCode)
         setTenantCode(cleanCode)
+        fetchTenantDetail(cleanCode)
       }
     }
     checkSession()
@@ -684,7 +740,7 @@ export default function AdminDashboard() {
               ADMIN DASHBOARD
             </span>
             <h1 className="text-2xl font-black text-white tracking-wide uppercase mt-2">
-              {brandTitle ? `${brandTitle} BARBERSHOP` : 'BARBERSHOP PORTAL'}
+              {brandTitle ? `${brandTitle}` : 'BARBERSHOP PORTAL'}
             </h1>
             <p className="text-xs text-zinc-400">Silakan login untuk mengelola sistem reservasi</p>
           </div>
@@ -730,12 +786,24 @@ export default function AdminDashboard() {
     <div className="min-h-screen bg-zinc-950 p-4 md:p-8 text-zinc-100 font-sans relative">
       <div className="max-w-7xl mx-auto space-y-6">
 
-        {/* Header Dashboard Clean */}
+        {/* Header Dashboard Clean + BADGE PAKET */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-zinc-900 border border-zinc-800 p-6 rounded-2xl shadow-xl gap-4">
           <div>
-            <h1 className="text-xl sm:text-2xl font-black text-white tracking-wide uppercase">
-              {brandTitle ? `${brandTitle} BARBERSHOP` : tenantCode ? `${tenantCode} BARBERSHOP` : 'BARBERSHOP'}
-            </h1>
+            <div className="flex items-center space-x-3">
+              <h1 className="text-xl sm:text-2xl font-black text-white tracking-wide uppercase">
+                {brandTitle || tenantCode || 'BARBERSHOP'}
+              </h1>
+              {/* BADGE PENANDA PAKET */}
+              <span className={`text-[10px] font-extrabold px-3 py-1 rounded-full border tracking-wider ${
+                subscriptionPlan === 'PROFESIONAL'
+                  ? 'bg-purple-500/10 border-purple-500/30 text-purple-400'
+                  : subscriptionPlan === 'PREMIUM'
+                  ? 'bg-amber-500/10 border-amber-500/30 text-amber-400'
+                  : 'bg-zinc-800 border-zinc-700 text-zinc-400'
+              }`}>
+                {subscriptionPlan} PLAN
+              </span>
+            </div>
             <p className="text-xs text-zinc-400 mt-1">Kelola dan pantau pesanan masuk secara real-time</p>
           </div>
 
@@ -823,7 +891,7 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* PENARIKAN LAPORAN KEUANGAN */}
+        {/* PENARIKAN LAPORAN KEUANGAN (LOCKED LOGIC KECUALI PAKET PROFESIONAL) */}
         <div className="bg-zinc-900 border border-amber-500/30 p-5 rounded-2xl shadow-xl space-y-4">
           <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
             <div>
@@ -834,6 +902,11 @@ export default function AdminDashboard() {
                 Data siap diexport ke Excel atau dicetak langsung/disimpan sebagai PDF resmi.
               </p>
             </div>
+            {subscriptionPlan !== 'PROFESIONAL' && (
+              <span className="text-[10px] font-bold bg-purple-500/10 text-purple-400 border border-purple-500/30 px-2.5 py-1 rounded-full flex items-center gap-1">
+                <span>🔒</span> Khusus Paket Profesional
+              </span>
+            )}
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-start">
@@ -924,21 +997,38 @@ export default function AdminDashboard() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  onClick={exportReportToCSV}
-                  className="w-full bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2.5 rounded-xl font-bold transition text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-600/10"
-                >
-                  <span>📥 Excel</span>
-                </button>
+              {/* TOMBOL EXPORT / LOCK STATE */}
+              {subscriptionPlan === 'PROFESIONAL' ? (
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    onClick={exportReportToCSV}
+                    className="w-full bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2.5 rounded-xl font-bold transition text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-600/10"
+                  >
+                    <span>📥 Excel</span>
+                  </button>
 
-                <button
-                  onClick={handlePrintPDF}
-                  className="w-full bg-amber-500 hover:bg-amber-400 text-zinc-950 px-4 py-2.5 rounded-xl font-bold transition text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-amber-500/10"
-                >
-                  <span>🖨️ Cetak / PDF</span>
-                </button>
-              </div>
+                  <button
+                    onClick={handlePrintPDF}
+                    className="w-full bg-amber-500 hover:bg-amber-400 text-zinc-950 px-4 py-2.5 rounded-xl font-bold transition text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-amber-500/10"
+                  >
+                    <span>🖨️ Cetak / PDF</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="bg-zinc-950/80 border border-zinc-800 p-3 rounded-xl flex items-center justify-between">
+                  <span className="text-xs text-zinc-400 flex items-center gap-1.5">
+                    <span>🔒</span> Export Excel & Cetak PDF dikunci.
+                  </span>
+                  <a
+                    href="https://wa.me/628123456789?text=Halo%20Admin,%20saya%20ingin%20upgrade%20ke%20Paket%20Profesional"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-[11px] font-bold bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/40 px-3 py-1.5 rounded-lg transition"
+                  >
+                    Upgrade Paket
+                  </a>
+                </div>
+              )}
             </div>
 
           </div>
@@ -1024,7 +1114,7 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* TABEL DATA */}
+        {/* TABEL DATA RESERVASI */}
         <div className="bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden">
           {loading ? (
             <div className="p-12 text-center text-zinc-500 text-xs">Memuat data reservasi...</div>
@@ -1064,6 +1154,16 @@ export default function AdminDashboard() {
                       </div>
                     </th>
 
+                    {/* KOLOM STAFF / CAPSTER (KONTROL DENGAN PAKET LANGGANAN) */}
+                    {subscriptionPlan !== 'BASIC' && (
+                      <th onClick={() => handleSort('staff_name')} className="p-4 cursor-pointer hover:text-amber-400 transition text-amber-400">
+                        <div className="flex items-center gap-1">
+                          <span>{staffLabel}</span>
+                          {sortField === 'staff_name' && (sortOrder === 'asc' ? '▲' : '▼')}
+                        </div>
+                      </th>
+                    )}
+
                     <th onClick={() => handleSort('price')} className="p-4 cursor-pointer hover:text-amber-400 transition text-emerald-400">
                       <div className="flex items-center gap-1">
                         <span>Harga</span>
@@ -1097,7 +1197,7 @@ export default function AdminDashboard() {
                     const displayBrand = brandTitle || tenantCode || 'BARBERSHOP'
                     
                     const refundWaMsg = encodeURIComponent(
-                      `Halo Kak ${item.customer_name}, mohon maaf reservasi Kamu di ${displayBrand} Barbershop pada tanggal ${formatDateID(item.booking_date)} jam ${item.booking_time} WIB kami batalkan.\n\n` +
+                      `Halo Kak ${item.customer_name}, mohon maaf reservasi Kamu di ${displayBrand} pada tanggal ${formatDateID(item.booking_date)} jam ${item.booking_time} WIB kami batalkan.\n\n` +
                       `Karena Kakak sudah melakukan pembayaran, mohon infokan Nomor Rekening / E-Wallet Kakak agar dana sebesar Rp ${getServicePrice(item.service_name).toLocaleString('id-ID')} bisa kami refund segera ya. Terima kasih!`
                     )
 
@@ -1113,6 +1213,20 @@ export default function AdminDashboard() {
                             {item.service_name}
                           </span>
                         </td>
+
+                        {/* MUNCULKAN NAMA STAFF / CAPSTER JIKA PAKET BUKAN BASIC */}
+                        {subscriptionPlan !== 'BASIC' && (
+                          <td className="p-4 font-medium text-zinc-200">
+                            {item.staff_name ? (
+                              <span className="bg-zinc-800 border border-zinc-700 px-2 py-1 rounded-md text-[11px]">
+                                👤 {item.staff_name}
+                              </span>
+                            ) : (
+                              <span className="text-zinc-600 font-mono text-[10px]">-</span>
+                            )}
+                          </td>
+                        )}
+
                         <td className="p-4 font-semibold text-emerald-400">
                           Rp {getServicePrice(item.service_name).toLocaleString('id-ID')}
                         </td>
