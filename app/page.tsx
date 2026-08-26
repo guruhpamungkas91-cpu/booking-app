@@ -5,35 +5,45 @@ export const dynamic = 'force-dynamic'
 import { useState, useEffect, Suspense } from 'react'
 import { supabase } from './lib/supabase'
 
-const TENANT_CONFIG: Record<string, { clientCode: string; name: string; adminWa: string }> = {
-  'sem-barbershop.vercel.app': {
-    clientCode: 'SEM',
-    name: 'SEM Barbershop',
-    adminWa: '6282299997828'
-  },
-  'mcut-barbershop.vercel.app': {
-    clientCode: 'MCUT',
-    name: 'MCUT Barbershop',
-    adminWa: '6285899997828'
-  }
-}
-
 interface ServiceItem {
   id: number
-  client_code: string
+  tenant_slug: string
   name: string
   price: string
   desc: string
 }
 
+interface StaffItem {
+  id: number
+  tenant_slug: string
+  name: string
+  role: string
+}
+
+interface TenantData {
+  clientCode: string
+  tenantSlug: string
+  name: string
+  adminWa: string
+  subscriptionPlan: 'BASIC' | 'PREMIUM' | 'PROFESIONAL'
+  category: string
+  staffLabel: string
+}
+
 function BookingFormContent() {
-  const [tenant, setTenant] = useState({
+  // Default Tenant Config (Fallback jika di localhost)
+  const [tenant, setTenant] = useState<TenantData>({
     clientCode: 'MCUT',
+    tenantSlug: 'mcut',
     name: 'MCUT Barbershop',
-    adminWa: '6285899997828'
+    adminWa: '6285899997828',
+    subscriptionPlan: 'PREMIUM', // Coba ubah ke 'BASIC' untuk testing batasan fitur
+    category: 'barbershop',
+    staffLabel: 'Capster'
   })
 
   const [services, setServices] = useState<ServiceItem[]>([])
+  const [staffList, setStaffList] = useState<StaffItem[]>([])
   const [fetchingServices, setFetchingServices] = useState(true)
 
   const [formData, setFormData] = useState({
@@ -41,7 +51,8 @@ function BookingFormContent() {
     whatsapp_number: '',
     booking_date: '',
     booking_time: '',
-    selected_services: [] as string[], // <-- Diubah menjadi Array untuk menampung banyak layanan
+    selected_services: [] as string[],
+    selected_staff: '',
     payment_method: 'QRIS',
   })
   const [loading, setLoading] = useState(false)
@@ -49,43 +60,77 @@ function BookingFormContent() {
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const hostname = window.location.hostname
-      
-      const currentTenant = TENANT_CONFIG[hostname] || {
-        clientCode: 'MCUT',
-        name: 'MCUT Barbershop',
-        adminWa: '6285899997828'
-      }
+      const currentSlug = hostname.includes('sem') ? 'sem' : 'mcut'
 
-      setTenant(currentTenant)
-
-      const fetchServices = async () => {
+      // Fetch Tenant Data dari Supabase
+      const fetchTenantAndData = async () => {
         setFetchingServices(true)
-        
-        const { data, error } = await supabase
+
+        // 1. Ambil Info Tenant
+        const { data: tenantData } = await supabase
+          .from('Tenants')
+          .select('*')
+          .eq('tenant_slug', currentSlug)
+          .single()
+
+        let activeTenant = tenant
+        if (tenantData) {
+          activeTenant = {
+            clientCode: tenantData.client_code || 'MCUT',
+            tenantSlug: tenantData.tenant_slug || currentSlug,
+            name: tenantData.name || 'Barbershop',
+            adminWa: tenantData.admin_wa || '6285899997828',
+            subscriptionPlan: tenantData.subscription_plan || 'BASIC',
+            category: tenantData.category || 'barbershop',
+            staffLabel: tenantData.staff_label || 'Capster'
+          }
+          setTenant(activeTenant)
+        }
+
+        // 2. Ambil Daftar Layanan
+        const { data: serviceData } = await supabase
           .from('Services')
           .select('*')
-          .eq('client_code', currentTenant.clientCode)
+          .eq('tenant_slug', activeTenant.tenantSlug)
 
-        if (error) {
-          console.error('Gagal mengambil layanan:', error.message)
-        } else if (data && data.length > 0) {
-          setServices(data)
-          // Set pilihan default ke layanan pertama
-          setFormData((prev) => ({ ...prev, selected_services: [data[0].name] }))
+        if (serviceData && serviceData.length > 0) {
+          setServices(serviceData)
+          setFormData((prev) => ({ ...prev, selected_services: [serviceData[0].name] }))
         }
+
+        // 3. Ambil Daftar Staff (Jika Paket PREMIUM / PROFESIONAL)
+        if (activeTenant.subscriptionPlan !== 'BASIC') {
+          const { data: staffData } = await supabase
+            .from('Staff')
+            .select('*')
+            .eq('tenant_slug', activeTenant.tenantSlug)
+            .eq('is_active', true)
+
+          if (staffData && staffData.length > 0) {
+            setStaffList(staffData)
+            setFormData((prev) => ({ ...prev, selected_staff: staffData[0].name }))
+          }
+        }
+
         setFetchingServices(false)
       }
 
-      fetchServices()
+      fetchTenantAndData()
     }
   }, [])
 
-  // Fungsi toggle tambah/hapus layanan yang diklik
-  const handleToggleService = (serviceName: string) => {
+  // Logic Toggle Pilihan Layanan
+  const handleServiceSelect = (serviceName: string) => {
+    // Jika Paket BASIC: Hanya BISA PILIH 1 LAYANAN
+    if (tenant.subscriptionPlan === 'BASIC') {
+      setFormData({ ...formData, selected_services: [serviceName] })
+      return
+    }
+
+    // Jika PREMIUM / PROFESIONAL: BISA MULTI-SELECT
     setFormData((prev) => {
       const exists = prev.selected_services.includes(serviceName)
       if (exists) {
-        // Jangan biarkan kosong total, minimal harus 1 layanan terpilih
         if (prev.selected_services.length === 1) return prev
         return {
           ...prev,
@@ -102,7 +147,7 @@ function BookingFormContent() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    
+
     if (formData.selected_services.length === 0) {
       alert('Pilih minimal 1 layanan!')
       return
@@ -110,16 +155,17 @@ function BookingFormContent() {
 
     setLoading(true)
 
-    // Gabungkan layanan yang dipilih menjadi teks (contoh: "Haircut, Hair Wash")
     const formattedServicesText = formData.selected_services.join(', ')
 
+    // Insert ke Tabel Reservations
     const { error } = await supabase.from('Reservations').insert([
       {
         customer_name: formData.customer_name,
         whatsapp_number: formData.whatsapp_number,
         booking_date: formData.booking_date,
         booking_time: formData.booking_time,
-        service_name: formattedServicesText, // Disimpan sebagai string gabungan
+        service_name: formattedServicesText,
+        staff_name: tenant.subscriptionPlan !== 'BASIC' ? formData.selected_staff : null,
         payment_method: formData.payment_method,
         status: 'pending',
         client_code: tenant.clientCode
@@ -132,18 +178,24 @@ function BookingFormContent() {
       return
     }
 
-    const message = encodeURIComponent(
+    // Format Pesan WhatsApp
+    let messageText =
       `Halo Admin *${tenant.name}*, saya mau konfirmasi reservasi:\n\n` +
-        `📌 *Nama:* ${formData.customer_name}\n` +
-        `📞 *WA:* ${formData.whatsapp_number}\n` +
-        `✂️ *Layanan:* ${formattedServicesText}\n` +
-        `📅 *Tanggal:* ${formData.booking_date}\n` +
-        `⏰ *Jam:* ${formData.booking_time}\n` +
-        `💳 *Metode Bayar:* ${formData.payment_method}\n\n` +
-        `Mohon diproses ya, terima kasih!`
-    )
+      `📌 *Nama:* ${formData.customer_name}\n` +
+      `📞 *WA:* ${formData.whatsapp_number}\n` +
+      `✂️ *Layanan:* ${formattedServicesText}\n`
 
-    const waUrl = `https://wa.me/${tenant.adminWa}?text=${message}`
+    if (tenant.subscriptionPlan !== 'BASIC' && formData.selected_staff) {
+      messageText += `👤 *${tenant.staffLabel}:* ${formData.selected_staff}\n`
+    }
+
+    messageText +=
+      `📅 *Tanggal:* ${formData.booking_date}\n` +
+      `⏰ *Jam:* ${formData.booking_time}\n` +
+      `💳 *Metode Bayar:* ${formData.payment_method}\n\n` +
+      `Mohon diproses ya, terima kasih!`
+
+    const waUrl = `https://wa.me/${tenant.adminWa}?text=${encodeURIComponent(messageText)}`
     window.location.href = waUrl
   }
 
@@ -162,17 +214,17 @@ function BookingFormContent() {
             {tenant.clientCode}
           </h1>
           <p className="text-xs font-semibold text-amber-500 uppercase tracking-widest mt-0.5">
-            Barbershop
+            {tenant.category}
           </p>
           <p className="text-xs text-zinc-400 mt-2">
-            Pesan jadwal potong rambut kamu secara instan
+            Pesan jadwal secara instan
           </p>
         </div>
 
         {/* FORM */}
         <form onSubmit={handleSubmit} className="p-6 sm:p-8 space-y-6">
           
-          {/* INFORMASI DIRI */}
+          {/* 1. DATA DIRI */}
           <div className="space-y-4">
             <h2 className="text-xs font-bold text-zinc-400 uppercase tracking-wider">
               1. Data Diri
@@ -206,19 +258,21 @@ function BookingFormContent() {
             </div>
           </div>
 
-          {/* PILIH LAYANAN (MULTI-SELECT) */}
+          {/* 2. PILIH LAYANAN */}
           <div className="space-y-3 pt-2">
             <div className="flex items-center justify-between">
               <h2 className="text-xs font-bold text-zinc-400 uppercase tracking-wider">
                 2. Pilih Layanan
               </h2>
-              <span className="text-[10px] text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20 font-medium">
-                Bisa pilih lebih dari 1
-              </span>
+              {tenant.subscriptionPlan !== 'BASIC' && (
+                <span className="text-[10px] text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20 font-medium">
+                  Bisa pilih lebih dari 1
+                </span>
+              )}
             </div>
             
             {fetchingServices ? (
-              <p className="text-xs text-zinc-500 animate-pulse">Memuat daftar layanan...</p>
+              <p className="text-xs text-zinc-500 animate-pulse">Memuat layanan...</p>
             ) : services.length === 0 ? (
               <p className="text-xs text-zinc-500">Belum ada layanan tersedia.</p>
             ) : (
@@ -228,7 +282,7 @@ function BookingFormContent() {
                   return (
                     <div
                       key={item.id}
-                      onClick={() => handleToggleService(item.name)}
+                      onClick={() => handleServiceSelect(item.name)}
                       className={`cursor-pointer p-3.5 rounded-xl border transition-all flex items-center justify-between ${
                         active
                           ? 'bg-amber-500/10 border-amber-500/60 text-white'
@@ -236,7 +290,6 @@ function BookingFormContent() {
                       }`}
                     >
                       <div className="flex items-center space-x-3">
-                        {/* Checkbox Icon */}
                         <div className={`w-5 h-5 rounded-md border flex items-center justify-center transition-all ${
                           active ? 'bg-amber-500 border-amber-400 text-zinc-950' : 'border-zinc-700 bg-zinc-900'
                         }`}>
@@ -265,33 +318,60 @@ function BookingFormContent() {
             )}
           </div>
 
-          {/* TANGGAL & JAM */}
+          {/* 3. PILIH STAFF (HANYA MUNCUL DI PAKET PREMIUM & PROFESIONAL) */}
+          {tenant.subscriptionPlan !== 'BASIC' && staffList.length > 0 && (
+            <div className="space-y-3 pt-2">
+              <h2 className="text-xs font-bold text-zinc-400 uppercase tracking-wider">
+                3. Pilih {tenant.staffLabel}
+              </h2>
+              <div className="grid grid-cols-2 gap-2.5">
+                {staffList.map((staff) => {
+                  const active = formData.selected_staff === staff.name
+                  return (
+                    <button
+                      type="button"
+                      key={staff.id}
+                      onClick={() => setFormData({ ...formData, selected_staff: staff.name })}
+                      className={`p-3 rounded-xl border transition-all text-left ${
+                        active
+                          ? 'bg-amber-500/10 border-amber-500/60 text-white'
+                          : 'bg-zinc-950/60 border-zinc-800 text-zinc-400 hover:border-zinc-700'
+                      }`}
+                    >
+                      <p className={`text-xs font-semibold ${active ? 'text-amber-400' : 'text-zinc-200'}`}>
+                        {staff.name}
+                      </p>
+                      <p className="text-[10px] text-zinc-500 mt-0.5">{staff.role}</p>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* 4. JADWAL KEDATANGAN */}
           <div className="space-y-3 pt-2">
             <h2 className="text-xs font-bold text-zinc-400 uppercase tracking-wider">
-              3. Jadwal Kedatangan
+              {tenant.subscriptionPlan !== 'BASIC' ? '4.' : '3.'} Jadwal Kedatangan
             </h2>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-medium text-zinc-300 mb-1.5">
-                  Tanggal
-                </label>
+                <label className="block text-xs font-medium text-zinc-300 mb-1.5">Tanggal</label>
                 <input
                   type="date"
                   required
-                  className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-200 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-all text-xs"
+                  className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-200 focus:outline-none focus:border-amber-500 text-xs"
                   value={formData.booking_date}
                   onChange={(e) => setFormData({ ...formData, booking_date: e.target.value })}
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-zinc-300 mb-1.5">
-                  Jam
-                </label>
+                <label className="block text-xs font-medium text-zinc-300 mb-1.5">Jam</label>
                 <input
                   type="time"
                   required
-                  className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-200 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-all text-xs"
+                  className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-200 focus:outline-none focus:border-amber-500 text-xs"
                   value={formData.booking_time}
                   onChange={(e) => setFormData({ ...formData, booking_time: e.target.value })}
                 />
@@ -299,10 +379,10 @@ function BookingFormContent() {
             </div>
           </div>
 
-          {/* METODE PEMBAYARAN */}
+          {/* 5. METODE PEMBAYARAN */}
           <div className="space-y-3 pt-2">
             <h2 className="text-xs font-bold text-zinc-400 uppercase tracking-wider">
-              4. Metode Pembayaran
+              {tenant.subscriptionPlan !== 'BASIC' ? '5.' : '4.'} Metode Pembayaran
             </h2>
             <div className="grid grid-cols-3 gap-2">
               {[
@@ -328,18 +408,13 @@ function BookingFormContent() {
               })}
             </div>
 
-            {/* DISPLAY QRIS */}
+            {/* QRIS DISPLAY */}
             {formData.payment_method === 'QRIS' && (
-              <div className="p-5 bg-zinc-950 border border-zinc-800 rounded-2xl text-center space-y-4 mt-3 transition-all">
+              <div className="p-5 bg-zinc-950 border border-zinc-800 rounded-2xl text-center space-y-4 mt-3">
                 <div>
-                  <p className="text-sm font-semibold text-amber-400">
-                    Scan QRIS untuk Pembayaran
-                  </p>
-                  <p className="text-xs text-zinc-400 mt-1">
-                    Bisa scan pakai GoPay, OVO, Dana, ShopeePay, atau Mobile Banking.
-                  </p>
+                  <p className="text-sm font-semibold text-amber-400">Scan QRIS untuk Pembayaran</p>
+                  <p className="text-xs text-zinc-400 mt-1">Bisa scan pakai GoPay, OVO, Dana, ShopeePay, atau Bank.</p>
                 </div>
-
                 <div className="p-4 bg-white rounded-2xl inline-block shadow-2xl border border-zinc-300">
                   <img
                     src={`/${tenant.clientCode}.png`}
@@ -347,19 +422,6 @@ function BookingFormContent() {
                     alt="QRIS Code"
                     className="w-64 h-64 sm:w-72 sm:h-72 mx-auto object-contain image-render-crisp"
                   />
-                </div>
-              </div>
-            )}
-
-            {/* DISPLAY BCA */}
-            {formData.payment_method === 'Transfer BCA' && (
-              <div className="p-4 bg-zinc-950 border border-zinc-800 rounded-2xl space-y-2 mt-3">
-                <p className="text-xs text-zinc-400">Silakan Transfer ke Rekening BCA:</p>
-                <div className="bg-zinc-900 p-3 rounded-xl border border-zinc-800 flex items-center justify-between">
-                  <div>
-                    <p className="text-lg font-mono font-bold text-amber-400 tracking-wider">123-456-7890</p>
-                    <p className="text-xs text-zinc-400 mt-0.5">a.n. {tenant.name}</p>
-                  </div>
                 </div>
               </div>
             )}
