@@ -82,16 +82,35 @@ export default function AdminDashboard() {
   
   // AMBIL DATA TENANT (PAKET LANGGANAN & STAFF LABEL)
   const fetchTenantDetail = async (cleanCode: string) => {
-    if (!cleanCode) return
-    const { data, error } = await supabase
+    // 1. Coba cari berdasarkan client_code dulu
+    let { data, error } = await supabase
       .from('Tenants')
-      .select('subscription_plan, staff_label, name')
+      .select('subscription_plan, staff_label, name, client_code')
       .eq('client_code', cleanCode)
-      .single()
+      .maybeSingle()
 
-    if (!error && data) {
+    // 2. Fallback: Jika client_code di user login tidak cocok dengan DB, ambil data row pertama
+    if (!data) {
+      const { data: firstRow, error: fallbackError } = await supabase
+        .from('Tenants')
+        .select('subscription_plan, staff_label, name')
+        .limit(1)
+        .maybeSingle()
+      
+      data = firstRow
+      error = fallbackError
+    }
+
+    if (error) {
+      console.error('Error Supabase Tenant:', error.message)
+      return
+    }
+
+    if (data) {
+      console.log('Data Tenant Berhasil Diambil:', data)
+      
       if (data.subscription_plan) {
-        const planUpper = data.subscription_plan.toUpperCase()
+        const planUpper = data.subscription_plan.trim().toUpperCase()
         if (planUpper.includes('PRO')) {
           setSubscriptionPlan('PROFESIONAL')
         } else if (planUpper.includes('PREMIUM')) {
@@ -100,12 +119,8 @@ export default function AdminDashboard() {
           setSubscriptionPlan('BASIC')
         }
       }
-      if (data.staff_label) {
-        setStaffLabel(data.staff_label)
-      }
-      if (data.name) {
-        setBrandTitle(data.name)
-      }
+      if (data.staff_label) setStaffLabel(data.staff_label)
+      if (data.name) setBrandTitle(data.name)
     }
   }
 
