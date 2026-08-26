@@ -21,6 +21,7 @@ interface Reservation {
 
 type SortField = 'booking_date' | 'booking_time' | 'customer_name' | 'service_name' | 'staff_name' | 'price' | 'payment_method' | 'status'
 type SortOrder = 'asc' | 'desc'
+type SubscriptionPlanType = 'BASIC' | 'PREMIUM' | 'PROFESIONAL'
 
 export default function AdminDashboard() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
@@ -28,7 +29,7 @@ export default function AdminDashboard() {
   const [brandTitle, setBrandTitle] = useState<string>('BARBERSHOP')
 
   // STATE UNTUK KONTROL PAKET LANGGANAN & STAFF LABEL
-  const [subscriptionPlan, setSubscriptionPlan] = useState<'BASIC' | 'PREMIUM' | 'PROFESIONAL'>('BASIC')
+  const [subscriptionPlan, setSubscriptionPlan] = useState<SubscriptionPlanType>('BASIC')
   const [staffLabel, setStaffLabel] = useState<string>('Capster / Staff')
 
   // State Login Supabase
@@ -89,7 +90,7 @@ export default function AdminDashboard() {
 
     if (!error && data) {
       if (data.subscription_plan) {
-        setSubscriptionPlan(data.subscription_plan.toUpperCase() as any)
+        setSubscriptionPlan(data.subscription_plan.toUpperCase() as SubscriptionPlanType)
       }
       if (data.staff_label) {
         setStaffLabel(data.staff_label)
@@ -227,7 +228,6 @@ export default function AdminDashboard() {
 
   const getServicePrice = (serviceName?: string): number => {
     if (!serviceName) return 50000
-    // Dukungan untuk multi-select layanan (dibatasi koma)
     if (serviceName.includes(',')) {
       const parts = serviceName.split(',').map((s) => s.trim())
       return parts.reduce((acc, curr) => acc + (SERVICE_PRICES[curr] || 50000), 0)
@@ -421,7 +421,6 @@ export default function AdminDashboard() {
               <th>Jam</th>
               <th>Nama Pelanggan</th>
               <th>Layanan</th>
-              ${subscriptionPlan !== 'BASIC' ? `<th>${staffLabel}</th>` : ''}
               <th>Metode Bayar</th>
               <th>WhatsApp</th>
               <th>Status Transaksi</th>
@@ -442,7 +441,6 @@ export default function AdminDashboard() {
                   <td class="center">${item.booking_time} WIB</td>
                   <td>${item.customer_name}</td>
                   <td>${item.service_name}</td>
-                  ${subscriptionPlan !== 'BASIC' ? `<td>${item.staff_name || '-'}</td>` : ''}
                   <td class="center">${item.payment_method || 'QRIS'}</td>
                   <td>'${item.whatsapp_number}</td>
                   <td class="center ${isRefund ? 'status-refund' : 'status-completed'}">
@@ -457,15 +455,15 @@ export default function AdminDashboard() {
               .join('')}
             
             <tr class="total-row">
-              <td colspan="${subscriptionPlan !== 'BASIC' ? 9 : 8}" style="text-align: right;">TOTAL OMZET BRUTO (UANG MASUK):</td>
+              <td colspan="8" style="text-align: right;">TOTAL OMZET BRUTO (UANG MASUK):</td>
               <td class="num" style="color: #059669;">Rp ${reportData.grossRevenue.toLocaleString('id-ID')}</td>
             </tr>
             <tr class="total-row">
-              <td colspan="${subscriptionPlan !== 'BASIC' ? 9 : 8}" style="text-align: right; color: #dc2626;">TOTAL PENGEMBALIAN DANA (REFUND):</td>
+              <td colspan="8" style="text-align: right; color: #dc2626;">TOTAL PENGEMBALIAN DANA (REFUND):</td>
               <td class="num" style="color: #dc2626;">- Rp ${reportData.totalRefund.toLocaleString('id-ID')}</td>
             </tr>
             <tr class="net-row">
-              <td colspan="${subscriptionPlan !== 'BASIC' ? 9 : 8}" style="text-align: right; font-weight: bold; color: #065f46;">TOTAL OMZET NETTO (PENDAPATAN BERSIH):</td>
+              <td colspan="8" style="text-align: right; font-weight: bold; color: #065f46;">TOTAL OMZET NETTO (PENDAPATAN BERSIH):</td>
               <td class="num" style="color: #065f46; font-size: 14px;">Rp ${reportData.netRevenue.toLocaleString('id-ID')}</td>
             </tr>
           </tbody>
@@ -556,7 +554,6 @@ export default function AdminDashboard() {
               <th class="center" width="10%">Jam</th>
               <th>Nama Pelanggan</th>
               <th>Layanan</th>
-              ${subscriptionPlan !== 'BASIC' ? `<th>${staffLabel}</th>` : ''}
               <th class="center">Bayar</th>
               <th class="center">Status</th>
               <th class="right">Nominal</th>
@@ -576,7 +573,6 @@ export default function AdminDashboard() {
                   <td class="center">${item.booking_time}</td>
                   <td class="bold">${item.customer_name}</td>
                   <td>${item.service_name}</td>
-                  ${subscriptionPlan !== 'BASIC' ? `<td>${item.staff_name || '-'}</td>` : ''}
                   <td class="center">${item.payment_method || 'QRIS'}</td>
                   <td class="center bold ${isRefund ? 'text-red' : 'text-green'}">
                     ${isCompleted(s) ? 'COMPLETED' : 'REFUND'}
@@ -891,7 +887,7 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* PENARIKAN LAPORAN KEUANGAN (LOCKED LOGIC KECUALI PAKET PROFESIONAL) */}
+        {/* PENARIKAN LAPORAN KEUANGAN */}
         <div className="bg-zinc-900 border border-amber-500/30 p-5 rounded-2xl shadow-xl space-y-4">
           <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
             <div>
@@ -1154,8 +1150,8 @@ export default function AdminDashboard() {
                       </div>
                     </th>
 
-                    {/* KOLOM STAFF / CAPSTER (KONTROL DENGAN PAKET LANGGANAN) */}
-                    {subscriptionPlan !== 'BASIC' && (
+                    {/* KOLOM STAFF / CAPSTER (PAKET PREMIUM & PROFESIONAL) */}
+                    {(subscriptionPlan === 'PREMIUM' || subscriptionPlan === 'PROFESIONAL') && (
                       <th onClick={() => handleSort('staff_name')} className="p-4 cursor-pointer hover:text-amber-400 transition text-amber-400">
                         <div className="flex items-center gap-1">
                           <span>{staffLabel}</span>
@@ -1214,8 +1210,8 @@ export default function AdminDashboard() {
                           </span>
                         </td>
 
-                        {/* MUNCULKAN NAMA STAFF / CAPSTER JIKA PAKET BUKAN BASIC */}
-                        {subscriptionPlan !== 'BASIC' && (
+                        {/* MUNCULKAN NAMA STAFF / CAPSTER JIKA PAKET PREMIUM / PROFESIONAL */}
+                        {(subscriptionPlan === 'PREMIUM' || subscriptionPlan === 'PROFESIONAL') && (
                           <td className="p-4 font-medium text-zinc-200">
                             {item.staff_name ? (
                               <span className="bg-zinc-800 border border-zinc-700 px-2 py-1 rounded-md text-[11px]">
