@@ -5,7 +5,6 @@ export const dynamic = 'force-dynamic'
 import { useState, useEffect, Suspense } from 'react'
 import { supabase } from './lib/supabase'
 
-// Mapping domain ke konfigurasi tenant
 const TENANT_CONFIG: Record<string, { clientCode: string; name: string; adminWa: string }> = {
   'sem-barbershop.vercel.app': {
     clientCode: 'SEM',
@@ -42,7 +41,7 @@ function BookingFormContent() {
     whatsapp_number: '',
     booking_date: '',
     booking_time: '',
-    service_name: '',
+    selected_services: [] as string[], // <-- Diubah menjadi Array untuk menampung banyak layanan
     payment_method: 'QRIS',
   })
   const [loading, setLoading] = useState(false)
@@ -51,7 +50,6 @@ function BookingFormContent() {
     if (typeof window !== 'undefined') {
       const hostname = window.location.hostname
       
-      // Ambil tenant sesuai domain, default ke MCUT jika di localhost
       const currentTenant = TENANT_CONFIG[hostname] || {
         clientCode: 'MCUT',
         name: 'MCUT Barbershop',
@@ -60,7 +58,6 @@ function BookingFormContent() {
 
       setTenant(currentTenant)
 
-      // Fetch layanan dari tabel 'Services' Supabase
       const fetchServices = async () => {
         setFetchingServices(true)
         
@@ -73,7 +70,8 @@ function BookingFormContent() {
           console.error('Gagal mengambil layanan:', error.message)
         } else if (data && data.length > 0) {
           setServices(data)
-          setFormData((prev) => ({ ...prev, service_name: data[0].name }))
+          // Set pilihan default ke layanan pertama
+          setFormData((prev) => ({ ...prev, selected_services: [data[0].name] }))
         }
         setFetchingServices(false)
       }
@@ -82,13 +80,47 @@ function BookingFormContent() {
     }
   }, [])
 
+  // Fungsi toggle tambah/hapus layanan yang diklik
+  const handleToggleService = (serviceName: string) => {
+    setFormData((prev) => {
+      const exists = prev.selected_services.includes(serviceName)
+      if (exists) {
+        // Jangan biarkan kosong total, minimal harus 1 layanan terpilih
+        if (prev.selected_services.length === 1) return prev
+        return {
+          ...prev,
+          selected_services: prev.selected_services.filter((name) => name !== serviceName)
+        }
+      } else {
+        return {
+          ...prev,
+          selected_services: [...prev.selected_services, serviceName]
+        }
+      }
+    })
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    
+    if (formData.selected_services.length === 0) {
+      alert('Pilih minimal 1 layanan!')
+      return
+    }
+
     setLoading(true)
+
+    // Gabungkan layanan yang dipilih menjadi teks (contoh: "Haircut, Hair Wash")
+    const formattedServicesText = formData.selected_services.join(', ')
 
     const { error } = await supabase.from('Reservations').insert([
       {
-        ...formData,
+        customer_name: formData.customer_name,
+        whatsapp_number: formData.whatsapp_number,
+        booking_date: formData.booking_date,
+        booking_time: formData.booking_time,
+        service_name: formattedServicesText, // Disimpan sebagai string gabungan
+        payment_method: formData.payment_method,
         status: 'pending',
         client_code: tenant.clientCode
       }
@@ -104,7 +136,7 @@ function BookingFormContent() {
       `Halo Admin *${tenant.name}*, saya mau konfirmasi reservasi:\n\n` +
         `📌 *Nama:* ${formData.customer_name}\n` +
         `📞 *WA:* ${formData.whatsapp_number}\n` +
-        `✂️ *Layanan:* ${formData.service_name}\n` +
+        `✂️ *Layanan:* ${formattedServicesText}\n` +
         `📅 *Tanggal:* ${formData.booking_date}\n` +
         `⏰ *Jam:* ${formData.booking_time}\n` +
         `💳 *Metode Bayar:* ${formData.payment_method}\n\n` +
@@ -174,11 +206,16 @@ function BookingFormContent() {
             </div>
           </div>
 
-          {/* PILIH LAYANAN */}
+          {/* PILIH LAYANAN (MULTI-SELECT) */}
           <div className="space-y-3 pt-2">
-            <h2 className="text-xs font-bold text-zinc-400 uppercase tracking-wider">
-              2. Pilih Layanan
-            </h2>
+            <div className="flex items-center justify-between">
+              <h2 className="text-xs font-bold text-zinc-400 uppercase tracking-wider">
+                2. Pilih Layanan
+              </h2>
+              <span className="text-[10px] text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20 font-medium">
+                Bisa pilih lebih dari 1
+              </span>
+            </div>
             
             {fetchingServices ? (
               <p className="text-xs text-zinc-500 animate-pulse">Memuat daftar layanan...</p>
@@ -187,23 +224,37 @@ function BookingFormContent() {
             ) : (
               <div className="grid grid-cols-1 gap-2.5">
                 {services.map((item) => {
-                  const active = formData.service_name === item.name
+                  const active = formData.selected_services.includes(item.name)
                   return (
                     <div
                       key={item.id}
-                      onClick={() => setFormData({ ...formData, service_name: item.name })}
+                      onClick={() => handleToggleService(item.name)}
                       className={`cursor-pointer p-3.5 rounded-xl border transition-all flex items-center justify-between ${
                         active
                           ? 'bg-amber-500/10 border-amber-500/60 text-white'
                           : 'bg-zinc-950/60 border-zinc-800 text-zinc-400 hover:border-zinc-700'
                       }`}
                     >
-                      <div>
-                        <p className={`text-sm font-semibold ${active ? 'text-amber-400' : 'text-zinc-200'}`}>
-                          {item.name}
-                        </p>
-                        <p className="text-xs text-zinc-500 mt-0.5">{item.desc}</p>
+                      <div className="flex items-center space-x-3">
+                        {/* Checkbox Icon */}
+                        <div className={`w-5 h-5 rounded-md border flex items-center justify-center transition-all ${
+                          active ? 'bg-amber-500 border-amber-400 text-zinc-950' : 'border-zinc-700 bg-zinc-900'
+                        }`}>
+                          {active && (
+                            <svg className="w-3.5 h-3.5 stroke-current" fill="none" viewBox="0 0 24 24" strokeWidth="3">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                            </svg>
+                          )}
+                        </div>
+
+                        <div>
+                          <p className={`text-sm font-semibold ${active ? 'text-amber-400' : 'text-zinc-200'}`}>
+                            {item.name}
+                          </p>
+                          <p className="text-xs text-zinc-500 mt-0.5">{item.desc}</p>
+                        </div>
                       </div>
+
                       <span className="text-xs font-bold text-zinc-300 bg-zinc-800/80 px-2.5 py-1 rounded-lg border border-zinc-700/50">
                         {item.price}
                       </span>
