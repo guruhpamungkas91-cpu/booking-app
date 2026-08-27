@@ -104,26 +104,22 @@ export default function AdminDashboard() {
       }
 
       if (tenantData) {
-        const rawPlan = String(tenantData.subscription_plan || '').trim().toUpperCase()
+      const rawPlan = String(tenantData.subscription_plan || '').trim().toUpperCase()
 
-        if (
-          rawPlan.includes('PROFESIONAL') || 
-          rawPlan.includes('PROFESSIONAL') || 
-          rawPlan.includes('PRO')
-        ) {
-          setSubscriptionPlan('PROFESIONAL')
-        } else if (rawPlan.includes('PREMIUM')) {
-          setSubscriptionPlan('PREMIUM')
-        } else {
-          setSubscriptionPlan('BASIC')
-        }
-
-        if (tenantData.staff_label) setStaffLabel(tenantData.staff_label)
-        if (tenantData.tenant_slug) {
-          setBrandTitle(tenantData.tenant_slug.toUpperCase())
-          setTenantCode(tenantData.tenant_slug)
-        }
+        if (rawPlan.includes('PROFESIONAL') || rawPlan.includes('PROFESSIONAL') || rawPlan.includes('PRO')) {
+        setSubscriptionPlan('PROFESIONAL')
+      } else if (rawPlan.includes('PREMIUM')) {
+        setSubscriptionPlan('PREMIUM')
+      } else {
+        setSubscriptionPlan('BASIC')
       }
+
+      if (tenantData.staff_label) setStaffLabel(tenantData.staff_label)
+      if (tenantData.tenant_slug) {
+        setBrandTitle(tenantData.tenant_slug.toUpperCase())
+        setTenantCode(tenantData.tenant_slug)
+      }
+    }     
     } catch (err) {
       console.error('Error fetching tenant details:', err)
     }
@@ -1039,35 +1035,35 @@ export default function AdminDashboard() {
               </div>
 
               {/* LOGIKA TOMBOL EKSPOR PER PAKET */}
-              {subscriptionPlan === 'BASIC' && (
-                <div className="bg-zinc-950/80 border border-zinc-800 p-3 rounded-xl flex items-center justify-between">
-                  <span className="text-xs text-zinc-400 flex items-center gap-1.5">
-                    🔒 Penarikan Laporan dikunci di Paket Basic.
-                  </span>
-                  <a
-                    href="https://wa.me/628123456789?text=Halo%20Admin,%20saya%20ingin%20upgrade%20paket%20langganan"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-[11px] font-bold bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 px-3 py-1.5 rounded-lg transition"
-                  >
-                    Upgrade Paket
-                  </a>
-                </div>
-              )}
+            {subscriptionPlan === 'BASIC' && (
+            <div className="bg-zinc-950/80 border border-zinc-800 p-3 rounded-xl flex items-center justify-between">
+              <span className="text-xs text-zinc-400 flex items-center gap-1.5">
+                🔒 Penarikan Laporan dikunci di Paket Basic.
+              </span>
+              <a
+                href="https://wa.me/628123456789?text=Halo%20Admin,%20saya%20ingin%20upgrade%20paket%20langganan"
+                target="_blank"
+                rel="noreferrer"
+                className="text-[11px] font-bold bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 px-3 py-1.5 rounded-lg transition"
+              >
+                Upgrade Paket
+              </a>
+            </div>
+)}
 
-              {subscriptionPlan === 'PREMIUM' && (
-                <div className="space-y-2">
-                  <button
-                    onClick={exportReportToCSV}
-                    className="w-full bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2.5 rounded-xl font-bold transition text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-600/10"
-                  >
-                    <span>📥 Export Laporan Excel</span>
-                  </button>
-                  <p className="text-[11px] text-center text-zinc-500">
-                    💡 Upgrade ke <strong className="text-purple-400">Paket Profesional</strong> untuk membuka fitur Cetak / Download PDF.
-                  </p>
-                </div>
-              )}
+            {subscriptionPlan === 'PREMIUM' && (
+              <div className="space-y-2">
+                <button
+                  onClick={exportReportToCSV}
+                  className="w-full bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2.5 rounded-xl font-bold transition text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-600/10"
+                >
+                  <span>📥 Export Laporan Excel</span>
+                </button>
+                <p className="text-[11px] text-center text-zinc-500">
+                  💡 Upgrade ke <strong className="text-purple-400">Paket Profesional</strong> untuk membuka fitur Cetak / Download PDF.
+                </p>
+              </div>
+)}
 
               {subscriptionPlan === 'PROFESIONAL' && (
                 <div className="grid grid-cols-2 gap-3">
@@ -1085,7 +1081,7 @@ export default function AdminDashboard() {
                     <span>🖨️ Cetak / PDF</span>
                   </button>
                 </div>
-              )}
+)}
             </div>
 
           </div>
