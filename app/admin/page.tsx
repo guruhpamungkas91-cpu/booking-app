@@ -17,6 +17,7 @@ interface Reservation {
   payment_method?: string
   status: string
   client_code?: string
+  tenant_slug?: string
 }
 
 type SortField = 'booking_date' | 'booking_time' | 'customer_name' | 'service_name' | 'staff_name' | 'price' | 'payment_method' | 'status'
@@ -61,67 +62,56 @@ export default function AdminDashboard() {
   const [reportStartDate, setReportStartDate] = useState('')
   const [reportEndDate, setReportEndDate] = useState('')
 
-  // Helper Sanitasi Client Code
+  // Helper Sanitasi Client Code / Slug
   const sanitizeClientCode = (code?: string) => {
     if (!code) return ''
-    return code.replace(/[^a-zA-Z0-9]/g, '').toUpperCase()
+    return code.replace(/[^a-zA-Z0-9]/g, '').toLowerCase()
   }
 
-  // AMBIL DATA TENANT (PAKET LANGGANAN & STAFF LABEL) SECARA LIVE DARI DATABASE SUPABASE
+  // AMBIL DATA TENANT DENGAN MERUJUK KE KOLOM tenant_slug
   const fetchTenantDetail = useCallback(async (cleanCode: string, detectedBrandHint: string = '') => {
     try {
       let tenantData = null
       const currentHost = typeof window !== 'undefined' ? window.location.hostname : ''
 
-      // 1. Prioritas Utama: Cari berdasarkan client_code jika dikirim
+      // 1. Cari via tenant_slug dari user session jika ada
       if (cleanCode) {
         const { data } = await supabase
           .from('Tenants')
-          .select('subscription_plan, staff_label, name, client_code')
-          .ilike('client_code', cleanCode)
+          .select('subscription_plan, staff_label, tenant_slug')
+          .ilike('tenant_slug', cleanCode)
           .maybeSingle()
         
         tenantData = data
       }
 
-      // 2. Fallback Ke-1: Cari berdasarkan Domain / Hostname URL
-      if (!tenantData && currentHost) {
-        const { data } = await supabase
-          .from('Tenants')
-          .select('subscription_plan, staff_label, name, client_code')
-          .ilike('domain', `%${currentHost}%`)
-          .maybeSingle()
-
-        tenantData = data
-      }
-
-      // 3. Fallback Ke-2: Cari berdasarkan Keyword Brand Hint (SEM / MCUT)
+      // 2. Fallback Ke-1: Cari via tenant_slug dengan keyword hint (mcut / sem)
       if (!tenantData && detectedBrandHint) {
         const { data } = await supabase
           .from('Tenants')
-          .select('subscription_plan, staff_label, name, client_code')
-          .ilike('name', `%${detectedBrandHint}%`)
+          .select('subscription_plan, staff_label, tenant_slug')
+          .ilike('tenant_slug', `%${detectedBrandHint.toLowerCase()}%`)
           .maybeSingle()
 
         tenantData = data
       }
 
-      // 4. Fallback Ke-3: Jika masih tidak ketemu, ambil baris pertama tenant di DB
+      // 3. Fallback Ke-2: Ambil baris pertama dari tabel Tenants
       if (!tenantData) {
         const { data } = await supabase
           .from('Tenants')
-          .select('subscription_plan, staff_label, name, client_code')
+          .select('subscription_plan, staff_label, tenant_slug')
           .limit(1)
           .maybeSingle()
 
         tenantData = data
       }
 
-      // 5. Update State berdasarkan data yang didapat
-      if (tenantData && tenantData.subscription_plan) {
-        const rawPlan = String(tenantData.subscription_plan).trim().toUpperCase()
+      // 4. Update State berdasarkan data DB Supabase
+      if (tenantData) {
+        const rawPlan = String(tenantData.subscription_plan || '').trim().toUpperCase()
 
-        console.log('>>> [DEBUG SUCCESS] DATA TENANT DB:', tenantData)
+        console.log('>>> [DEBUG DB TENANTS SUCCESS]:', tenantData)
 
         if (
           rawPlan.includes('PROFESIONAL') || 
@@ -136,8 +126,10 @@ export default function AdminDashboard() {
         }
 
         if (tenantData.staff_label) setStaffLabel(tenantData.staff_label)
-        if (tenantData.name) setBrandTitle(tenantData.name)
-        if (tenantData.client_code) setTenantCode(tenantData.client_code)
+        if (tenantData.tenant_slug) {
+          setBrandTitle(tenantData.tenant_slug.toUpperCase())
+          setTenantCode(tenantData.tenant_slug)
+        }
       }
     } catch (err) {
       console.error('Error fetching tenant details:', err)
@@ -158,7 +150,7 @@ export default function AdminDashboard() {
       alert('Login gagal: ' + error.message)
     } else if (data.session) {
       setIsAuthenticated(true)
-      const rawCode = data.session.user.app_metadata?.client_code || ''
+      const rawCode = data.session.user.app_metadata?.client_code || data.session.user.app_metadata?.tenant_slug || ''
       const cleanCode = sanitizeClientCode(rawCode)
       setTenantCode(cleanCode)
       await fetchTenantDetail(cleanCode)
@@ -172,12 +164,12 @@ export default function AdminDashboard() {
     setIsAuthenticated(false)
   }
 
-  // Fetch Reservations & Refresh Status Tenant Live
+  // Fetch Reservations
   const fetchReservations = useCallback(async () => {
     setLoading(true)
     const { data: { user } } = await supabase.auth.getUser()
 
-    const rawClientCode = user?.app_metadata?.client_code || tenantCode
+    const rawClientCode = user?.app_metadata?.client_code || user?.app_metadata?.tenant_slug || tenantCode
     const userClientCode = rawClientCode ? sanitizeClientCode(rawClientCode) : ''
 
     await fetchTenantDetail(userClientCode)
@@ -186,10 +178,6 @@ export default function AdminDashboard() {
       .from('Reservations')
       .select('*')
       .order('created_at', { ascending: false })
-
-    if (userClientCode) {
-      query = query.eq('client_code', userClientCode)
-    }
 
     const { data, error } = await query
 
@@ -745,26 +733,25 @@ export default function AdminDashboard() {
     }
   }
 
-  // SINGLE USEEFFECT INITIALIZER: INISIALISASI BRAND & CHECK SESSION DENGAN GUARANTEE FALLBACK
+  // INITIALIZER UNTUK DETEKSI TENANT
   useEffect(() => {
     const initTenantAndSession = async () => {
-      let brandHint = ''
+      let brandHint = 'mcut'
 
       if (typeof window !== 'undefined') {
         const hostname = window.location.hostname.toLowerCase()
         if (hostname.includes('sem')) {
-          brandHint = 'SEM'
+          brandHint = 'sem'
         } else if (hostname.includes('mcut')) {
-          brandHint = 'MCUT'
+          brandHint = 'mcut'
         }
-        if (brandHint) setBrandTitle(brandHint)
       }
 
       const { data } = await supabase.auth.getSession()
       
       if (data?.session) {
         setIsAuthenticated(true)
-        const rawCode = data.session.user.app_metadata?.client_code || ''
+        const rawCode = data.session.user.app_metadata?.client_code || data.session.user.app_metadata?.tenant_slug || ''
         const cleanCode = sanitizeClientCode(rawCode)
         setTenantCode(cleanCode)
         await fetchTenantDetail(cleanCode, brandHint)
@@ -842,7 +829,7 @@ export default function AdminDashboard() {
               <h1 className="text-xl sm:text-2xl font-black text-white tracking-wide uppercase">
                 {brandTitle || tenantCode || 'BARBERSHOP'}
               </h1>
-              {/* BADGE PENANDA PAKET DENGAN INDIKATOR WARNA DEDIKASI */}
+              {/* BADGE PENANDA PAKET */}
               <span className={`text-[10px] font-extrabold px-3 py-1 rounded-full border tracking-wider ${
                 subscriptionPlan === 'PROFESIONAL'
                   ? 'bg-purple-500/10 border-purple-500/30 text-purple-400'
@@ -1203,7 +1190,7 @@ export default function AdminDashboard() {
                       </div>
                     </th>
 
-                    {/* KOLOM STAFF / CAPSTER (PAKET PREMIUM & PROFESIONAL) */}
+                    {/* KOLOM STAFF DARI TABEL TENANTS (Capster) */}
                     {(subscriptionPlan === 'PREMIUM' || subscriptionPlan === 'PROFESIONAL') && (
                       <th onClick={() => handleSort('staff_name')} className="p-4 cursor-pointer hover:text-amber-400 transition text-amber-400">
                         <div className="flex items-center gap-1">
@@ -1263,7 +1250,6 @@ export default function AdminDashboard() {
                           </span>
                         </td>
 
-                        {/* MUNCULKAN NAMA STAFF / CAPSTER JIKA PAKET PREMIUM / PROFESIONAL */}
                         {(subscriptionPlan === 'PREMIUM' || subscriptionPlan === 'PROFESIONAL') && (
                           <td className="p-4 font-medium text-zinc-200">
                             {item.staff_name ? (
