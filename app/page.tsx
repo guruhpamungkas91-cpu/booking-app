@@ -96,16 +96,16 @@ function BookingFormContent() {
         let activeTenant = tenant
         if (tenantData) {
           activeTenant = {
-            clientCode: tenantData.client_code || 'MCUT',
+            clientCode: tenantData.client_code || 'FITRI',
             tenantSlug: tenantData.tenant_slug || currentSlug,
-            name: tenantData.name || 'Studio Booking',
-            adminWa: tenantData.admin_wa || '6285899997828',
+            name: tenantData.business_name || 'fitrifeb.eyelash', // <-- DIPERBAIKI: ganti tenantData.name jadi tenantData.business_name
+            adminWa: tenantData.admin_wa || '6281234567890',
             subscriptionPlan: tenantData.subscription_plan || 'BASIC',
-            category: tenantData.category || 'barbershop',
-            staffLabel: tenantData.staff_label || 'Capster'
-          }
-          setTenant(activeTenant)
+            category: tenantData.category || 'eyelash',
+            staffLabel: tenantData.staff_label || 'Lash Artist'
         }
+          setTenant(activeTenant)
+      }
 
         // Fetch Layanan
         const { data: serviceData } = await supabase
