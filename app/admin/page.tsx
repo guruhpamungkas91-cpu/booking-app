@@ -886,11 +886,11 @@ export default function AdminDashboard() {
 
         {/* STATS CARDS GRID */}
         <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 ${
-          subscriptionPlan === 'PROFESIONAL' ? 'xl:grid-cols-5' : 'xl:grid-cols-5'
+          subscriptionPlan === 'BASIC' ? 'xl:grid-cols-4' : 'xl:grid-cols-5'
         } gap-4`}>
           
-          {/* Card Total Omzet (Hanya Muncul di PREMIUM & PROFESIONAL) */}
-          {(subscriptionPlan === 'PREMIUM' || subscriptionPlan === 'PROFESIONAL') ? (
+          {/* Card Total Omzet (Sembunyi Total di Paket BASIC) */}
+          {(subscriptionPlan === 'PREMIUM' || subscriptionPlan === 'PROFESIONAL') && (
             <div className={`border p-5 rounded-2xl shadow-xl transition-all ${
               subscriptionPlan === 'PROFESIONAL'
                 ? 'bg-gradient-to-br from-purple-950/60 to-zinc-900 border-purple-500/40'
@@ -909,18 +909,6 @@ export default function AdminDashboard() {
                   {stats.completedCount} transaksi selesai
                 </p>
               </div>
-            </div>
-          ) : (
-            <div className="bg-zinc-900/60 border border-zinc-800/80 p-5 rounded-2xl shadow-lg relative overflow-hidden flex flex-col justify-between">
-              <div>
-                <p className="text-xs font-bold text-zinc-500 uppercase tracking-wider flex items-center gap-1">
-                  🔒 Total Omzet
-                </p>
-                <h3 className="text-xl font-black text-zinc-600 mt-2">Rp ••••••••</h3>
-              </div>
-              <p className="text-[10px] text-zinc-500 mt-2">
-                Fitur Omzet dikunci di <strong className="text-amber-500">Paket Basic</strong>
-              </p>
             </div>
           )}
 
@@ -983,186 +971,165 @@ export default function AdminDashboard() {
 
         </div>
 
-        {/* PENARIKAN LAPORAN KEUANGAN */}
-        <div className={`p-5 rounded-2xl shadow-xl space-y-4 border transition-all ${
-          subscriptionPlan === 'PROFESIONAL'
-            ? 'bg-zinc-900 border-purple-500/30'
-            : subscriptionPlan === 'PREMIUM'
-            ? 'bg-zinc-900 border-amber-500/30'
-            : 'bg-zinc-900 border-zinc-800'
-        }`}>
-          <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
-            <div>
-              <h2 className={`text-base font-extrabold flex items-center gap-2 ${
-                subscriptionPlan === 'PROFESIONAL' ? 'text-purple-300' : 'text-amber-400'
-              }`}>
-                <span>📊 Penarikan Laporan Keuangan (Omzet Netto)</span>
-              </h2>
-              <p className="text-xs text-zinc-400">
-                Data siap diexport ke Excel atau dicetak langsung/disimpan sebagai PDF resmi.
-              </p>
-            </div>
-            
-            {/* HINT KHUSUS UNTUK SETIAP PAKET */}
-            {subscriptionPlan === 'BASIC' && (
-              <span className="text-[10px] font-bold bg-zinc-800 text-zinc-400 border border-zinc-700 px-2.5 py-1 rounded-full flex items-center gap-1">
-                🔒 Fitur Laporan Dikunci di Paket Basic
-              </span>
-            )}
-            {subscriptionPlan === 'PREMIUM' && (
-              <span className="text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30 px-2.5 py-1 rounded-full flex items-center gap-1">
-                ⭐ Premium Plan (Export Excel Only)
-              </span>
-            )}
-            {subscriptionPlan === 'PROFESIONAL' && (
-              <span className="text-[10px] font-bold bg-purple-500/10 text-purple-300 border border-purple-500/30 px-2.5 py-1 rounded-full flex items-center gap-1">
-                👑 Profesional Plan (Excel + Cetak PDF)
-              </span>
-            )}
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-start">
-            <div className="md:col-span-6 space-y-4">
+        {/* PENARIKAN LAPORAN KEUANGAN (HANYA DITAMPILKAN UNTUK PREMIUM & PROFESIONAL) */}
+        {subscriptionPlan !== 'BASIC' && (
+          <div className={`p-5 rounded-2xl shadow-xl space-y-4 border transition-all ${
+            subscriptionPlan === 'PROFESIONAL'
+              ? 'bg-zinc-900 border-purple-500/30'
+              : 'bg-zinc-900 border-amber-500/30'
+          }`}>
+            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
               <div>
-                <label className="block text-xs font-semibold text-zinc-300 mb-1.5">Tipe Laporan:</label>
-                <div className="grid grid-cols-4 gap-1.5 p-1 bg-zinc-950 rounded-xl border border-zinc-800">
-                  {(['daily', 'weekly', 'monthly', 'custom'] as const).map((mode) => (
-                    <button
-                      key={mode}
-                      onClick={() => setReportPeriod(mode)}
-                      className={`py-1.5 rounded-lg text-xs font-bold transition capitalize ${
-                        reportPeriod === mode
-                          ? subscriptionPlan === 'PROFESIONAL'
-                            ? 'bg-purple-600 text-white shadow-md'
-                            : 'bg-amber-500 text-zinc-950 shadow-md'
-                          : 'text-zinc-400 hover:text-white'
-                      }`}
-                    >
-                      {mode === 'daily' ? 'Harian' : mode === 'weekly' ? 'Mingguan' : mode === 'monthly' ? 'Bulanan' : 'Custom'}
-                    </button>
-                  ))}
-                </div>
+                <h2 className={`text-base font-extrabold flex items-center gap-2 ${
+                  subscriptionPlan === 'PROFESIONAL' ? 'text-purple-300' : 'text-amber-400'
+                }`}>
+                  <span>📊 Penarikan Laporan Keuangan (Omzet Netto)</span>
+                </h2>
+                <p className="text-xs text-zinc-400">
+                  Data siap diexport ke Excel atau dicetak langsung/disimpan sebagai PDF resmi.
+                </p>
               </div>
-
-              {reportPeriod !== 'custom' ? (
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
-                    {reportPeriod === 'daily' && 'Pilih Tanggal:'}
-                    {reportPeriod === 'weekly' && 'Pilih Tanggal Awal (7 Hari):'}
-                    {reportPeriod === 'monthly' && 'Pilih Bulan & Tahun:'}
-                  </label>
-
-                  <input
-                    type={reportPeriod === 'monthly' ? 'month' : 'date'}
-                    value={reportPeriod === 'monthly' ? reportDate.substring(0, 7) : reportDate}
-                    onChange={(e) => {
-                      const val = e.target.value
-                      setReportDate(reportPeriod === 'monthly' ? `${val}-01` : val)
-                    }}
-                    className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-zinc-200 focus:outline-none focus:border-amber-500"
-                  />
-
-                  {reportPeriod === 'weekly' && reportData.weekInfo && (
-                    <p className="text-[11px] text-amber-400 font-semibold mt-1">
-                      📅 Periode: {formatDateID(reportData.weekInfo.startStr)} s/d {formatDateID(reportData.weekInfo.endStr)}
-                    </p>
-                  )}
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-semibold text-zinc-300 mb-1.5">Dari Tanggal:</label>
-                    <input
-                      type="date"
-                      value={reportStartDate}
-                      onChange={(e) => setReportStartDate(e.target.value)}
-                      className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-zinc-200 focus:outline-none focus:border-amber-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-zinc-300 mb-1.5">Sampai Tanggal:</label>
-                    <input
-                      type="date"
-                      value={reportEndDate}
-                      onChange={(e) => setReportEndDate(e.target.value)}
-                      className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-zinc-200 focus:outline-none focus:border-amber-500"
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="md:col-span-6 space-y-3">
-              <div className="bg-zinc-950 border border-zinc-800 p-4 rounded-xl grid grid-cols-2 gap-4 text-xs">
-                <div>
-                  <p className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider">OMZET BRUTO</p>
-                  <p className="text-xl font-black text-white mt-1">
-                    Rp {reportData.grossRevenue.toLocaleString('id-ID')}
-                  </p>
-                  <p className="text-[10px] text-red-400 mt-0.5 font-medium">
-                    Refund: -Rp {reportData.totalRefund.toLocaleString('id-ID')}
-                  </p>
-                </div>
-                <div className="text-right border-l border-zinc-800 pl-4">
-                  <p className="text-[11px] font-extrabold text-emerald-400 uppercase tracking-wider">OMZET NETTO</p>
-                  <p className="text-2xl font-black text-emerald-400 mt-1">
-                    Rp {reportData.netRevenue.toLocaleString('id-ID')}
-                  </p>
-                </div>
-              </div>
-
-              {/* LOGIKA TOMBOL EKSPOR PER PAKET */}
-              {subscriptionPlan === 'BASIC' && (
-                <div className="bg-zinc-950/80 border border-zinc-800 p-3 rounded-xl flex items-center justify-between">
-                  <span className="text-xs text-zinc-400 flex items-center gap-1.5">
-                    🔒 Penarikan Laporan dikunci di Paket Basic.
-                  </span>
-                  <a
-                    href="https://wa.me/628123456789?text=Halo%20Admin,%20saya%20ingin%20upgrade%20paket%20langganan"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-[11px] font-bold bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 px-3 py-1.5 rounded-lg transition"
-                  >
-                    Upgrade Paket
-                  </a>
-                </div>
-              )}
-
+              
+              {/* HINT KHUSUS UNTUK SETIAP PAKET */}
               {subscriptionPlan === 'PREMIUM' && (
-                <div className="space-y-2">
-                  <button
-                    onClick={exportReportToCSV}
-                    className="w-full bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2.5 rounded-xl font-bold transition text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-600/10"
-                  >
-                    <span>📥 Export Laporan Excel</span>
-                  </button>
-                  <p className="text-[11px] text-center text-zinc-500">
-                    💡 Upgrade ke <strong className="text-purple-400">Paket Profesional</strong> untuk membuka fitur Cetak / Download PDF.
-                  </p>
-                </div>
+                <span className="text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30 px-2.5 py-1 rounded-full flex items-center gap-1">
+                  ⭐ Premium Plan (Export Excel Only)
+                </span>
               )}
-
               {subscriptionPlan === 'PROFESIONAL' && (
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    onClick={exportReportToCSV}
-                    className="w-full bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2.5 rounded-xl font-bold transition text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-600/10"
-                  >
-                    <span>📥 Excel</span>
-                  </button>
-
-                  <button
-                    onClick={handlePrintPDF}
-                    className="w-full bg-purple-600 hover:bg-purple-500 text-white px-4 py-2.5 rounded-xl font-bold transition text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-purple-600/10"
-                  >
-                    <span>🖨️ Cetak / PDF</span>
-                  </button>
-                </div>
+                <span className="text-[10px] font-bold bg-purple-500/10 text-purple-300 border border-purple-500/30 px-2.5 py-1 rounded-full flex items-center gap-1">
+                  👑 Profesional Plan (Excel + Cetak PDF)
+                </span>
               )}
             </div>
 
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-start">
+              <div className="md:col-span-6 space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-300 mb-1.5">Tipe Laporan:</label>
+                  <div className="grid grid-cols-4 gap-1.5 p-1 bg-zinc-950 rounded-xl border border-zinc-800">
+                    {(['daily', 'weekly', 'monthly', 'custom'] as const).map((mode) => (
+                      <button
+                        key={mode}
+                        onClick={() => setReportPeriod(mode)}
+                        className={`py-1.5 rounded-lg text-xs font-bold transition capitalize ${
+                          reportPeriod === mode
+                            ? subscriptionPlan === 'PROFESIONAL'
+                              ? 'bg-purple-600 text-white shadow-md'
+                              : 'bg-amber-500 text-zinc-950 shadow-md'
+                            : 'text-zinc-400 hover:text-white'
+                        }`}
+                      >
+                        {mode === 'daily' ? 'Harian' : mode === 'weekly' ? 'Mingguan' : mode === 'monthly' ? 'Bulanan' : 'Custom'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {reportPeriod !== 'custom' ? (
+                  <div>
+                    <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                      {reportPeriod === 'daily' && 'Pilih Tanggal:'}
+                      {reportPeriod === 'weekly' && 'Pilih Tanggal Awal (7 Hari):'}
+                      {reportPeriod === 'monthly' && 'Pilih Bulan & Tahun:'}
+                    </label>
+
+                    <input
+                      type={reportPeriod === 'monthly' ? 'month' : 'date'}
+                      value={reportPeriod === 'monthly' ? reportDate.substring(0, 7) : reportDate}
+                      onChange={(e) => {
+                        const val = e.target.value
+                        setReportDate(reportPeriod === 'monthly' ? `${val}-01` : val)
+                      }}
+                      className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-zinc-200 focus:outline-none focus:border-amber-500"
+                    />
+
+                    {reportPeriod === 'weekly' && reportData.weekInfo && (
+                      <p className="text-[11px] text-amber-400 font-semibold mt-1">
+                        📅 Periode: {formatDateID(reportData.weekInfo.startStr)} s/d {formatDateID(reportData.weekInfo.endStr)}
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-zinc-300 mb-1.5">Dari Tanggal:</label>
+                      <input
+                        type="date"
+                        value={reportStartDate}
+                        onChange={(e) => setReportStartDate(e.target.value)}
+                        className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-zinc-200 focus:outline-none focus:border-amber-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-zinc-300 mb-1.5">Sampai Tanggal:</label>
+                      <input
+                        type="date"
+                        value={reportEndDate}
+                        onChange={(e) => setReportEndDate(e.target.value)}
+                        className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-zinc-200 focus:outline-none focus:border-amber-500"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="md:col-span-6 space-y-3">
+                <div className="bg-zinc-950 border border-zinc-800 p-4 rounded-xl grid grid-cols-2 gap-4 text-xs">
+                  <div>
+                    <p className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider">OMZET BRUTO</p>
+                    <p className="text-xl font-black text-white mt-1">
+                      Rp {reportData.grossRevenue.toLocaleString('id-ID')}
+                    </p>
+                    <p className="text-[10px] text-red-400 mt-0.5 font-medium">
+                      Refund: -Rp {reportData.totalRefund.toLocaleString('id-ID')}
+                    </p>
+                  </div>
+                  <div className="text-right border-l border-zinc-800 pl-4">
+                    <p className="text-[11px] font-extrabold text-emerald-400 uppercase tracking-wider">OMZET NETTO</p>
+                    <p className="text-2xl font-black text-emerald-400 mt-1">
+                      Rp {reportData.netRevenue.toLocaleString('id-ID')}
+                    </p>
+                  </div>
+                </div>
+
+                {/* LOGIKA TOMBOL EKSPOR PER PAKET */}
+                {subscriptionPlan === 'PREMIUM' && (
+                  <div className="space-y-2">
+                    <button
+                      onClick={exportReportToCSV}
+                      className="w-full bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2.5 rounded-xl font-bold transition text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-600/10"
+                    >
+                      <span>📥 Export Laporan Excel</span>
+                    </button>
+                    <p className="text-[11px] text-center text-zinc-500">
+                      💡 Upgrade ke <strong className="text-purple-400">Paket Profesional</strong> untuk membuka fitur Cetak / Download PDF.
+                    </p>
+                  </div>
+                )}
+
+                {subscriptionPlan === 'PROFESIONAL' && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      onClick={exportReportToCSV}
+                      className="w-full bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2.5 rounded-xl font-bold transition text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-600/10"
+                    >
+                      <span>📥 Excel</span>
+                    </button>
+
+                    <button
+                      onClick={handlePrintPDF}
+                      className="w-full bg-purple-600 hover:bg-purple-500 text-white px-4 py-2.5 rounded-xl font-bold transition text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-purple-600/10"
+                    >
+                      <span>🖨️ Cetak / PDF</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+
+            </div>
           </div>
-        </div>
+        )}
 
         {/* SEARCH & FILTER TABEL DATA */}
         <div className="bg-zinc-900 border border-zinc-800 p-4 sm:p-5 rounded-2xl shadow-xl flex flex-wrap gap-4 items-end justify-between">
@@ -1379,7 +1346,7 @@ export default function AdminDashboard() {
                           >
                             <span>{item.whatsapp_number}</span>
                             <svg className="w-3 h-3 fill-current" viewBox="0 0 24 24">
-                              <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981z"/>
+                              <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981z"/>
                             </svg>
                           </a>
                         </td>
