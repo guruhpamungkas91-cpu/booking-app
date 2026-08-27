@@ -104,22 +104,22 @@ export default function AdminDashboard() {
       }
 
       if (tenantData) {
-      const rawPlan = String(tenantData.subscription_plan || '').trim().toUpperCase()
+        const rawPlan = String(tenantData.subscription_plan || '').trim().toUpperCase()
 
         if (rawPlan.includes('PROFESIONAL') || rawPlan.includes('PROFESSIONAL') || rawPlan.includes('PRO')) {
-        setSubscriptionPlan('PROFESIONAL')
-      } else if (rawPlan.includes('PREMIUM')) {
-        setSubscriptionPlan('PREMIUM')
-      } else {
-        setSubscriptionPlan('BASIC')
-      }
+          setSubscriptionPlan('PROFESIONAL')
+        } else if (rawPlan.includes('PREMIUM')) {
+          setSubscriptionPlan('PREMIUM')
+        } else {
+          setSubscriptionPlan('BASIC')
+        }
 
-      if (tenantData.staff_label) setStaffLabel(tenantData.staff_label)
-      if (tenantData.tenant_slug) {
-        setBrandTitle(tenantData.tenant_slug.toUpperCase())
-        setTenantCode(tenantData.tenant_slug)
-      }
-    }     
+        if (tenantData.staff_label) setStaffLabel(tenantData.staff_label)
+        if (tenantData.tenant_slug) {
+          setBrandTitle(tenantData.tenant_slug.toUpperCase())
+          setTenantCode(tenantData.tenant_slug)
+        }
+      }     
     } catch (err) {
       console.error('Error fetching tenant details:', err)
     }
@@ -283,7 +283,7 @@ export default function AdminDashboard() {
     }
   }
 
-  // STATISTIK CARDS
+  // STATISTIK CARDS & TOP PERFORMER STAFF (PROFESIONAL ONLY)
   const stats = useMemo(() => {
     const totalBookings = reservations.length
 
@@ -315,6 +315,23 @@ export default function AdminDashboard() {
       return (b.status || '').toLowerCase() === 'cancelled_need_refund'
     }).length
 
+    // Hitung Top Staff (Khusus Paket Profesional)
+    const staffPerformance: Record<string, number> = {}
+    reservations.forEach((item) => {
+      if (isCompleted(item.status) && item.staff_name) {
+        staffPerformance[item.staff_name] = (staffPerformance[item.staff_name] || 0) + 1
+      }
+    })
+
+    let topStaffName = '-'
+    let topStaffCount = 0
+    Object.entries(staffPerformance).forEach(([name, count]) => {
+      if (count > topStaffCount) {
+        topStaffCount = count
+        topStaffName = name
+      }
+    })
+
     return {
       totalBookings,
       pendingCount,
@@ -325,6 +342,8 @@ export default function AdminDashboard() {
       completedPercentage: totalBookings > 0 ? Math.round((completedCount / totalBookings) * 100) : 0,
       cancelledPercentage: totalBookings > 0 ? Math.round((cancelledCount / totalBookings) * 100) : 0,
       totalRevenue,
+      topStaffName,
+      topStaffCount,
     }
   }, [reservations])
 
@@ -808,24 +827,38 @@ export default function AdminDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950 p-4 md:p-8 text-zinc-100 font-sans relative">
+    <div className={`min-h-screen p-4 md:p-8 text-zinc-100 font-sans relative transition-colors duration-300 ${
+      subscriptionPlan === 'PROFESIONAL' 
+        ? 'bg-gradient-to-br from-purple-950/20 via-zinc-950 to-zinc-950' 
+        : subscriptionPlan === 'PREMIUM'
+        ? 'bg-gradient-to-br from-amber-950/20 via-zinc-950 to-zinc-950'
+        : 'bg-zinc-950'
+    }`}>
       <div className="max-w-7xl mx-auto space-y-6">
 
         {/* Header Dashboard */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-zinc-900 border border-zinc-800 p-6 rounded-2xl shadow-xl gap-4">
+        <div className={`flex flex-col md:flex-row justify-between items-start md:items-center p-6 rounded-2xl shadow-xl gap-4 border transition-all ${
+          subscriptionPlan === 'PROFESIONAL'
+            ? 'bg-gradient-to-r from-purple-900/40 via-zinc-900 to-zinc-900 border-purple-500/40 shadow-purple-950/20'
+            : subscriptionPlan === 'PREMIUM'
+            ? 'bg-gradient-to-r from-amber-900/30 via-zinc-900 to-zinc-900 border-amber-500/40 shadow-amber-950/20'
+            : 'bg-zinc-900 border-zinc-800'
+        }`}>
           <div>
             <div className="flex items-center space-x-3">
               <h1 className="text-xl sm:text-2xl font-black text-white tracking-wide uppercase">
                 {brandTitle || tenantCode || 'BARBERSHOP'}
               </h1>
               {/* BADGE PAKET */}
-              <span className={`text-[10px] font-extrabold px-3 py-1 rounded-full border tracking-wider ${
+              <span className={`text-[10px] font-extrabold px-3 py-1 rounded-full border tracking-wider transition-all ${
                 subscriptionPlan === 'PROFESIONAL'
-                  ? 'bg-purple-500/10 border-purple-500/30 text-purple-400'
+                  ? 'bg-purple-500/10 border-purple-500/40 text-purple-300 shadow-sm shadow-purple-500/20'
                   : subscriptionPlan === 'PREMIUM'
-                  ? 'bg-amber-500/10 border-amber-500/30 text-amber-400'
+                  ? 'bg-amber-500/10 border-amber-500/40 text-amber-400 shadow-sm shadow-amber-500/20'
                   : 'bg-zinc-800 border-zinc-700 text-zinc-400'
               }`}>
+                {subscriptionPlan === 'PROFESIONAL' && '👑 '}
+                {subscriptionPlan === 'PREMIUM' && '⭐ '}
                 {subscriptionPlan} PLAN
               </span>
             </div>
@@ -852,18 +885,44 @@ export default function AdminDashboard() {
         </div>
 
         {/* STATS CARDS GRID */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-          <div className="bg-gradient-to-br from-emerald-950/80 to-zinc-900 border border-emerald-500/40 p-5 rounded-2xl shadow-xl">
-            <p className="text-xs font-bold text-emerald-400 uppercase tracking-wider">Total Omzet</p>
-            <div className="mt-2">
-              <h3 className="text-2xl font-black text-white">
-                Rp {stats.totalRevenue.toLocaleString('id-ID')}
-              </h3>
-              <p className="text-[10px] text-emerald-400/80 font-medium mt-1">
-                {stats.completedCount} transaksi selesai
+        <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 ${
+          subscriptionPlan === 'PROFESIONAL' ? 'xl:grid-cols-5' : 'xl:grid-cols-5'
+        } gap-4`}>
+          
+          {/* Card Total Omzet (Hanya Muncul di PREMIUM & PROFESIONAL) */}
+          {(subscriptionPlan === 'PREMIUM' || subscriptionPlan === 'PROFESIONAL') ? (
+            <div className={`border p-5 rounded-2xl shadow-xl transition-all ${
+              subscriptionPlan === 'PROFESIONAL'
+                ? 'bg-gradient-to-br from-purple-950/60 to-zinc-900 border-purple-500/40'
+                : 'bg-gradient-to-br from-emerald-950/80 to-zinc-900 border-emerald-500/40'
+            }`}>
+              <p className={`text-xs font-bold uppercase tracking-wider ${
+                subscriptionPlan === 'PROFESIONAL' ? 'text-purple-300' : 'text-emerald-400'
+              }`}>Total Omzet</p>
+              <div className="mt-2">
+                <h3 className="text-2xl font-black text-white">
+                  Rp {stats.totalRevenue.toLocaleString('id-ID')}
+                </h3>
+                <p className={`text-[10px] font-medium mt-1 ${
+                  subscriptionPlan === 'PROFESIONAL' ? 'text-purple-300/80' : 'text-emerald-400/80'
+                }`}>
+                  {stats.completedCount} transaksi selesai
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-zinc-900/60 border border-zinc-800/80 p-5 rounded-2xl shadow-lg relative overflow-hidden flex flex-col justify-between">
+              <div>
+                <p className="text-xs font-bold text-zinc-500 uppercase tracking-wider flex items-center gap-1">
+                  🔒 Total Omzet
+                </p>
+                <h3 className="text-xl font-black text-zinc-600 mt-2">Rp ••••••••</h3>
+              </div>
+              <p className="text-[10px] text-zinc-500 mt-2">
+                Fitur Omzet dikunci di <strong className="text-amber-500">Paket Basic</strong>
               </p>
             </div>
-          </div>
+          )}
 
           <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl shadow-lg">
             <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Total Booking</p>
@@ -882,14 +941,6 @@ export default function AdminDashboard() {
           </div>
 
           <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl shadow-lg">
-            <p className="text-xs font-semibold text-blue-400 uppercase tracking-wider">Dikonfirmasi</p>
-            <div className="flex items-baseline justify-between mt-2">
-              <h3 className="text-3xl font-black text-blue-400">{stats.confirmedCount}</h3>
-              <span className="text-xs text-blue-500/80 font-medium">Siap dilayani</span>
-            </div>
-          </div>
-
-          <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl shadow-lg">
             <p className="text-xs font-semibold text-emerald-400 uppercase tracking-wider">Selesai</p>
             <div className="flex items-baseline justify-between mt-2">
               <h3 className="text-3xl font-black text-emerald-400">{stats.completedCount}</h3>
@@ -899,28 +950,52 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl shadow-lg">
-            <p className="text-xs font-semibold text-rose-400 uppercase tracking-wider">Pembatalan</p>
-            <div className="flex items-baseline justify-between mt-2">
-              <h3 className="text-3xl font-black text-rose-400">{stats.cancelledCount}</h3>
-              {stats.needRefundCount > 0 ? (
-                <span className="text-[10px] font-extrabold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/20 animate-pulse">
-                  {stats.needRefundCount} Perlu Refund
-                </span>
-              ) : (
-                <span className="text-xs font-bold text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded-md border border-rose-500/20">
-                  {stats.cancelledPercentage}%
-                </span>
-              )}
+          {/* WIDGET EKSKLUSIF PROFESIONAL: TOP PERFORMER STAFF */}
+          {subscriptionPlan === 'PROFESIONAL' ? (
+            <div className="bg-gradient-to-br from-purple-950/40 to-zinc-900 border border-purple-500/30 p-5 rounded-2xl shadow-lg">
+              <p className="text-xs font-extrabold text-purple-300 uppercase tracking-wider flex items-center gap-1">
+                🏆 Top {staffLabel}
+              </p>
+              <div className="mt-2">
+                <h3 className="text-lg font-black text-white truncate">{stats.topStaffName}</h3>
+                <p className="text-[10px] text-purple-300/80 font-semibold mt-0.5">
+                  {stats.topStaffCount} Transaksi Selesai
+                </p>
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl shadow-lg">
+              <p className="text-xs font-semibold text-rose-400 uppercase tracking-wider">Pembatalan</p>
+              <div className="flex items-baseline justify-between mt-2">
+                <h3 className="text-3xl font-black text-rose-400">{stats.cancelledCount}</h3>
+                {stats.needRefundCount > 0 ? (
+                  <span className="text-[10px] font-extrabold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/20 animate-pulse">
+                    {stats.needRefundCount} Perlu Refund
+                  </span>
+                ) : (
+                  <span className="text-xs font-bold text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded-md border border-rose-500/20">
+                    {stats.cancelledPercentage}%
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+
         </div>
 
         {/* PENARIKAN LAPORAN KEUANGAN */}
-        <div className="bg-zinc-900 border border-amber-500/30 p-5 rounded-2xl shadow-xl space-y-4">
+        <div className={`p-5 rounded-2xl shadow-xl space-y-4 border transition-all ${
+          subscriptionPlan === 'PROFESIONAL'
+            ? 'bg-zinc-900 border-purple-500/30'
+            : subscriptionPlan === 'PREMIUM'
+            ? 'bg-zinc-900 border-amber-500/30'
+            : 'bg-zinc-900 border-zinc-800'
+        }`}>
           <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
             <div>
-              <h2 className="text-base font-extrabold text-amber-400 flex items-center gap-2">
+              <h2 className={`text-base font-extrabold flex items-center gap-2 ${
+                subscriptionPlan === 'PROFESIONAL' ? 'text-purple-300' : 'text-amber-400'
+              }`}>
                 <span>📊 Penarikan Laporan Keuangan (Omzet Netto)</span>
               </h2>
               <p className="text-xs text-zinc-400">
@@ -928,9 +1003,9 @@ export default function AdminDashboard() {
               </p>
             </div>
             
-            {/* HINT KHUSUS BASIC & PREMIUM */}
+            {/* HINT KHUSUS UNTUK SETIAP PAKET */}
             {subscriptionPlan === 'BASIC' && (
-              <span className="text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30 px-2.5 py-1 rounded-full flex items-center gap-1">
+              <span className="text-[10px] font-bold bg-zinc-800 text-zinc-400 border border-zinc-700 px-2.5 py-1 rounded-full flex items-center gap-1">
                 🔒 Fitur Laporan Dikunci di Paket Basic
               </span>
             )}
@@ -940,7 +1015,7 @@ export default function AdminDashboard() {
               </span>
             )}
             {subscriptionPlan === 'PROFESIONAL' && (
-              <span className="text-[10px] font-bold bg-purple-500/10 text-purple-400 border border-purple-500/30 px-2.5 py-1 rounded-full flex items-center gap-1">
+              <span className="text-[10px] font-bold bg-purple-500/10 text-purple-300 border border-purple-500/30 px-2.5 py-1 rounded-full flex items-center gap-1">
                 👑 Profesional Plan (Excel + Cetak PDF)
               </span>
             )}
@@ -957,7 +1032,9 @@ export default function AdminDashboard() {
                       onClick={() => setReportPeriod(mode)}
                       className={`py-1.5 rounded-lg text-xs font-bold transition capitalize ${
                         reportPeriod === mode
-                          ? 'bg-amber-500 text-zinc-950 shadow-md'
+                          ? subscriptionPlan === 'PROFESIONAL'
+                            ? 'bg-purple-600 text-white shadow-md'
+                            : 'bg-amber-500 text-zinc-950 shadow-md'
                           : 'text-zinc-400 hover:text-white'
                       }`}
                     >
@@ -1035,35 +1112,35 @@ export default function AdminDashboard() {
               </div>
 
               {/* LOGIKA TOMBOL EKSPOR PER PAKET */}
-            {subscriptionPlan === 'BASIC' && (
-            <div className="bg-zinc-950/80 border border-zinc-800 p-3 rounded-xl flex items-center justify-between">
-              <span className="text-xs text-zinc-400 flex items-center gap-1.5">
-                🔒 Penarikan Laporan dikunci di Paket Basic.
-              </span>
-              <a
-                href="https://wa.me/628123456789?text=Halo%20Admin,%20saya%20ingin%20upgrade%20paket%20langganan"
-                target="_blank"
-                rel="noreferrer"
-                className="text-[11px] font-bold bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 px-3 py-1.5 rounded-lg transition"
-              >
-                Upgrade Paket
-              </a>
-            </div>
-)}
+              {subscriptionPlan === 'BASIC' && (
+                <div className="bg-zinc-950/80 border border-zinc-800 p-3 rounded-xl flex items-center justify-between">
+                  <span className="text-xs text-zinc-400 flex items-center gap-1.5">
+                    🔒 Penarikan Laporan dikunci di Paket Basic.
+                  </span>
+                  <a
+                    href="https://wa.me/628123456789?text=Halo%20Admin,%20saya%20ingin%20upgrade%20paket%20langganan"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-[11px] font-bold bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 px-3 py-1.5 rounded-lg transition"
+                  >
+                    Upgrade Paket
+                  </a>
+                </div>
+              )}
 
-            {subscriptionPlan === 'PREMIUM' && (
-              <div className="space-y-2">
-                <button
-                  onClick={exportReportToCSV}
-                  className="w-full bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2.5 rounded-xl font-bold transition text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-600/10"
-                >
-                  <span>📥 Export Laporan Excel</span>
-                </button>
-                <p className="text-[11px] text-center text-zinc-500">
-                  💡 Upgrade ke <strong className="text-purple-400">Paket Profesional</strong> untuk membuka fitur Cetak / Download PDF.
-                </p>
-              </div>
-)}
+              {subscriptionPlan === 'PREMIUM' && (
+                <div className="space-y-2">
+                  <button
+                    onClick={exportReportToCSV}
+                    className="w-full bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2.5 rounded-xl font-bold transition text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-600/10"
+                  >
+                    <span>📥 Export Laporan Excel</span>
+                  </button>
+                  <p className="text-[11px] text-center text-zinc-500">
+                    💡 Upgrade ke <strong className="text-purple-400">Paket Profesional</strong> untuk membuka fitur Cetak / Download PDF.
+                  </p>
+                </div>
+              )}
 
               {subscriptionPlan === 'PROFESIONAL' && (
                 <div className="grid grid-cols-2 gap-3">
@@ -1081,7 +1158,7 @@ export default function AdminDashboard() {
                     <span>🖨️ Cetak / PDF</span>
                   </button>
                 </div>
-)}
+              )}
             </div>
 
           </div>
@@ -1209,7 +1286,9 @@ export default function AdminDashboard() {
 
                     {/* KOLOM STAFF (Tampil di PREMIUM & PROFESIONAL) */}
                     {(subscriptionPlan === 'PREMIUM' || subscriptionPlan === 'PROFESIONAL') && (
-                      <th onClick={() => handleSort('staff_name')} className="p-4 cursor-pointer hover:text-amber-400 transition text-amber-400">
+                      <th onClick={() => handleSort('staff_name')} className={`p-4 cursor-pointer transition ${
+                        subscriptionPlan === 'PROFESIONAL' ? 'text-purple-300' : 'text-amber-400'
+                      }`}>
                         <div className="flex items-center gap-1">
                           <span>{staffLabel}</span>
                           {sortField === 'staff_name' && (sortOrder === 'asc' ? '▲' : '▼')}
@@ -1270,7 +1349,11 @@ export default function AdminDashboard() {
                         {(subscriptionPlan === 'PREMIUM' || subscriptionPlan === 'PROFESIONAL') && (
                           <td className="p-4 font-medium text-zinc-200">
                             {item.staff_name ? (
-                              <span className="bg-zinc-800 border border-zinc-700 px-2 py-1 rounded-md text-[11px]">
+                              <span className={`px-2 py-1 rounded-md text-[11px] border ${
+                                subscriptionPlan === 'PROFESIONAL'
+                                  ? 'bg-purple-950/40 border-purple-800/50 text-purple-200'
+                                  : 'bg-zinc-800 border-zinc-700'
+                              }`}>
                                 👤 {item.staff_name}
                               </span>
                             ) : (
