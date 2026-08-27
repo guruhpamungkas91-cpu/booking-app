@@ -81,37 +81,38 @@ export default function AdminDashboard() {
 
   // AMBIL DATA TENANT (PAKET LANGGANAN & STAFF LABEL) SECARA LIVE DARI DATABASE
   // AMBIL DATA TENANT LIVE DARI DATABASE SUPABASE
-const fetchTenantDetail = useCallback(async (cleanCode: string) => {
-  try {
-    // 1. Query utama ke tabel Tenants
-    let query = supabase
-      .from('Tenants')
-      .select('subscription_plan, staff_label, name, client_code')
+  const fetchTenantDetail = useCallback(async (cleanCode: string) => {
+    try {
+      let data = null
 
+    // 1. Query utama menggunakan Client_Code (C Kapital) & ilike agar tidak sensitif huruf besar/kecil
     if (cleanCode) {
-      query = query.eq('client_code', cleanCode)
+      const { data: tenantData } = await supabase
+        .from('Tenants')
+        .select('subscription_plan, staff_label, name, Client_Code')
+        .ilike('Client_Code', cleanCode)
+        .maybeSingle()
+      
+      data = tenantData
     }
 
-    let { data, error } = await query.maybeSingle()
-
-    // 2. Fallback jika query dengan client_code spesifik tidak mengembalikan hasil
-    if (!data) {
+    // 2. Fallback HANYA jika cleanCode benar-benar tidak ada/kosong
+    if (!data && !cleanCode) {
       const { data: firstRow } = await supabase
         .from('Tenants')
-        .select('subscription_plan, staff_label, name, client_code')
+        .select('subscription_plan, staff_label, name, Client_Code')
         .limit(1)
         .maybeSingle()
 
       data = firstRow
     }
 
+    // 3. Set State berdasarkan data yang didapat
     if (data && data.subscription_plan) {
-      // Normalisasi teks dari database
       const rawPlan = String(data.subscription_plan).trim().toUpperCase()
       
       console.log('STATUS PLAN DARI DATABASE SUPABASE:', rawPlan)
 
-      // Cek variasi kata "PROFESIONAL", "PROFESSIONAL", atau "PRO"
       if (
         rawPlan.includes('PROFESIONAL') || 
         rawPlan.includes('PROFESSIONAL') || 
@@ -126,7 +127,7 @@ const fetchTenantDetail = useCallback(async (cleanCode: string) => {
 
       if (data.staff_label) setStaffLabel(data.staff_label)
       if (data.name) setBrandTitle(data.name)
-      if (data.client_code) setTenantCode(data.client_code)
+      if (data.Client_Code) setTenantCode(data.Client_Code)
     }
   } catch (err) {
     console.error('Error fetching tenant details:', err)
