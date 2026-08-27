@@ -67,72 +67,82 @@ export default function AdminDashboard() {
     return code.replace(/[^a-zA-Z0-9]/g, '').toUpperCase()
   }
 
-  // AMBIL DATA TENANT (PAKET LANGGANAN & STAFF LABEL) SECARA LIVE DARI DATABASE
-  // AMBIL DATA TENANT LIVE DARI DATABASE SUPABASE
-  const fetchTenantDetail = useCallback(async (cleanCode: string) => {
-  try {
-    let tenantData = null
-    const currentDomain = window.location.hostname // Mengambil domain seperti 'mcut-barbershop.vercel.app'
+  // AMBIL DATA TENANT (PAKET LANGGANAN & STAFF LABEL) SECARA LIVE DARI DATABASE SUPABASE
+  const fetchTenantDetail = useCallback(async (cleanCode: string, detectedBrandHint: string = '') => {
+    try {
+      let tenantData = null
+      const currentHost = typeof window !== 'undefined' ? window.location.hostname : ''
 
-    // 1. Prioritas Utama: Cari berdasarkan client_code jika dikirim
-    if (cleanCode) {
-      const { data } = await supabase
-        .from('Tenants')
-        .select('subscription_plan, staff_label, name, client_code')
-        .ilike('client_code', cleanCode)
-        .maybeSingle()
-      
-      tenantData = data
-    }
-
-    // 2. Fallback Ke-1: Jika cleanCode kosong, cari berdasarkan domain di Supabase
-    if (!tenantData) {
-      const { data } = await supabase
-        .from('Tenants')
-        .select('subscription_plan, staff_label, name, client_code')
-        .ilike('domain', `%${currentDomain}%`)
-        .maybeSingle()
-
-      tenantData = data
-    }
-
-    // 3. Fallback Ke-2: Jika domain tidak ketemu, cari berdasarkan nama Brand (misal mengandung 'MCUT')
-    if (!tenantData) {
-      const { data } = await supabase
-        .from('Tenants')
-        .select('subscription_plan, staff_label, name, client_code')
-        .ilike('name', '%MCUT%')
-        .maybeSingle()
-
-      tenantData = data
-    }
-
-    // 4. Update State jika data ditemukan
-    if (tenantData && tenantData.subscription_plan) {
-      const rawPlan = String(tenantData.subscription_plan).trim().toUpperCase()
-      
-      console.log('DATA TENANT SUPABASE TERBACA:', tenantData)
-
-      if (
-        rawPlan.includes('PROFESIONAL') || 
-        rawPlan.includes('PROFESSIONAL') || 
-        rawPlan.includes('PRO')
-      ) {
-        setSubscriptionPlan('PROFESIONAL')
-      } else if (rawPlan.includes('PREMIUM')) {
-        setSubscriptionPlan('PREMIUM')
-      } else {
-        setSubscriptionPlan('BASIC')
+      // 1. Prioritas Utama: Cari berdasarkan client_code jika dikirim
+      if (cleanCode) {
+        const { data } = await supabase
+          .from('Tenants')
+          .select('subscription_plan, staff_label, name, client_code')
+          .ilike('client_code', cleanCode)
+          .maybeSingle()
+        
+        tenantData = data
       }
 
-      if (tenantData.staff_label) setStaffLabel(tenantData.staff_label)
-      if (tenantData.name) setBrandTitle(tenantData.name)
-      if (tenantData.client_code) setTenantCode(tenantData.client_code)
+      // 2. Fallback Ke-1: Cari berdasarkan Domain / Hostname URL
+      if (!tenantData && currentHost) {
+        const { data } = await supabase
+          .from('Tenants')
+          .select('subscription_plan, staff_label, name, client_code')
+          .ilike('domain', `%${currentHost}%`)
+          .maybeSingle()
+
+        tenantData = data
+      }
+
+      // 3. Fallback Ke-2: Cari berdasarkan Keyword Brand Hint (SEM / MCUT)
+      if (!tenantData && detectedBrandHint) {
+        const { data } = await supabase
+          .from('Tenants')
+          .select('subscription_plan, staff_label, name, client_code')
+          .ilike('name', `%${detectedBrandHint}%`)
+          .maybeSingle()
+
+        tenantData = data
+      }
+
+      // 4. Fallback Ke-3: Jika masih tidak ketemu, ambil baris pertama tenant di DB
+      if (!tenantData) {
+        const { data } = await supabase
+          .from('Tenants')
+          .select('subscription_plan, staff_label, name, client_code')
+          .limit(1)
+          .maybeSingle()
+
+        tenantData = data
+      }
+
+      // 5. Update State berdasarkan data yang didapat
+      if (tenantData && tenantData.subscription_plan) {
+        const rawPlan = String(tenantData.subscription_plan).trim().toUpperCase()
+
+        console.log('>>> [DEBUG SUCCESS] DATA TENANT DB:', tenantData)
+
+        if (
+          rawPlan.includes('PROFESIONAL') || 
+          rawPlan.includes('PROFESSIONAL') || 
+          rawPlan.includes('PRO')
+        ) {
+          setSubscriptionPlan('PROFESIONAL')
+        } else if (rawPlan.includes('PREMIUM')) {
+          setSubscriptionPlan('PREMIUM')
+        } else {
+          setSubscriptionPlan('BASIC')
+        }
+
+        if (tenantData.staff_label) setStaffLabel(tenantData.staff_label)
+        if (tenantData.name) setBrandTitle(tenantData.name)
+        if (tenantData.client_code) setTenantCode(tenantData.client_code)
+      }
+    } catch (err) {
+      console.error('Error fetching tenant details:', err)
     }
-  } catch (err) {
-    console.error('Error fetching tenant details:', err)
-  }
-}, [])
+  }, [])
 
   // Login Handler
   const handleLogin = async (e: React.FormEvent) => {
@@ -170,7 +180,6 @@ export default function AdminDashboard() {
     const rawClientCode = user?.app_metadata?.client_code || tenantCode
     const userClientCode = rawClientCode ? sanitizeClientCode(rawClientCode) : ''
 
-    // Panggil ulang detail tenant secara mendalam
     await fetchTenantDetail(userClientCode)
 
     let query = supabase
@@ -661,7 +670,7 @@ export default function AdminDashboard() {
     return Array.from(list)
   }, [reservations])
 
-  // FILTER & SORTING
+  // FILTER & SORTING TABEL RESERVASI
   useEffect(() => {
     let result = [...reservations]
 
@@ -736,41 +745,36 @@ export default function AdminDashboard() {
     }
   }
 
-  // GABUNGAN DETEKSI BRAND & CHECK SESSION (Menggantikan useEffect 1 dan 3)
+  // SINGLE USEEFFECT INITIALIZER: INISIALISASI BRAND & CHECK SESSION DENGAN GUARANTEE FALLBACK
   useEffect(() => {
-  const initTenantAndSession = async () => {
-    let currentBrand = ''
+    const initTenantAndSession = async () => {
+      let brandHint = ''
 
-    // 1. Deteksi Brand dari Hostname terlebih dahulu
-    if (typeof window !== 'undefined') {
-      const hostname = window.location.hostname.toLowerCase()
-      if (hostname.includes('sem')) {
-        currentBrand = 'SEM'
-      } else if (hostname.includes('mcut')) {
-        currentBrand = 'MCUT'
+      if (typeof window !== 'undefined') {
+        const hostname = window.location.hostname.toLowerCase()
+        if (hostname.includes('sem')) {
+          brandHint = 'SEM'
+        } else if (hostname.includes('mcut')) {
+          brandHint = 'MCUT'
+        }
+        if (brandHint) setBrandTitle(brandHint)
       }
-      if (currentBrand) setBrandTitle(currentBrand)
+
+      const { data } = await supabase.auth.getSession()
+      
+      if (data?.session) {
+        setIsAuthenticated(true)
+        const rawCode = data.session.user.app_metadata?.client_code || ''
+        const cleanCode = sanitizeClientCode(rawCode)
+        setTenantCode(cleanCode)
+        await fetchTenantDetail(cleanCode, brandHint)
+      } else {
+        await fetchTenantDetail('', brandHint)
+      }
     }
 
-    // 2. Cek Session User dari Supabase
-    const { data } = await supabase.auth.getSession()
-    
-    if (data?.session) {
-      setIsAuthenticated(true)
-      const rawCode = data.session.user.app_metadata?.client_code || ''
-      const cleanCode = sanitizeClientCode(rawCode)
-      setTenantCode(cleanCode)
-
-      // Panggil fetch detail live jika login
-      await fetchTenantDetail(cleanCode)
-    } else {
-      // Jika belum login, panggil fetchTenantDetail dengan cleanCode kosong
-      await fetchTenantDetail('')
-    }
-  }
-
-  initTenantAndSession()
-}, [fetchTenantDetail])
+    initTenantAndSession()
+  }, [fetchTenantDetail])
 
   useEffect(() => {
     if (isAuthenticated) fetchReservations()
