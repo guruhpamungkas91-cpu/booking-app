@@ -779,15 +779,15 @@ export default function AdminDashboard() {
     return (
       <main className="min-h-screen bg-[#09090b] flex items-center justify-center p-4 font-sans text-zinc-100 relative overflow-hidden">
         {/* Glow ambient effect */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-amber-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-80 sm:w-96 h-80 sm:h-96 bg-amber-500/10 rounded-full blur-3xl pointer-events-none"></div>
 
-        <div className="max-w-md w-full bg-zinc-900/90 backdrop-blur-xl border border-zinc-800/80 rounded-3xl shadow-2xl shadow-amber-500/5 p-8 space-y-6 relative z-10">
+        <div className="max-w-md w-full bg-zinc-900/90 backdrop-blur-xl border border-zinc-800/80 rounded-3xl shadow-2xl shadow-amber-500/5 p-6 sm:p-8 space-y-6 relative z-10">
           <div className="text-center space-y-2">
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black bg-gradient-to-r from-amber-500/20 to-amber-600/10 text-amber-400 border border-amber-500/30 tracking-widest uppercase shadow-inner">
               <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
               Admin Control Center
             </span>
-            <h1 className="text-2xl font-black text-white tracking-tight uppercase bg-gradient-to-b from-white to-zinc-400 bg-clip-text text-transparent mt-2">
+            <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight uppercase bg-gradient-to-b from-white to-zinc-400 bg-clip-text text-transparent mt-2">
               {brandTitle ? `${brandTitle}` : 'BARBERSHOP PORTAL'}
             </h1>
             <p className="text-xs text-zinc-400 font-medium">Masuk untuk mengakses dasbor manajemen reservasi</p>
@@ -831,7 +831,7 @@ export default function AdminDashboard() {
   }
 
   return (
-    <div className={`min-h-screen p-4 md:p-8 text-zinc-100 font-sans relative transition-colors duration-500 ${
+    <div className={`min-h-screen p-3 sm:p-6 md:p-8 text-zinc-100 font-sans relative transition-colors duration-500 ${
       subscriptionPlan === 'PROFESIONAL' 
         ? 'bg-[#0a0712]' 
         : subscriptionPlan === 'PREMIUM'
@@ -839,7 +839,7 @@ export default function AdminDashboard() {
         : 'bg-[#09090b]'
     }`}>
       {/* Dynamic ambient glow based on plan */}
-      <div className={`fixed top-0 left-1/4 w-[600px] h-[600px] rounded-full blur-[140px] pointer-events-none transition-all duration-700 ${
+      <div className={`fixed top-0 left-1/4 w-[300px] sm:w-[600px] h-[300px] sm:h-[600px] rounded-full blur-[100px] sm:blur-[140px] pointer-events-none transition-all duration-700 ${
         subscriptionPlan === 'PROFESIONAL'
           ? 'bg-purple-600/10'
           : subscriptionPlan === 'PREMIUM'
@@ -847,10 +847,10 @@ export default function AdminDashboard() {
           : 'bg-zinc-800/10'
       }`}></div>
 
-      <div className="max-w-7xl mx-auto space-y-6 relative z-10">
+      <div className="max-w-7xl mx-auto space-y-4 sm:space-y-6 relative z-10">
 
         {/* Header Dashboard */}
-        <div className={`flex flex-col md:flex-row justify-between items-start md:items-center p-6 md:p-7 rounded-3xl backdrop-blur-xl border shadow-2xl transition-all duration-300 ${
+        <div className={`flex flex-col md:flex-row justify-between items-start md:items-center p-4 sm:p-6 md:p-7 rounded-2xl sm:rounded-3xl backdrop-blur-xl border shadow-2xl transition-all duration-300 gap-4 ${
           subscriptionPlan === 'PROFESIONAL'
             ? 'bg-gradient-to-r from-purple-950/40 via-zinc-900/80 to-purple-950/20 border-purple-500/30 shadow-purple-950/30'
             : subscriptionPlan === 'PREMIUM'
@@ -859,11 +859,11 @@ export default function AdminDashboard() {
         }`}>
           <div>
             <div className="flex items-center space-x-3 flex-wrap gap-y-2">
-              <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight uppercase">
+              <h1 className="text-xl sm:text-2xl md:text-3xl font-black text-white tracking-tight uppercase">
                 {brandTitle || tenantCode || 'BARBERSHOP'}
               </h1>
               {/* BADGE PAKET */}
-              <span className={`text-[10px] font-black px-3.5 py-1.5 rounded-full border tracking-wider transition-all uppercase shadow-lg flex items-center gap-1.5 ${
+              <span className={`text-[9px] sm:text-[10px] font-black px-3 py-1 sm:px-3.5 sm:py-1.5 rounded-full border tracking-wider transition-all uppercase shadow-lg flex items-center gap-1.5 ${
                 subscriptionPlan === 'PROFESIONAL'
                   ? 'bg-purple-500/10 border-purple-500/50 text-purple-300 shadow-purple-500/10 animate-pulse'
                   : subscriptionPlan === 'PREMIUM'
@@ -875,51 +875,51 @@ export default function AdminDashboard() {
                 {subscriptionPlan} PLAN
               </span>
             </div>
-            <p className="text-xs text-zinc-400 mt-1 font-medium">Kelola dan pantau pesanan masuk secara real-time</p>
+            <p className="text-[11px] sm:text-xs text-zinc-400 mt-1 font-medium">Kelola dan pantau pesanan masuk secara real-time</p>
           </div>
 
-          <div className="space-x-3 w-full md:w-auto flex justify-end items-center mt-4 md:mt-0">
+          <div className="space-x-2 sm:space-x-3 w-full md:w-auto flex justify-end items-center">
             <button
               onClick={fetchReservations}
-              className="bg-zinc-800/80 hover:bg-zinc-700 text-zinc-200 border border-zinc-700/80 px-4 py-2.5 rounded-2xl font-bold transition-all text-xs flex items-center gap-2 hover:shadow-lg active:scale-95"
+              className="flex-1 md:flex-initial justify-center bg-zinc-800/80 hover:bg-zinc-700 text-zinc-200 border border-zinc-700/80 px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl font-bold transition-all text-[11px] sm:text-xs flex items-center gap-1.5 sm:gap-2 hover:shadow-lg active:scale-95"
             >
-              <svg className="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
-              <span>Refresh Data</span>
+              <span>Refresh</span>
             </button>
             <button
               onClick={handleLogout}
-              className="bg-rose-500/10 hover:bg-rose-500 text-rose-400 hover:text-white border border-rose-500/30 px-4 py-2.5 rounded-2xl font-bold transition-all text-xs active:scale-95"
+              className="bg-rose-500/10 hover:bg-rose-500 text-rose-400 hover:text-white border border-rose-500/30 px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl font-bold transition-all text-[11px] sm:text-xs active:scale-95"
             >
               Logout
             </button>
           </div>
         </div>
 
-        {/* STATS CARDS GRID (5 CARD TERATAS UNTUK SEMUA PAKET) */}
-        <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 ${
-          subscriptionPlan === 'BASIC' ? 'xl:grid-cols-4' : 'xl:grid-cols-5'
-        } gap-4`}>
+        {/* STATS CARDS GRID (MOBILE: 2 KOLOM | DESKTOP: 5 KOLOM) */}
+        <div className={`grid grid-cols-2 sm:grid-cols-3 ${
+          subscriptionPlan === 'BASIC' ? 'lg:grid-cols-4' : 'lg:grid-cols-5'
+        } gap-3 sm:gap-4`}>
           
-          {/* Card 1: Total Omzet (Sembunyi di Paket BASIC) */}
+          {/* Card 1: Total Omzet (Sembunyi di BASIC, Spans 2 Kolom di HP) */}
           {(subscriptionPlan === 'PREMIUM' || subscriptionPlan === 'PROFESIONAL') && (
-            <div className={`border p-6 rounded-3xl shadow-2xl transition-all relative overflow-hidden group ${
+            <div className={`col-span-2 sm:col-span-1 border p-4 sm:p-6 rounded-2xl sm:rounded-3xl shadow-2xl transition-all relative overflow-hidden group ${
               subscriptionPlan === 'PROFESIONAL'
-                ? 'bg-gradient-to-br from-purple-900/30 via-zinc-900/90 to-zinc-900 border-purple-500/40'
+                ? 'bg-gradient-to-br from-purple-900/40 via-zinc-900/90 to-zinc-900 border-purple-500/40'
                 : 'bg-gradient-to-br from-emerald-950/40 via-zinc-900/90 to-zinc-900 border-emerald-500/40'
             }`}>
-              <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-                <span className="text-5xl">💰</span>
+              <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
+                <span className="text-3xl sm:text-5xl">💰</span>
               </div>
-              <p className={`text-xs font-black uppercase tracking-wider ${
+              <p className={`text-[10px] sm:text-xs font-black uppercase tracking-wider ${
                 subscriptionPlan === 'PROFESIONAL' ? 'text-purple-300' : 'text-emerald-400'
               }`}>Total Omzet</p>
-              <div className="mt-3">
-                <h3 className="text-3xl font-black text-white tracking-tight">
+              <div className="mt-2 sm:mt-3">
+                <h3 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
                   Rp {stats.totalRevenue.toLocaleString('id-ID')}
                 </h3>
-                <p className={`text-xs font-bold mt-1.5 flex items-center gap-1 ${
+                <p className={`text-[10px] sm:text-xs font-bold mt-1 flex items-center gap-1 ${
                   subscriptionPlan === 'PROFESIONAL' ? 'text-purple-300/80' : 'text-emerald-400/80'
                 }`}>
                   <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
@@ -930,45 +930,45 @@ export default function AdminDashboard() {
           )}
 
           {/* Card 2: Total Booking */}
-          <div className="bg-zinc-900/80 backdrop-blur-xl border border-zinc-800/80 p-6 rounded-3xl shadow-xl hover:border-zinc-700 transition-all">
-            <p className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Total Booking</p>
-            <div className="flex items-baseline justify-between mt-3">
-              <h3 className="text-3xl font-black text-white tracking-tight">{stats.totalBookings}</h3>
-              <span className="text-[11px] text-amber-400 font-extrabold bg-amber-500/10 px-2.5 py-1 rounded-full border border-amber-500/20">Semua Data</span>
+          <div className="bg-zinc-900/80 backdrop-blur-xl border border-zinc-800/80 p-4 sm:p-6 rounded-2xl sm:rounded-3xl shadow-xl hover:border-zinc-700 transition-all">
+            <p className="text-[10px] sm:text-xs font-bold text-zinc-400 uppercase tracking-wider">Total Booking</p>
+            <div className="flex flex-col sm:flex-row sm:items-baseline justify-between mt-2 sm:mt-3 gap-1">
+              <h3 className="text-2xl sm:text-3xl font-black text-white tracking-tight">{stats.totalBookings}</h3>
+              <span className="w-fit text-[9px] sm:text-[11px] text-amber-400 font-extrabold bg-amber-500/10 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full border border-amber-500/20">Semua Data</span>
             </div>
           </div>
 
           {/* Card 3: Menunggu */}
-          <div className="bg-zinc-900/80 backdrop-blur-xl border border-zinc-800/80 p-6 rounded-3xl shadow-xl hover:border-amber-500/40 transition-all">
-            <p className="text-xs font-bold text-amber-400 uppercase tracking-wider">Menunggu</p>
-            <div className="flex items-baseline justify-between mt-3">
-              <h3 className="text-3xl font-black text-amber-400 tracking-tight">{stats.pendingCount}</h3>
-              <span className="text-[11px] text-amber-400/90 font-bold bg-amber-500/10 px-2.5 py-1 rounded-full border border-amber-500/20">Konfirmasi</span>
+          <div className="bg-zinc-900/80 backdrop-blur-xl border border-zinc-800/80 p-4 sm:p-6 rounded-2xl sm:rounded-3xl shadow-xl hover:border-amber-500/40 transition-all">
+            <p className="text-[10px] sm:text-xs font-bold text-amber-400 uppercase tracking-wider">Menunggu</p>
+            <div className="flex flex-col sm:flex-row sm:items-baseline justify-between mt-2 sm:mt-3 gap-1">
+              <h3 className="text-2xl sm:text-3xl font-black text-amber-400 tracking-tight">{stats.pendingCount}</h3>
+              <span className="w-fit text-[9px] sm:text-[11px] text-amber-400/90 font-bold bg-amber-500/10 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full border border-amber-500/20">Konfirmasi</span>
             </div>
           </div>
 
           {/* Card 4: Selesai */}
-          <div className="bg-zinc-900/80 backdrop-blur-xl border border-zinc-800/80 p-6 rounded-3xl shadow-xl hover:border-emerald-500/40 transition-all">
-            <p className="text-xs font-bold text-emerald-400 uppercase tracking-wider">Selesai</p>
-            <div className="flex items-baseline justify-between mt-3">
-              <h3 className="text-3xl font-black text-emerald-400 tracking-tight">{stats.completedCount}</h3>
-              <span className="text-xs font-extrabold text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20">
+          <div className="bg-zinc-900/80 backdrop-blur-xl border border-zinc-800/80 p-4 sm:p-6 rounded-2xl sm:rounded-3xl shadow-xl hover:border-emerald-500/40 transition-all">
+            <p className="text-[10px] sm:text-xs font-bold text-emerald-400 uppercase tracking-wider">Selesai</p>
+            <div className="flex flex-col sm:flex-row sm:items-baseline justify-between mt-2 sm:mt-3 gap-1">
+              <h3 className="text-2xl sm:text-3xl font-black text-emerald-400 tracking-tight">{stats.completedCount}</h3>
+              <span className="w-fit text-[9px] sm:text-xs font-extrabold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 sm:px-3 sm:py-1 rounded-full border border-emerald-500/20">
                 {stats.completedPercentage}%
               </span>
             </div>
           </div>
 
-          {/* Card 5: Pembatalan (Tetap ada di baris atas untuk semua paket) */}
-          <div className="bg-zinc-900/80 backdrop-blur-xl border border-zinc-800/80 p-6 rounded-3xl shadow-xl hover:border-rose-500/40 transition-all">
-            <p className="text-xs font-bold text-rose-400 uppercase tracking-wider">Pembatalan</p>
-            <div className="flex items-baseline justify-between mt-3">
-              <h3 className="text-3xl font-black text-rose-400 tracking-tight">{stats.cancelledCount}</h3>
+          {/* Card 5: Pembatalan */}
+          <div className="bg-zinc-900/80 backdrop-blur-xl border border-zinc-800/80 p-4 sm:p-6 rounded-2xl sm:rounded-3xl shadow-xl hover:border-rose-500/40 transition-all">
+            <p className="text-[10px] sm:text-xs font-bold text-rose-400 uppercase tracking-wider">Pembatalan</p>
+            <div className="flex flex-col sm:flex-row sm:items-baseline justify-between mt-2 sm:mt-3 gap-1">
+              <h3 className="text-2xl sm:text-3xl font-black text-rose-400 tracking-tight">{stats.cancelledCount}</h3>
               {stats.needRefundCount > 0 ? (
-                <span className="text-[10px] font-black text-amber-400 bg-amber-500/10 px-2.5 py-1 rounded-full border border-amber-500/30 animate-pulse">
-                  {stats.needRefundCount} Perlu Refund
+                <span className="w-fit text-[9px] font-black text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/30 animate-pulse">
+                  {stats.needRefundCount} Refund
                 </span>
               ) : (
-                <span className="text-xs font-extrabold text-rose-400 bg-rose-500/10 px-3 py-1 rounded-full border border-rose-500/20">
+                <span className="w-fit text-[9px] sm:text-xs font-extrabold text-rose-400 bg-rose-500/10 px-2 py-0.5 sm:px-3 sm:py-1 rounded-full border border-rose-500/20">
                   {stats.cancelledPercentage}%
                 </span>
               )}
@@ -977,40 +977,40 @@ export default function AdminDashboard() {
 
         </div>
 
-        {/* WIDGET SPESIAL HIGHLIGHT TOP CAPSTER (KHUSUS PROFESIONAL - TERPISAH DI BAWAH CARD STATS) */}
+        {/* WIDGET SPESIAL HIGHLIGHT TOP CAPSTER (RESPONSIVE MOBILE BANNER) */}
         {subscriptionPlan === 'PROFESIONAL' && (
-          <div className="bg-gradient-to-r from-purple-950/50 via-zinc-900/90 to-purple-950/30 border border-purple-500/40 p-5 rounded-3xl shadow-2xl flex items-center justify-between relative overflow-hidden">
-            <div className="flex items-center space-x-4">
-              <div className="w-12 h-12 rounded-2xl bg-purple-500/20 border border-purple-500/40 flex items-center justify-center text-2xl shadow-inner">
+          <div className="bg-gradient-to-r from-purple-950/50 via-zinc-900/90 to-purple-950/30 border border-purple-500/40 p-4 sm:p-5 rounded-2xl sm:rounded-3xl shadow-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 relative overflow-hidden">
+            <div className="flex items-center space-x-3 sm:space-x-4">
+              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-purple-500/20 border border-purple-500/40 flex items-center justify-center text-xl sm:text-2xl shrink-0">
                 🏆
               </div>
-              <div>
-                <span className="text-[10px] font-black text-purple-300 uppercase tracking-widest bg-purple-500/10 px-2.5 py-0.5 rounded-full border border-purple-500/30">
+              <div className="min-w-0">
+                <span className="text-[9px] sm:text-[10px] font-black text-purple-300 uppercase tracking-widest bg-purple-500/10 px-2 py-0.5 rounded-full border border-purple-500/30">
                   Performa Staff Terbaik ({staffLabel})
                 </span>
-                <h3 className="text-xl font-black text-white mt-1">
-                  {stats.topStaffName !== '-' ? stats.topStaffName : 'Belum Ada Data Selesai'}
+                <h3 className="text-lg sm:text-xl font-black text-white mt-1 truncate">
+                  {stats.topStaffName !== '-' ? stats.topStaffName : 'Belum Ada Data'}
                 </h3>
               </div>
             </div>
-            <div className="text-right">
-              <span className="text-2xl font-black text-purple-300 font-mono">
+            <div className="flex sm:flex-col items-center sm:items-end justify-between border-t border-purple-500/20 sm:border-t-0 pt-2 sm:pt-0">
+              <span className="text-xl sm:text-2xl font-black text-purple-300 font-mono">
                 {stats.topStaffCount}
               </span>
-              <p className="text-[11px] text-zinc-400 font-bold uppercase tracking-wider">Transaksi Selesai</p>
+              <p className="text-[10px] sm:text-[11px] text-zinc-400 font-bold uppercase tracking-wider">Transaksi Selesai</p>
             </div>
           </div>
         )}
 
         {/* PROMOTION / UPSELL BANNER (KHUSUS BASIC UNTUK UPGRADE KE PREMIUM/PROFESIONAL) */}
         {subscriptionPlan === 'BASIC' && (
-          <div className="p-6 rounded-3xl bg-gradient-to-r from-amber-500/10 via-purple-500/10 to-zinc-900 border border-amber-500/30 shadow-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+          <div className="p-4 sm:p-6 rounded-2xl sm:rounded-3xl bg-gradient-to-r from-amber-500/10 via-purple-500/10 to-zinc-900 border border-amber-500/30 shadow-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
             <div className="space-y-1">
-              <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 uppercase">Upgrade Fitur Premium</span>
-              <h3 className="text-base font-black text-white">Buka Fitur Laporan Keuangan, Total Omzet, & Manajemen Staff!</h3>
-              <p className="text-xs text-zinc-400">Tingkatkan operasional bisnis kamu ke Paket Premium atau Profesional sekarang.</p>
+              <span className="text-[9px] sm:text-[10px] font-black px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 uppercase">Upgrade Fitur Premium</span>
+              <h3 className="text-sm sm:text-base font-black text-white">Buka Fitur Laporan Keuangan, Total Omzet, & Manajemen Staff!</h3>
+              <p className="text-[11px] sm:text-xs text-zinc-400">Tingkatkan operasional bisnis kamu ke Paket Premium atau Profesional sekarang.</p>
             </div>
-            <button onClick={() => alert('Silakan hubungi customer support untuk upgrade paket bisnis kamu!')} className="bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-zinc-950 font-black px-5 py-2.5 rounded-2xl text-xs whitespace-nowrap shadow-lg shadow-amber-500/20 transition-all active:scale-95">
+            <button onClick={() => alert('Silakan hubungi customer support untuk upgrade paket bisnis kamu!')} className="w-full md:w-auto bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-zinc-950 font-black px-5 py-2.5 rounded-xl sm:rounded-2xl text-xs whitespace-nowrap shadow-lg shadow-amber-500/20 transition-all active:scale-95">
               Upgrade Sekarang ⭐
             </button>
           </div>
@@ -1018,46 +1018,46 @@ export default function AdminDashboard() {
 
         {/* PENARIKAN LAPORAN KEUANGAN (HANYA DITAMPILKAN UNTUK PREMIUM & PROFESIONAL) */}
         {subscriptionPlan !== 'BASIC' && (
-          <div className={`p-6 md:p-7 rounded-3xl shadow-2xl space-y-5 border backdrop-blur-xl transition-all ${
+          <div className={`p-4 sm:p-6 md:p-7 rounded-2xl sm:rounded-3xl shadow-2xl space-y-4 sm:space-y-5 border backdrop-blur-xl transition-all ${
             subscriptionPlan === 'PROFESIONAL'
               ? 'bg-zinc-900/90 border-purple-500/30 shadow-purple-950/20'
               : 'bg-zinc-900/90 border-amber-500/30 shadow-amber-950/20'
           }`}>
             <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-zinc-800/80 pb-4 gap-2">
               <div>
-                <h2 className={`text-lg font-black flex items-center gap-2 ${
+                <h2 className={`text-base sm:text-lg font-black flex items-center gap-2 ${
                   subscriptionPlan === 'PROFESIONAL' ? 'text-purple-300' : 'text-amber-400'
                 }`}>
                   <span>📊 Laporan Keuangan & Omzet Netto</span>
                 </h2>
-                <p className="text-xs text-zinc-400 font-medium">
+                <p className="text-[11px] sm:text-xs text-zinc-400 font-medium">
                   Data siap diexport ke Excel atau dicetak langsung/disimpan sebagai PDF resmi.
                 </p>
               </div>
               
               {/* HINT KHUSUS UNTUK SETIAP PAKET */}
               {subscriptionPlan === 'PREMIUM' && (
-                <span className="text-[10px] font-black bg-amber-500/10 text-amber-400 border border-amber-500/30 px-3 py-1.5 rounded-full flex items-center gap-1.5 w-max">
+                <span className="text-[9px] sm:text-[10px] font-black bg-amber-500/10 text-amber-400 border border-amber-500/30 px-3 py-1 rounded-full flex items-center gap-1.5 w-max">
                   ⭐ Premium Plan (Export Excel Only)
                 </span>
               )}
               {subscriptionPlan === 'PROFESIONAL' && (
-                <span className="text-[10px] font-black bg-purple-500/10 text-purple-300 border border-purple-500/30 px-3 py-1.5 rounded-full flex items-center gap-1.5 w-max">
+                <span className="text-[9px] sm:text-[10px] font-black bg-purple-500/10 text-purple-300 border border-purple-500/30 px-3 py-1 rounded-full flex items-center gap-1.5 w-max">
                   👑 Profesional Plan (Excel + Cetak PDF)
                 </span>
               )}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
-              <div className="md:col-span-6 space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-4 sm:gap-6 items-start">
+              <div className="md:col-span-6 space-y-3 sm:space-y-4">
                 <div>
                   <label className="block text-xs font-bold text-zinc-300 mb-2">Tipe Laporan:</label>
-                  <div className="grid grid-cols-4 gap-2 p-1.5 bg-zinc-950/80 rounded-2xl border border-zinc-800">
+                  <div className="grid grid-cols-4 gap-1 sm:gap-2 p-1 bg-zinc-950/80 rounded-xl sm:rounded-2xl border border-zinc-800">
                     {(['daily', 'weekly', 'monthly', 'custom'] as const).map((mode) => (
                       <button
                         key={mode}
                         onClick={() => setReportPeriod(mode)}
-                        className={`py-2 rounded-xl text-xs font-bold transition-all capitalize ${
+                        className={`py-1.5 sm:py-2 rounded-lg sm:rounded-xl text-[10px] sm:text-xs font-bold transition-all capitalize ${
                           reportPeriod === mode
                             ? subscriptionPlan === 'PROFESIONAL'
                               ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30'
@@ -1073,7 +1073,7 @@ export default function AdminDashboard() {
 
                 {reportPeriod !== 'custom' ? (
                   <div>
-                    <label className="block text-xs font-bold text-zinc-300 mb-2">
+                    <label className="block text-xs font-bold text-zinc-300 mb-1.5 sm:mb-2">
                       {reportPeriod === 'daily' && 'Pilih Tanggal:'}
                       {reportPeriod === 'weekly' && 'Pilih Tanggal Awal (7 Hari):'}
                       {reportPeriod === 'monthly' && 'Pilih Bulan & Tahun:'}
@@ -1086,53 +1086,53 @@ export default function AdminDashboard() {
                         const val = e.target.value
                         setReportDate(reportPeriod === 'monthly' ? `${val}-01` : val)
                       }}
-                      className="w-full px-4 py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-2xl text-xs text-zinc-200 focus:outline-none focus:border-amber-500 shadow-inner"
+                      className="w-full px-3.5 sm:px-4 py-2 sm:py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-xl sm:rounded-2xl text-xs text-zinc-200 focus:outline-none focus:border-amber-500 shadow-inner"
                     />
 
                     {reportPeriod === 'weekly' && reportData.weekInfo && (
-                      <p className="text-[11px] text-amber-400 font-bold mt-2 flex items-center gap-1">
+                      <p className="text-[10px] sm:text-[11px] text-amber-400 font-bold mt-2 flex items-center gap-1">
                         <span>📅</span> Periode: {formatDateID(reportData.weekInfo.startStr)} s/d {formatDateID(reportData.weekInfo.endStr)}
                       </p>
                     )}
                   </div>
                 ) : (
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-2 gap-2 sm:gap-3">
                     <div>
-                      <label className="block text-xs font-bold text-zinc-300 mb-2">Dari Tanggal:</label>
+                      <label className="block text-[11px] sm:text-xs font-bold text-zinc-300 mb-1.5">Dari Tanggal:</label>
                       <input
                         type="date"
                         value={reportStartDate}
                         onChange={(e) => setReportStartDate(e.target.value)}
-                        className="w-full px-4 py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-2xl text-xs text-zinc-200 focus:outline-none focus:border-amber-500 shadow-inner"
+                        className="w-full px-3 py-2 bg-zinc-950/80 border border-zinc-800 rounded-xl text-xs text-zinc-200 focus:outline-none focus:border-amber-500 shadow-inner"
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-zinc-300 mb-2">Sampai Tanggal:</label>
+                      <label className="block text-[11px] sm:text-xs font-bold text-zinc-300 mb-1.5">Sampai Tanggal:</label>
                       <input
                         type="date"
                         value={reportEndDate}
                         onChange={(e) => setReportEndDate(e.target.value)}
-                        className="w-full px-4 py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-2xl text-xs text-zinc-200 focus:outline-none focus:border-amber-500 shadow-inner"
+                        className="w-full px-3 py-2 bg-zinc-950/80 border border-zinc-800 rounded-xl text-xs text-zinc-200 focus:outline-none focus:border-amber-500 shadow-inner"
                       />
                     </div>
                   </div>
                 )}
               </div>
 
-              <div className="md:col-span-6 space-y-4">
-                <div className="bg-zinc-950/90 border border-zinc-800/80 p-5 rounded-2xl grid grid-cols-2 gap-4 text-xs shadow-inner">
+              <div className="md:col-span-6 space-y-3 sm:space-y-4">
+                <div className="bg-zinc-950/90 border border-zinc-800/80 p-4 sm:p-5 rounded-xl sm:rounded-2xl grid grid-cols-2 gap-3 sm:gap-4 text-xs shadow-inner">
                   <div>
-                    <p className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider">OMZET BRUTO</p>
-                    <p className="text-xl font-black text-white mt-1">
+                    <p className="text-[10px] sm:text-[11px] font-bold text-zinc-400 uppercase tracking-wider">OMZET BRUTO</p>
+                    <p className="text-lg sm:text-xl font-black text-white mt-1">
                       Rp {reportData.grossRevenue.toLocaleString('id-ID')}
                     </p>
-                    <p className="text-[10px] text-rose-400 mt-1 font-bold">
+                    <p className="text-[9px] sm:text-[10px] text-rose-400 mt-1 font-bold">
                       Refund: -Rp {reportData.totalRefund.toLocaleString('id-ID')}
                     </p>
                   </div>
-                  <div className="text-right border-l border-zinc-800 pl-4">
-                    <p className="text-[11px] font-black text-emerald-400 uppercase tracking-wider">OMZET NETTO</p>
-                    <p className="text-2xl font-black text-emerald-400 mt-1">
+                  <div className="text-right border-l border-zinc-800 pl-3 sm:pl-4">
+                    <p className="text-[10px] sm:text-[11px] font-black text-emerald-400 uppercase tracking-wider">OMZET NETTO</p>
+                    <p className="text-xl sm:text-2xl font-black text-emerald-400 mt-1">
                       Rp {reportData.netRevenue.toLocaleString('id-ID')}
                     </p>
                   </div>
@@ -1143,28 +1143,28 @@ export default function AdminDashboard() {
                   <div className="space-y-2">
                     <button
                       onClick={exportReportToCSV}
-                      className="w-full bg-emerald-600 hover:bg-emerald-500 text-white px-5 py-3 rounded-2xl font-bold transition-all text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20 active:scale-[0.98]"
+                      className="w-full bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl font-bold transition-all text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20 active:scale-[0.98]"
                     >
                       <span>📥 Export Laporan Excel</span>
                     </button>
-                    <p className="text-[11px] text-center text-zinc-500 font-medium">
+                    <p className="text-[10px] sm:text-[11px] text-center text-zinc-500 font-medium">
                       💡 Upgrade ke <strong className="text-purple-400 font-bold">Paket Profesional</strong> untuk membuka fitur Cetak / Download PDF.
                     </p>
                   </div>
                 )}
 
                 {subscriptionPlan === 'PROFESIONAL' && (
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-2 gap-2 sm:gap-3">
                     <button
                       onClick={exportReportToCSV}
-                      className="w-full bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-3 rounded-2xl font-bold transition-all text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20 active:scale-[0.98]"
+                      className="w-full bg-emerald-600 hover:bg-emerald-500 text-white px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl font-bold transition-all text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20 active:scale-[0.98]"
                     >
                       <span>📥 Export Excel</span>
                     </button>
 
                     <button
                       onClick={handlePrintPDF}
-                      className="w-full bg-purple-600 hover:bg-purple-500 text-white px-4 py-3 rounded-2xl font-bold transition-all text-xs flex items-center justify-center gap-2 shadow-lg shadow-purple-600/20 active:scale-[0.98]"
+                      className="w-full bg-purple-600 hover:bg-purple-500 text-white px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl font-bold transition-all text-xs flex items-center justify-center gap-2 shadow-lg shadow-purple-600/20 active:scale-[0.98]"
                     >
                       <span>🖨️ Cetak / PDF</span>
                     </button>
@@ -1177,8 +1177,8 @@ export default function AdminDashboard() {
         )}
 
         {/* SEARCH & FILTER TABEL DATA */}
-        <div className="bg-zinc-900/80 backdrop-blur-xl border border-zinc-800/80 p-5 rounded-3xl shadow-xl flex flex-wrap gap-4 items-end justify-between">
-          <div className="flex flex-wrap gap-3 items-end w-full">
+        <div className="bg-zinc-900/80 backdrop-blur-xl border border-zinc-800/80 p-4 sm:p-5 rounded-2xl sm:rounded-3xl shadow-xl flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-4 items-end justify-between">
+          <div className="grid grid-cols-1 sm:flex sm:flex-wrap gap-3 items-end w-full">
             <div className="w-full sm:w-60">
               <label className="block text-xs font-bold text-zinc-400 mb-1.5">Pencarian Data:</label>
               <input
@@ -1186,110 +1186,114 @@ export default function AdminDashboard() {
                 placeholder="Cari nama, WA, atau layanan..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full px-4 py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-2xl text-xs text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-amber-500 transition-all shadow-inner"
+                className="w-full px-3.5 sm:px-4 py-2 sm:py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-xl sm:rounded-2xl text-xs text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-amber-500 transition-all shadow-inner"
               />
             </div>
 
-            <div>
-              <label className="block text-xs font-bold text-zinc-400 mb-1.5">Filter Status:</label>
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="px-4 py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-2xl text-xs text-zinc-200 focus:outline-none focus:border-amber-500 font-semibold cursor-pointer shadow-inner"
-              >
-                <option value="all">Semua Status</option>
-                <option value="pending">🟡 Pending</option>
-                <option value="confirmed">🟢 Confirmed</option>
-                <option value="completed">🔵 Completed</option>
-                <option value="cancelled">🔴 Cancelled (Semua)</option>
-                <option value="cancelled_need_refund">⚠️ Cancelled (Need Refund)</option>
-              </select>
+            <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 sm:gap-3 w-full sm:w-auto">
+              <div>
+                <label className="block text-[11px] sm:text-xs font-bold text-zinc-400 mb-1.5">Status:</label>
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  className="w-full sm:w-auto px-3 py-2 sm:py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-xl sm:rounded-2xl text-xs text-zinc-200 focus:outline-none focus:border-amber-500 font-semibold cursor-pointer shadow-inner"
+                >
+                  <option value="all">Semua Status</option>
+                  <option value="pending">🟡 Pending</option>
+                  <option value="confirmed">🟢 Confirmed</option>
+                  <option value="completed">🔵 Completed</option>
+                  <option value="cancelled">🔴 Cancelled</option>
+                  <option value="cancelled_need_refund">⚠️ Need Refund</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[11px] sm:text-xs font-bold text-zinc-400 mb-1.5">Layanan:</label>
+                <select
+                  value={serviceFilter}
+                  onChange={(e) => setServiceFilter(e.target.value)}
+                  className="w-full sm:w-auto px-3 py-2 sm:py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-xl sm:rounded-2xl text-xs text-zinc-200 focus:outline-none focus:border-amber-500 font-semibold cursor-pointer shadow-inner"
+                >
+                  <option value="all">Semua Layanan</option>
+                  {uniqueServices.map((svc) => (
+                    <option key={svc} value={svc}>
+                      ✂️ {svc}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
 
-            <div>
-              <label className="block text-xs font-bold text-zinc-400 mb-1.5">Filter Layanan:</label>
-              <select
-                value={serviceFilter}
-                onChange={(e) => setServiceFilter(e.target.value)}
-                className="px-4 py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-2xl text-xs text-zinc-200 focus:outline-none focus:border-amber-500 font-semibold cursor-pointer shadow-inner"
-              >
-                <option value="all">Semua Layanan</option>
-                {uniqueServices.map((svc) => (
-                  <option key={svc} value={svc}>
-                    ✂️ {svc}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <div className="w-full sm:w-auto">
+                <label className="block text-[11px] sm:text-xs font-bold text-zinc-400 mb-1.5">Metode Bayar:</label>
+                <select
+                  value={paymentFilter}
+                  onChange={(e) => setPaymentFilter(e.target.value)}
+                  className="w-full sm:w-auto px-3 py-2 sm:py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-xl sm:rounded-2xl text-xs text-zinc-200 focus:outline-none focus:border-amber-500 font-semibold cursor-pointer shadow-inner"
+                >
+                  <option value="all">Semua Metode</option>
+                  {uniquePayments.map((pay) => (
+                    <option key={pay} value={pay}>
+                      💳 {pay}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-            <div>
-              <label className="block text-xs font-bold text-zinc-400 mb-1.5">Filter Metode Bayar:</label>
-              <select
-                value={paymentFilter}
-                onChange={(e) => setPaymentFilter(e.target.value)}
-                className="px-4 py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-2xl text-xs text-zinc-200 focus:outline-none focus:border-amber-500 font-semibold cursor-pointer shadow-inner"
-              >
-                <option value="all">Semua Metode</option>
-                {uniquePayments.map((pay) => (
-                  <option key={pay} value={pay}>
-                    💳 {pay}
-                  </option>
-                ))}
-              </select>
+              {(startDate || endDate || statusFilter !== 'all' || serviceFilter !== 'all' || paymentFilter !== 'all' || searchTerm) && (
+                <button
+                  onClick={() => {
+                    setStartDate('')
+                    setEndDate('')
+                    setStatusFilter('all')
+                    setServiceFilter('all')
+                    setPaymentFilter('all')
+                    setSearchTerm('')
+                  }}
+                  className="mt-auto bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700/80 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl text-xs font-bold transition-all whitespace-nowrap"
+                >
+                  Reset
+                </button>
+              )}
             </div>
-
-            {(startDate || endDate || statusFilter !== 'all' || serviceFilter !== 'all' || paymentFilter !== 'all' || searchTerm) && (
-              <button
-                onClick={() => {
-                  setStartDate('')
-                  setEndDate('')
-                  setStatusFilter('all')
-                  setServiceFilter('all')
-                  setPaymentFilter('all')
-                  setSearchTerm('')
-                }}
-                className="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700/80 px-4 py-2.5 rounded-2xl text-xs font-bold transition-all"
-              >
-                Reset Filter
-              </button>
-            )}
           </div>
         </div>
 
-        {/* TABEL DATA RESERVASI */}
-        <div className="bg-zinc-900/80 backdrop-blur-xl border border-zinc-800/80 rounded-3xl shadow-2xl overflow-hidden">
+        {/* TABEL DATA RESERVASI (WITH SMOOTH HORIZONTAL SCROLL FOR MOBILE) */}
+        <div className="bg-zinc-900/80 backdrop-blur-xl border border-zinc-800/80 rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden">
           {loading ? (
-            <div className="p-16 text-center text-zinc-500 text-xs font-semibold">Memuat data reservasi...</div>
+            <div className="p-12 text-center text-zinc-500 text-xs font-semibold">Memuat data reservasi...</div>
           ) : filteredReservations.length === 0 ? (
-            <div className="p-16 text-center text-zinc-500 text-xs font-semibold">Belum ada reservasi masuk / sesuai filter.</div>
+            <div className="p-12 text-center text-zinc-500 text-xs font-semibold">Belum ada reservasi masuk / sesuai filter.</div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
+            <div className="w-full overflow-x-auto">
+              <table className="w-full text-left border-collapse min-w-[800px]">
                 <thead>
                   <tr className="bg-zinc-950/90 border-b border-zinc-800 text-[10px] font-black text-zinc-400 uppercase tracking-widest select-none">
                     
-                    <th onClick={() => handleSort('booking_date')} className="p-4.5 cursor-pointer hover:text-amber-400 transition">
+                    <th onClick={() => handleSort('booking_date')} className="p-3.5 sm:p-4.5 cursor-pointer hover:text-amber-400 transition">
                       <div className="flex items-center gap-1.5">
-                        <span>Tanggal Booking</span>
+                        <span>Tanggal</span>
                         {sortField === 'booking_date' && (sortOrder === 'asc' ? '▲' : '▼')}
                       </div>
                     </th>
 
-                    <th onClick={() => handleSort('booking_time')} className="p-4.5 cursor-pointer hover:text-amber-400 transition">
+                    <th onClick={() => handleSort('booking_time')} className="p-3.5 sm:p-4.5 cursor-pointer hover:text-amber-400 transition">
                       <div className="flex items-center gap-1.5">
                         <span>Jam</span>
                         {sortField === 'booking_time' && (sortOrder === 'asc' ? '▲' : '▼')}
                       </div>
                     </th>
 
-                    <th onClick={() => handleSort('customer_name')} className="p-4.5 cursor-pointer hover:text-amber-400 transition">
+                    <th onClick={() => handleSort('customer_name')} className="p-3.5 sm:p-4.5 cursor-pointer hover:text-amber-400 transition">
                       <div className="flex items-center gap-1.5">
-                        <span>Nama Pelanggan</span>
+                        <span>Pelanggan</span>
                         {sortField === 'customer_name' && (sortOrder === 'asc' ? '▲' : '▼')}
                       </div>
                     </th>
 
-                    <th onClick={() => handleSort('service_name')} className="p-4.5 cursor-pointer hover:text-amber-400 transition">
+                    <th onClick={() => handleSort('service_name')} className="p-3.5 sm:p-4.5 cursor-pointer hover:text-amber-400 transition">
                       <div className="flex items-center gap-1.5">
                         <span>Layanan</span>
                         {sortField === 'service_name' && (sortOrder === 'asc' ? '▲' : '▼')}
@@ -1298,7 +1302,7 @@ export default function AdminDashboard() {
 
                     {/* KOLOM STAFF (Tampil di PREMIUM & PROFESIONAL) */}
                     {(subscriptionPlan === 'PREMIUM' || subscriptionPlan === 'PROFESIONAL') && (
-                      <th onClick={() => handleSort('staff_name')} className={`p-4.5 cursor-pointer transition ${
+                      <th onClick={() => handleSort('staff_name')} className={`p-3.5 sm:p-4.5 cursor-pointer transition ${
                         subscriptionPlan === 'PROFESIONAL' ? 'text-purple-300' : 'text-amber-400'
                       }`}>
                         <div className="flex items-center gap-1.5">
@@ -1308,30 +1312,30 @@ export default function AdminDashboard() {
                       </th>
                     )}
 
-                    <th onClick={() => handleSort('price')} className="p-4.5 cursor-pointer hover:text-amber-400 transition text-emerald-400">
+                    <th onClick={() => handleSort('price')} className="p-3.5 sm:p-4.5 cursor-pointer hover:text-amber-400 transition text-emerald-400">
                       <div className="flex items-center gap-1.5">
                         <span>Harga</span>
                         {sortField === 'price' && (sortOrder === 'asc' ? '▲' : '▼')}
                       </div>
                     </th>
 
-                    <th onClick={() => handleSort('payment_method')} className="p-4.5 cursor-pointer hover:text-amber-400 transition">
+                    <th onClick={() => handleSort('payment_method')} className="p-3.5 sm:p-4.5 cursor-pointer hover:text-amber-400 transition">
                       <div className="flex items-center gap-1.5">
-                        <span>Metode Bayar</span>
+                        <span>Metode</span>
                         {sortField === 'payment_method' && (sortOrder === 'asc' ? '▲' : '▼')}
                       </div>
                     </th>
 
-                    <th className="p-4.5">WhatsApp</th>
+                    <th className="p-3.5 sm:p-4.5">WhatsApp</th>
 
-                    <th onClick={() => handleSort('status')} className="p-4.5 cursor-pointer hover:text-amber-400 transition">
+                    <th onClick={() => handleSort('status')} className="p-3.5 sm:p-4.5 cursor-pointer hover:text-amber-400 transition">
                       <div className="flex items-center gap-1.5">
                         <span>Status</span>
                         {sortField === 'status' && (sortOrder === 'asc' ? '▲' : '▼')}
                       </div>
                     </th>
 
-                    <th className="p-4.5 text-center">Aksi</th>
+                    <th className="p-3.5 sm:p-4.5 text-center">Aksi</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-800/40 text-xs font-medium">
@@ -1347,21 +1351,21 @@ export default function AdminDashboard() {
 
                     return (
                       <tr key={item.id} className="hover:bg-zinc-800/30 transition-colors">
-                        <td className="p-4.5 font-bold text-zinc-200">{item.booking_date}</td>
-                        <td className="p-4.5 font-mono text-amber-400/90 font-bold">{item.booking_time} WIB</td>
-                        <td className="p-4.5 font-black text-white">
+                        <td className="p-3.5 sm:p-4.5 font-bold text-zinc-200">{item.booking_date}</td>
+                        <td className="p-3.5 sm:p-4.5 font-mono text-amber-400/90 font-bold">{item.booking_time} WIB</td>
+                        <td className="p-3.5 sm:p-4.5 font-black text-white">
                           {item.customer_name}
                         </td>
-                        <td className="p-4.5">
-                          <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 px-3 py-1 rounded-xl text-[11px] font-bold inline-block">
+                        <td className="p-3.5 sm:p-4.5">
+                          <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2.5 py-1 rounded-xl text-[11px] font-bold inline-block whitespace-nowrap">
                             {item.service_name}
                           </span>
                         </td>
 
                         {(subscriptionPlan === 'PREMIUM' || subscriptionPlan === 'PROFESIONAL') && (
-                          <td className="p-4.5 font-bold text-zinc-200">
+                          <td className="p-3.5 sm:p-4.5 font-bold text-zinc-200">
                             {item.staff_name ? (
-                              <span className={`px-2.5 py-1 rounded-xl text-[11px] border ${
+                              <span className={`px-2.5 py-1 rounded-xl text-[11px] border whitespace-nowrap ${
                                 subscriptionPlan === 'PROFESIONAL'
                                   ? 'bg-purple-950/40 border-purple-800/50 text-purple-200'
                                   : 'bg-zinc-800 border-zinc-700'
@@ -1374,20 +1378,20 @@ export default function AdminDashboard() {
                           </td>
                         )}
 
-                        <td className="p-4.5 font-mono font-bold text-emerald-400">
+                        <td className="p-3.5 sm:p-4.5 font-mono font-bold text-emerald-400 whitespace-nowrap">
                           Rp {getServicePrice(item.service_name).toLocaleString('id-ID')}
                         </td>
-                        <td className="p-4.5">
-                          <span className="bg-zinc-800/80 text-zinc-300 border border-zinc-700/80 px-2.5 py-1 rounded-xl text-[11px] font-bold">
+                        <td className="p-3.5 sm:p-4.5">
+                          <span className="bg-zinc-800/80 text-zinc-300 border border-zinc-700/80 px-2.5 py-1 rounded-xl text-[11px] font-bold whitespace-nowrap">
                             {item.payment_method || 'QRIS'}
                           </span>
                         </td>
-                        <td className="p-4.5">
+                        <td className="p-3.5 sm:p-4.5">
                           <a
                             href={`https://wa.me/${cleanPhone}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-emerald-400 hover:text-emerald-300 font-bold inline-flex items-center gap-1.5 transition-colors"
+                            className="text-emerald-400 hover:text-emerald-300 font-bold inline-flex items-center gap-1.5 transition-colors whitespace-nowrap"
                           >
                             <span>{item.whatsapp_number}</span>
                             <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
@@ -1395,7 +1399,7 @@ export default function AdminDashboard() {
                             </svg>
                           </a>
                         </td>
-                        <td className="p-4.5">
+                        <td className="p-3.5 sm:p-4.5">
                           <div className="space-y-1.5">
                             <select
                               value={
@@ -1404,7 +1408,7 @@ export default function AdminDashboard() {
                                   : currentStatus
                               }
                               onChange={(e) => handleStatusChange(item, e.target.value)}
-                              className={`px-3 py-1.5 rounded-xl text-xs font-black border bg-zinc-950 focus:outline-none cursor-pointer transition-all ${
+                              className={`px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-xl text-xs font-black border bg-zinc-950 focus:outline-none cursor-pointer transition-all ${
                                 currentStatus === 'confirmed'
                                   ? 'text-blue-400 border-blue-500/40 bg-blue-500/10'
                                   : currentStatus === 'completed'
@@ -1422,7 +1426,7 @@ export default function AdminDashboard() {
 
                             {currentStatus === 'cancelled_need_refund' && (
                               <div className="flex flex-col gap-1.5 mt-1">
-                                <span className="bg-amber-500/10 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded-lg text-[10px] font-black flex items-center gap-1">
+                                <span className="bg-amber-500/10 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded-lg text-[10px] font-black flex items-center gap-1 w-max">
                                   <span>⚠️</span> PERLU REFUND
                                 </span>
                                 <a
@@ -1449,10 +1453,10 @@ export default function AdminDashboard() {
                             )}
                           </div>
                         </td>
-                        <td className="p-4.5 text-center">
+                        <td className="p-3.5 sm:p-4.5 text-center">
                           <button
                             onClick={() => handleDelete(item.id, item.customer_name)}
-                            className="bg-rose-500/10 hover:bg-rose-500 text-rose-400 hover:text-white px-3 py-1.5 rounded-xl text-xs font-bold border border-rose-500/30 transition-all active:scale-95"
+                            className="bg-rose-500/10 hover:bg-rose-500 text-rose-400 hover:text-white px-2.5 sm:px-3 py-1.5 rounded-xl text-[11px] sm:text-xs font-bold border border-rose-500/30 transition-all active:scale-95 whitespace-nowrap"
                           >
                             🗑️ Hapus
                           </button>
@@ -1471,16 +1475,16 @@ export default function AdminDashboard() {
       {/* MODAL REFUND */}
       {cancelModalItem && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 md:p-7 max-w-md w-full space-y-5 shadow-2xl animate-in fade-in zoom-in duration-200">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 sm:p-7 max-w-md w-full space-y-4 sm:space-y-5 shadow-2xl animate-in fade-in zoom-in duration-200">
             <div className="text-center space-y-2">
-              <span className="text-4xl inline-block mb-1">💸</span>
-              <h3 className="text-lg font-black text-white">Konfirmasi Pembatalan & Refund</h3>
+              <span className="text-3xl sm:text-4xl inline-block mb-1">💸</span>
+              <h3 className="text-base sm:text-lg font-black text-white">Konfirmasi Pembatalan & Refund</h3>
               <p className="text-xs text-zinc-400 leading-relaxed font-medium">
                 Kamu membatalkan reservasi atas nama <strong className="text-amber-400 font-bold">{cancelModalItem.customer_name}</strong>. Apakah transaksi ini perlu refund uang pelanggan?
               </p>
             </div>
 
-            <div className="bg-zinc-950/80 border border-zinc-800/80 p-4 rounded-2xl text-xs space-y-2 shadow-inner">
+            <div className="bg-zinc-950/80 border border-zinc-800/80 p-3.5 sm:p-4 rounded-2xl text-xs space-y-2 shadow-inner">
               <div className="flex justify-between text-zinc-400 font-medium">
                 <span>Layanan:</span>
                 <span className="text-zinc-200 font-bold">{cancelModalItem.service_name}</span>
@@ -1500,13 +1504,13 @@ export default function AdminDashboard() {
             <div className="grid grid-cols-2 gap-3 pt-1">
               <button
                 onClick={() => handleConfirmCancel(false)}
-                className="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-bold py-3 px-4 rounded-2xl text-xs transition-all border border-zinc-700/80 active:scale-95"
+                className="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-bold py-2.5 sm:py-3 px-3 sm:px-4 rounded-2xl text-xs transition-all border border-zinc-700/80 active:scale-95"
               >
                 Tidak (Belum Bayar)
               </button>
               <button
                 onClick={() => handleConfirmCancel(true)}
-                className="bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-zinc-950 font-black py-3 px-4 rounded-2xl text-xs transition-all shadow-lg shadow-amber-500/20 active:scale-95"
+                className="bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-zinc-950 font-black py-2.5 sm:py-3 px-3 sm:px-4 rounded-2xl text-xs transition-all shadow-lg shadow-amber-500/20 active:scale-95"
               >
                 Ya, Perlu Refund 💸
               </button>
