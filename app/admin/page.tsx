@@ -29,7 +29,7 @@ export default function AdminDashboard() {
   const [tenantCode, setTenantCode] = useState<string>('')
   const [brandTitle, setBrandTitle] = useState<string>('BARBERSHOP')
 
-  // STATE UNTUK KONTROL PAKET LANGGANAN & STAFF LABEL
+  // STATE KONTROL PAKET LANGGANAN & STAFF LABEL
   const [subscriptionPlan, setSubscriptionPlan] = useState<SubscriptionPlanType>('BASIC')
   const [staffLabel, setStaffLabel] = useState<string>('Capster / Staff')
 
@@ -56,7 +56,7 @@ export default function AdminDashboard() {
   // State Modal Refund
   const [cancelModalItem, setCancelModalItem] = useState<Reservation | null>(null)
 
-  // State Khusus Penarikan Laporan / Report
+  // State Laporan Keuangan / Report
   const [reportPeriod, setReportPeriod] = useState<'daily' | 'weekly' | 'monthly' | 'custom'>('monthly')
   const [reportDate, setReportDate] = useState(new Date().toISOString().split('T')[0])
   const [reportStartDate, setReportStartDate] = useState('')
@@ -68,13 +68,11 @@ export default function AdminDashboard() {
     return code.replace(/[^a-zA-Z0-9]/g, '').toLowerCase()
   }
 
-  // AMBIL DATA TENANT DENGAN MERUJUK KE KOLOM tenant_slug
+  // AMBIL DATA TENANT DENGAN MERUJUK KE KOLOM tenant_slug SUPABASE
   const fetchTenantDetail = useCallback(async (cleanCode: string, detectedBrandHint: string = '') => {
     try {
       let tenantData = null
-      const currentHost = typeof window !== 'undefined' ? window.location.hostname : ''
 
-      // 1. Cari via tenant_slug dari user session jika ada
       if (cleanCode) {
         const { data } = await supabase
           .from('Tenants')
@@ -85,7 +83,6 @@ export default function AdminDashboard() {
         tenantData = data
       }
 
-      // 2. Fallback Ke-1: Cari via tenant_slug dengan keyword hint (mcut / sem)
       if (!tenantData && detectedBrandHint) {
         const { data } = await supabase
           .from('Tenants')
@@ -96,7 +93,6 @@ export default function AdminDashboard() {
         tenantData = data
       }
 
-      // 3. Fallback Ke-2: Ambil baris pertama dari tabel Tenants
       if (!tenantData) {
         const { data } = await supabase
           .from('Tenants')
@@ -107,11 +103,8 @@ export default function AdminDashboard() {
         tenantData = data
       }
 
-      // 4. Update State berdasarkan data DB Supabase
       if (tenantData) {
         const rawPlan = String(tenantData.subscription_plan || '').trim().toUpperCase()
-
-        console.log('>>> [DEBUG DB TENANTS SUCCESS]:', tenantData)
 
         if (
           rawPlan.includes('PROFESIONAL') || 
@@ -394,10 +387,10 @@ export default function AdminDashboard() {
     }
   }, [reservations, reportPeriod, reportDate, reportStartDate, reportEndDate])
 
-  // EXPORT EXCEL
+  // EXPORT EXCEL (Bisa untuk PREMIUM & PROFESIONAL)
   const exportReportToCSV = () => {
     if (subscriptionPlan === 'BASIC') {
-      alert('Fitur Penarikan Laporan Excel hanya tersedia di Paket Premium & Profesional.')
+      alert('Fitur Penarikan Laporan Excel hanya tersedia untuk Paket Premium & Profesional.')
       return
     }
 
@@ -506,10 +499,10 @@ export default function AdminDashboard() {
     document.body.removeChild(link)
   }
 
-  // CETAK PDF
+  // CETAK PDF (Hanya Eksklusif PROFESIONAL)
   const handlePrintPDF = () => {
-    if (subscriptionPlan === 'BASIC') {
-      alert('Fitur Cetak / PDF Laporan hanya tersedia di Paket Premium & Profesional.')
+    if (subscriptionPlan !== 'PROFESIONAL') {
+      alert('Fitur Cetak / PDF Laporan eksklusif hanya tersedia untuk Paket Profesional.')
       return
     }
 
@@ -829,7 +822,7 @@ export default function AdminDashboard() {
               <h1 className="text-xl sm:text-2xl font-black text-white tracking-wide uppercase">
                 {brandTitle || tenantCode || 'BARBERSHOP'}
               </h1>
-              {/* BADGE PENANDA PAKET */}
+              {/* BADGE PAKET */}
               <span className={`text-[10px] font-extrabold px-3 py-1 rounded-full border tracking-wider ${
                 subscriptionPlan === 'PROFESIONAL'
                   ? 'bg-purple-500/10 border-purple-500/30 text-purple-400'
@@ -938,9 +931,21 @@ export default function AdminDashboard() {
                 Data siap diexport ke Excel atau dicetak langsung/disimpan sebagai PDF resmi.
               </p>
             </div>
+            
+            {/* HINT KHUSUS BASIC & PREMIUM */}
             {subscriptionPlan === 'BASIC' && (
               <span className="text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30 px-2.5 py-1 rounded-full flex items-center gap-1">
-                <span>🔒</span> Fitur Paket Premium & Profesional
+                🔒 Fitur Laporan Dikunci di Paket Basic
+              </span>
+            )}
+            {subscriptionPlan === 'PREMIUM' && (
+              <span className="text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30 px-2.5 py-1 rounded-full flex items-center gap-1">
+                ⭐ Premium Plan (Export Excel Only)
+              </span>
+            )}
+            {subscriptionPlan === 'PROFESIONAL' && (
+              <span className="text-[10px] font-bold bg-purple-500/10 text-purple-400 border border-purple-500/30 px-2.5 py-1 rounded-full flex items-center gap-1">
+                👑 Profesional Plan (Excel + Cetak PDF)
               </span>
             )}
           </div>
@@ -1033,8 +1038,38 @@ export default function AdminDashboard() {
                 </div>
               </div>
 
-              {/* TOMBOL EXPORT AKTIF UNTUK PREMIUM MAUPUN PROFESIONAL */}
-              {subscriptionPlan !== 'BASIC' ? (
+              {/* LOGIKA TOMBOL EKSPOR PER PAKET */}
+              {subscriptionPlan === 'BASIC' && (
+                <div className="bg-zinc-950/80 border border-zinc-800 p-3 rounded-xl flex items-center justify-between">
+                  <span className="text-xs text-zinc-400 flex items-center gap-1.5">
+                    🔒 Penarikan Laporan dikunci di Paket Basic.
+                  </span>
+                  <a
+                    href="https://wa.me/628123456789?text=Halo%20Admin,%20saya%20ingin%20upgrade%20paket%20langganan"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-[11px] font-bold bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 px-3 py-1.5 rounded-lg transition"
+                  >
+                    Upgrade Paket
+                  </a>
+                </div>
+              )}
+
+              {subscriptionPlan === 'PREMIUM' && (
+                <div className="space-y-2">
+                  <button
+                    onClick={exportReportToCSV}
+                    className="w-full bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2.5 rounded-xl font-bold transition text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-600/10"
+                  >
+                    <span>📥 Export Laporan Excel</span>
+                  </button>
+                  <p className="text-[11px] text-center text-zinc-500">
+                    💡 Upgrade ke <strong className="text-purple-400">Paket Profesional</strong> untuk membuka fitur Cetak / Download PDF.
+                  </p>
+                </div>
+              )}
+
+              {subscriptionPlan === 'PROFESIONAL' && (
                 <div className="grid grid-cols-2 gap-3">
                   <button
                     onClick={exportReportToCSV}
@@ -1045,24 +1080,10 @@ export default function AdminDashboard() {
 
                   <button
                     onClick={handlePrintPDF}
-                    className="w-full bg-amber-500 hover:bg-amber-400 text-zinc-950 px-4 py-2.5 rounded-xl font-bold transition text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-amber-500/10"
+                    className="w-full bg-purple-600 hover:bg-purple-500 text-white px-4 py-2.5 rounded-xl font-bold transition text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-purple-600/10"
                   >
                     <span>🖨️ Cetak / PDF</span>
                   </button>
-                </div>
-              ) : (
-                <div className="bg-zinc-950/80 border border-zinc-800 p-3 rounded-xl flex items-center justify-between">
-                  <span className="text-xs text-zinc-400 flex items-center gap-1.5">
-                    <span>🔒</span> Export Excel & Cetak PDF dikunci.
-                  </span>
-                  <a
-                    href="https://wa.me/628123456789?text=Halo%20Admin,%20saya%20ingin%20upgrade%20paket%20langganan"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-[11px] font-bold bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 px-3 py-1.5 rounded-lg transition"
-                  >
-                    Upgrade Paket
-                  </a>
                 </div>
               )}
             </div>
@@ -1190,7 +1211,7 @@ export default function AdminDashboard() {
                       </div>
                     </th>
 
-                    {/* KOLOM STAFF DARI TABEL TENANTS (Capster) */}
+                    {/* KOLOM STAFF (Tampil di PREMIUM & PROFESIONAL) */}
                     {(subscriptionPlan === 'PREMIUM' || subscriptionPlan === 'PROFESIONAL') && (
                       <th onClick={() => handleSort('staff_name')} className="p-4 cursor-pointer hover:text-amber-400 transition text-amber-400">
                         <div className="flex items-center gap-1">
