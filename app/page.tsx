@@ -208,28 +208,39 @@ function BookingFormContent() {
     <div className="max-w-md w-full bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden backdrop-blur-md">
       
       {/* BRANDING HEADER */}
-      <div className="relative p-5 text-center bg-gradient-to-b from-zinc-800/80 to-zinc-900 border-b border-zinc-800">
-        <div className={`inline-flex items-center justify-center w-10 h-10 rounded-full mb-2 border ${theme.iconBg}`}>
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
-          </svg>
-        </div>
-        <h1 className="text-2xl font-black tracking-wider text-white uppercase">{tenant.name}</h1>
-        <p className={`text-[10px] font-semibold uppercase tracking-widest mt-0.5 ${theme.accentText}`}>{tenant.category}</p>
+          <div className="relative p-5 text-center bg-gradient-to-b from-zinc-800/80 to-zinc-900 border-b border-zinc-800">
+            <div className={`inline-flex items-center justify-center w-10 h-10 rounded-full mb-2 border ${theme.iconBg}`}>
+              {isBeauty ? (
+                /* IKON EYELASH / BEAUTY (Mata & Bulu Mata) */
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                </svg>
+              ) : (
+                /* IKON BARBER (Gunting) */
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.121 14.121L19 19m-7-7l7-7m-7 7l-2.879 2.879M12 12L9.121 9.121m0 0L5 5m4.121 4.121L5 19" />
+                  <circle cx="6" cy="6" r="2" strokeWidth={2} />
+                  <circle cx="6" cy="18" r="2" strokeWidth={2} />
+                </svg>
+              )}
+            </div>
+            <h1 className="text-2xl font-black tracking-wider text-white uppercase">{tenant.name}</h1>
+            <p className={`text-[10px] font-semibold uppercase tracking-widest mt-0.5 ${theme.accentText}`}>{tenant.category}</p>
 
-        {/* INDICATOR STEP - KHUSUS BEAUTY/EYELASH */}
-        {isBeauty && (
-          <div className="flex items-center justify-center space-x-2 mt-4">
-            {[1, 2, 3].map((s) => (
-              <div
-                key={s}
-                className={`h-1.5 rounded-full transition-all duration-300 ${
-                  step === s ? `w-8 ${theme.accentBg}` : 'w-3 bg-zinc-800'
-                }`}
-              />
-            ))}
-          </div>
-        )}
+            {/* INDICATOR STEP - KHUSUS BEAUTY/EYELASH */}
+            {isBeauty && (
+              <div className="flex items-center justify-center space-x-2 mt-4">
+                {[1, 2, 3].map((s) => (
+                  <div
+                    key={s}
+                    className={`h-1.5 rounded-full transition-all duration-300 ${
+                      step === s ? `w-8 ${theme.accentBg}` : 'w-3 bg-zinc-800'
+                    }`}
+                  />
+                ))}
+              </div>
+            )}
       </div>
 
       <form onSubmit={handleSubmit} className="p-5 space-y-4">
