@@ -82,36 +82,48 @@ export default function AdminDashboard() {
   // AMBIL DATA TENANT (PAKET LANGGANAN & STAFF LABEL) SECARA LIVE DARI DATABASE
   // AMBIL DATA TENANT LIVE DARI DATABASE SUPABASE
   const fetchTenantDetail = useCallback(async (cleanCode: string) => {
-    try {
-      let data = null
+  try {
+    let tenantData = null
+    const currentDomain = window.location.hostname // Mengambil domain seperti 'mcut-barbershop.vercel.app'
 
-    // 1. Query utama menggunakan Client_Code (C Kapital) & ilike agar tidak sensitif huruf besar/kecil
+    // 1. Prioritas Utama: Cari berdasarkan client_code jika dikirim
     if (cleanCode) {
-      const { data: tenantData } = await supabase
+      const { data } = await supabase
         .from('Tenants')
-        .select('subscription_plan, staff_label, name, Client_Code')
-        .ilike('Client_Code', cleanCode)
+        .select('subscription_plan, staff_label, name, client_code')
+        .ilike('client_code', cleanCode)
         .maybeSingle()
       
-      data = tenantData
+      tenantData = data
     }
 
-    // 2. Fallback HANYA jika cleanCode benar-benar tidak ada/kosong
-    if (!data && !cleanCode) {
-      const { data: firstRow } = await supabase
+    // 2. Fallback Ke-1: Jika cleanCode kosong, cari berdasarkan domain di Supabase
+    if (!tenantData) {
+      const { data } = await supabase
         .from('Tenants')
-        .select('subscription_plan, staff_label, name, Client_Code')
-        .limit(1)
+        .select('subscription_plan, staff_label, name, client_code')
+        .ilike('domain', `%${currentDomain}%`)
         .maybeSingle()
 
-      data = firstRow
+      tenantData = data
     }
 
-    // 3. Set State berdasarkan data yang didapat
-    if (data && data.subscription_plan) {
-      const rawPlan = String(data.subscription_plan).trim().toUpperCase()
+    // 3. Fallback Ke-2: Jika domain tidak ketemu, cari berdasarkan nama Brand (misal mengandung 'MCUT')
+    if (!tenantData) {
+      const { data } = await supabase
+        .from('Tenants')
+        .select('subscription_plan, staff_label, name, client_code')
+        .ilike('name', '%MCUT%')
+        .maybeSingle()
+
+      tenantData = data
+    }
+
+    // 4. Update State jika data ditemukan
+    if (tenantData && tenantData.subscription_plan) {
+      const rawPlan = String(tenantData.subscription_plan).trim().toUpperCase()
       
-      console.log('STATUS PLAN DARI DATABASE SUPABASE:', rawPlan)
+      console.log('DATA TENANT SUPABASE TERBACA:', tenantData)
 
       if (
         rawPlan.includes('PROFESIONAL') || 
@@ -125,9 +137,9 @@ export default function AdminDashboard() {
         setSubscriptionPlan('BASIC')
       }
 
-      if (data.staff_label) setStaffLabel(data.staff_label)
-      if (data.name) setBrandTitle(data.name)
-      if (data.Client_Code) setTenantCode(data.Client_Code)
+      if (tenantData.staff_label) setStaffLabel(tenantData.staff_label)
+      if (tenantData.name) setBrandTitle(tenantData.name)
+      if (tenantData.client_code) setTenantCode(tenantData.client_code)
     }
   } catch (err) {
     console.error('Error fetching tenant details:', err)
