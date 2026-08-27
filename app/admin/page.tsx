@@ -67,18 +67,6 @@ export default function AdminDashboard() {
     return code.replace(/[^a-zA-Z0-9]/g, '').toUpperCase()
   }
 
-  // Deteksi Nama Brand/Tenant Berdasarkan Hostname URL
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const hostname = window.location.hostname.toLowerCase()
-      if (hostname.includes('sem')) {
-        setBrandTitle('SEM')
-      } else if (hostname.includes('mcut')) {
-        setBrandTitle('MCUT')
-      }
-    }
-  }, [])
-
   // AMBIL DATA TENANT (PAKET LANGGANAN & STAFF LABEL) SECARA LIVE DARI DATABASE
   // AMBIL DATA TENANT LIVE DARI DATABASE SUPABASE
   const fetchTenantDetail = useCallback(async (cleanCode: string) => {
@@ -748,22 +736,40 @@ export default function AdminDashboard() {
     }
   }
 
+  // GABUNGAN DETEKSI BRAND & CHECK SESSION (Menggantikan useEffect 1 dan 3)
   useEffect(() => {
-  const checkSession = async () => {
+  const initTenantAndSession = async () => {
+    let currentBrand = ''
+
+    // 1. Deteksi Brand dari Hostname terlebih dahulu
+    if (typeof window !== 'undefined') {
+      const hostname = window.location.hostname.toLowerCase()
+      if (hostname.includes('sem')) {
+        currentBrand = 'SEM'
+      } else if (hostname.includes('mcut')) {
+        currentBrand = 'MCUT'
+      }
+      if (currentBrand) setBrandTitle(currentBrand)
+    }
+
+    // 2. Cek Session User dari Supabase
     const { data } = await supabase.auth.getSession()
+    
     if (data?.session) {
       setIsAuthenticated(true)
       const rawCode = data.session.user.app_metadata?.client_code || ''
       const cleanCode = sanitizeClientCode(rawCode)
       setTenantCode(cleanCode)
-      // Panggil fetch detail live dari DB
+
+      // Panggil fetch detail live jika login
       await fetchTenantDetail(cleanCode)
     } else {
-      // Jika tidak ada session, tetap coba ambil data tenant pertama untuk set UI
+      // Jika belum login, panggil fetchTenantDetail dengan cleanCode kosong
       await fetchTenantDetail('')
     }
   }
-  checkSession()
+
+  initTenantAndSession()
 }, [fetchTenantDetail])
 
   useEffect(() => {
