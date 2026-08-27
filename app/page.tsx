@@ -204,20 +204,21 @@ function BookingFormContent() {
   }
 
   return (
-    <main className="min-h-screen bg-zinc-950 text-zinc-100 flex items-center justify-center p-3 sm:p-6 font-sans">
-      <div className="max-w-md w-full bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden backdrop-blur-md">
-        
-        {/* BRANDING HEADER */}
-        <div className="relative p-5 text-center bg-gradient-to-b from-zinc-800/80 to-zinc-900 border-b border-zinc-800">
-          <div className={`inline-flex items-center justify-center w-10 h-10 rounded-full mb-2 border ${theme.iconBg}`}>
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
-            </svg>
-          </div>
-          <h1 className="text-2xl font-black tracking-wider text-white uppercase">{tenant.name}</h1>
-          <p className={`text-[10px] font-semibold uppercase tracking-widest mt-0.5 ${theme.accentText}`}>{tenant.category}</p>
+  <main className="min-h-screen bg-zinc-950 text-zinc-100 flex items-center justify-center p-3 sm:p-6 font-sans">
+    <div className="max-w-md w-full bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden backdrop-blur-md">
+      
+      {/* BRANDING HEADER */}
+      <div className="relative p-5 text-center bg-gradient-to-b from-zinc-800/80 to-zinc-900 border-b border-zinc-800">
+        <div className={`inline-flex items-center justify-center w-10 h-10 rounded-full mb-2 border ${theme.iconBg}`}>
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+          </svg>
+        </div>
+        <h1 className="text-2xl font-black tracking-wider text-white uppercase">{tenant.name}</h1>
+        <p className={`text-[10px] font-semibold uppercase tracking-widest mt-0.5 ${theme.accentText}`}>{tenant.category}</p>
 
-          {/* INDICATOR STEP */}
+        {/* INDICATOR STEP - KHUSUS BEAUTY/EYELASH */}
+        {isBeauty && (
           <div className="flex items-center justify-center space-x-2 mt-4">
             {[1, 2, 3].map((s) => (
               <div
@@ -228,184 +229,330 @@ function BookingFormContent() {
               />
             ))}
           </div>
-        </div>
+        )}
+      </div>
 
-        <form onSubmit={handleSubmit} className="p-5 space-y-4">
-          
-          {/* STEP 1: DATA DIRI & OPSIONAL BEAUTY */}
-          {step === 1 && (
-            <div className="space-y-4 animate-fadeIn">
-              <h2 className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Langkah 1 dari 3: Data Diri</h2>
-              <div>
-                <label className="block text-xs font-medium text-zinc-300 mb-1">Nama Lengkap</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Masukkan nama kamu"
-                  className={`w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-100 placeholder-zinc-500 text-xs ${theme.accentRing}`}
-                  value={formData.customer_name}
-                  onChange={(e) => setFormData({ ...formData, customer_name: e.target.value })}
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-zinc-300 mb-1">Nomor WhatsApp</label>
-                <input
-                  type="tel"
-                  required
-                  placeholder="08123456789"
-                  className={`w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-100 placeholder-zinc-500 text-xs ${theme.accentRing}`}
-                  value={formData.whatsapp_number}
-                  onChange={(e) => setFormData({ ...formData, whatsapp_number: e.target.value })}
-                />
-              </div>
-
-              {isBeauty && (
-                <>
-                  <div>
-              <label className="block text-xs font-medium text-zinc-300 mb-1">Jumlah Orang</label>
-              <div className="grid grid-cols-5 gap-1.5">
-                {[1, 2, 3, 4, 5].map((num) => (
-                  <button
-                    type="button"
-                    key={num}
-                    onClick={() => setFormData({ ...formData, person_count: num })}
-                    className={`py-2 text-xs font-semibold rounded-xl border transition-all ${
-                      formData.person_count === num
-                        ? `${theme.accentBg} text-zinc-950 border-white font-bold`
-                        : 'bg-zinc-950 border-zinc-800 text-zinc-400'
-                    }`}
-                  >
-                    {num}
-                  </button>
-                ))}
-              </div>
+      <form onSubmit={handleSubmit} className="p-5 space-y-4">
+        
+        {/* ==================== TAMPILAN 1: BARBER (SINGLE PAGE UTUH) ==================== */}
+        {!isBeauty && (
+          <div className="space-y-4">
+            {/* DATA DIRI */}
+            <div>
+              <label className="block text-xs font-medium text-zinc-300 mb-1">Nama Lengkap</label>
+              <input
+                type="text"
+                required
+                placeholder="Masukkan nama kamu"
+                className={`w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-100 placeholder-zinc-500 text-xs ${theme.accentRing}`}
+                value={formData.customer_name}
+                onChange={(e) => setFormData({ ...formData, customer_name: e.target.value })}
+              />
             </div>
-                  <div>
-                    <label className="block text-xs font-medium text-zinc-400 mb-1">Catatan Style (Opsional)</label>
-                    <input
-                      type="text"
-                      placeholder="Misal: Cat-Eye / Natural"
-                      className={`w-full px-3.5 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-200 text-xs ${theme.accentRing}`}
-                      value={formData.eye_shape_notes}
-                      onChange={(e) => setFormData({ ...formData, eye_shape_notes: e.target.value })}
-                    />
-                  </div>
 
-                  <label className="flex items-center space-x-2.5 p-3 bg-zinc-950 border border-zinc-800 rounded-xl cursor-pointer">
-                    <input 
-                      type="checkbox" 
-                      className="w-4 h-4 rounded accent-rose-500"
-                      checked={formData.need_remove_lash}
-                      onChange={(e) => setFormData({...formData, need_remove_lash: e.target.checked})}
-                    />
-                    <span className="text-xs text-zinc-300">Perlu lepas eyelash lama dulu</span>
-                  </label>
-
-                  <label className="flex items-start space-x-2.5 p-3 bg-zinc-950 border border-zinc-800 rounded-xl cursor-pointer">
-                    <input 
-                      type="checkbox" 
-                      required
-                      className="w-4 h-4 rounded accent-rose-500 mt-0.5"
-                      checked={formData.has_eye_allergy_consent}
-                      onChange={(e) => setFormData({...formData, has_eye_allergy_consent: e.target.checked})}
-                    />
-                    <span className="text-xs text-zinc-400 leading-tight">Saya konfirmasi tidak ada alergi mata/sensitivitas lem.</span>
-                  </label>
-                </>
-              )}
-
-              <button
-                type="button"
-                onClick={handleNextStep}
-                className={`w-full py-3 px-4 rounded-xl font-bold text-xs text-zinc-950 ${theme.accentBg} transition-all mt-2`}
-              >
-                Lanjut Pilih Layanan &rarr;
-              </button>
+            <div>
+              <label className="block text-xs font-medium text-zinc-300 mb-1">Nomor WhatsApp</label>
+              <input
+                type="tel"
+                required
+                placeholder="08123456789"
+                className={`w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-100 placeholder-zinc-500 text-xs ${theme.accentRing}`}
+                value={formData.whatsapp_number}
+                onChange={(e) => setFormData({ ...formData, whatsapp_number: e.target.value })}
+              />
             </div>
-          )}
 
-          {/* STEP 2: LAYANAN & JADWAL */}
-          {step === 2 && (
-            <div className="space-y-4 animate-fadeIn">
-              <h2 className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Langkah 2 dari 3: Layanan & Jadwal</h2>
-              
-              <div className="space-y-2">
-                <label className="block text-xs font-medium text-zinc-300">Pilih Layanan</label>
-                {fetchingServices ? (
-                  <p className="text-xs text-zinc-500 animate-pulse">Memuat layanan...</p>
-                ) : (
-                  <div className="grid grid-cols-1 gap-2">
-                    {services.map((item) => {
-                      const active = formData.selected_services.includes(item.name)
-                      return (
-                        <div
-                          key={item.id}
-                          onClick={() => setFormData({ ...formData, selected_services: [item.name] })}
-                          className={`cursor-pointer p-3 rounded-xl border transition-all flex items-center justify-between ${
-                            active ? `${theme.accentBgLight} ${theme.accentBorder} text-white` : 'bg-zinc-950 border-zinc-800 text-zinc-400'
-                          }`}
-                        >
-                          <div>
-                            <p className={`text-xs font-semibold ${active ? theme.accentText : 'text-zinc-200'}`}>{item.name}</p>
-                            <p className="text-[10px] text-zinc-500">{item.desc}</p>
-                          </div>
-                          <span className="text-xs font-bold text-zinc-300 bg-zinc-800 px-2 py-0.5 rounded border border-zinc-700">{item.price}</span>
+            {/* LAYANAN */}
+            <div className="space-y-2">
+              <label className="block text-xs font-medium text-zinc-300">Pilih Layanan</label>
+              {fetchingServices ? (
+                <p className="text-xs text-zinc-500 animate-pulse">Memuat layanan...</p>
+              ) : (
+                <div className="grid grid-cols-1 gap-2">
+                  {services.map((item) => {
+                    const active = formData.selected_services.includes(item.name)
+                    return (
+                      <div
+                        key={item.id}
+                        onClick={() => setFormData({ ...formData, selected_services: [item.name] })}
+                        className={`cursor-pointer p-3 rounded-xl border transition-all flex items-center justify-between ${
+                          active ? `${theme.accentBgLight} ${theme.accentBorder} text-white` : 'bg-zinc-950 border-zinc-800 text-zinc-400'
+                        }`}
+                      >
+                        <div>
+                          <p className={`text-xs font-semibold ${active ? theme.accentText : 'text-zinc-200'}`}>{item.name}</p>
+                          <p className="text-[10px] text-zinc-500">{item.desc}</p>
                         </div>
-                      )
-                    })}
-                  </div>
-                )}
-              </div>
-
-              <div className="grid grid-cols-2 gap-2.5">
-                <div>
-                  <label className="block text-xs font-medium text-zinc-300 mb-1">Tanggal</label>
-                  <input
-                    type="date"
-                    required
-                    className={`w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-200 text-xs ${theme.accentRing}`}
-                    value={formData.booking_date}
-                    onChange={(e) => setFormData({ ...formData, booking_date: e.target.value })}
-                  />
+                        <span className="text-xs font-bold text-zinc-300 bg-zinc-800 px-2 py-0.5 rounded border border-zinc-700">{item.price}</span>
+                      </div>
+                    )
+                  })}
                 </div>
-                <div>
-                  <label className="block text-xs font-medium text-zinc-300 mb-1">Jam</label>
-                  <input
-                    type="time"
-                    required
-                    className={`w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-200 text-xs ${theme.accentRing}`}
-                    value={formData.booking_time}
-                    onChange={(e) => setFormData({ ...formData, booking_time: e.target.value })}
-                  />
+              )}
+            </div>
+
+            {/* STAFF (JIKA BARBER PREMIUM) */}
+            {tenant.subscriptionPlan !== 'BASIC' && staffList.length > 0 && (
+              <div>
+                <label className="block text-xs font-medium text-zinc-300 mb-1">Pilih {tenant.staffLabel}</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {staffList.map((st) => (
+                    <button
+                      type="button"
+                      key={st.id}
+                      onClick={() => setFormData({ ...formData, selected_staff: st.name })}
+                      className={`py-2 px-3 text-xs font-semibold rounded-xl border transition-all text-left ${
+                        formData.selected_staff === st.name ? `${theme.accentBgLight} ${theme.accentText} ${theme.accentBorder}` : 'bg-zinc-950 border-zinc-800 text-zinc-400'
+                      }`}
+                    >
+                      {st.name}
+                    </button>
+                  ))}
                 </div>
               </div>
+            )}
 
-              <div className="flex space-x-2 pt-2">
+            {/* JADWAL */}
+            <div className="grid grid-cols-2 gap-2.5">
+              <div>
+                <label className="block text-xs font-medium text-zinc-300 mb-1">Tanggal</label>
+                <input
+                  type="date"
+                  required
+                  className={`w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-200 text-xs ${theme.accentRing}`}
+                  value={formData.booking_date}
+                  onChange={(e) => setFormData({ ...formData, booking_date: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-zinc-300 mb-1">Jam</label>
+                <input
+                  type="time"
+                  required
+                  className={`w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-200 text-xs ${theme.accentRing}`}
+                  value={formData.booking_time}
+                  onChange={(e) => setFormData({ ...formData, booking_time: e.target.value })}
+                />
+              </div>
+            </div>
+
+            {/* METODE PEMBAYARAN */}
+            <div className="grid grid-cols-3 gap-1.5 pt-2">
+              {[
+                { id: 'QRIS', label: 'QRIS' },
+                { id: 'Transfer BCA', label: 'BCA' },
+                { id: 'Bayar di Tempat', label: 'Cash' },
+              ].map((m) => (
                 <button
                   type="button"
-                  onClick={handlePrevStep}
-                  className="w-1/3 py-3 rounded-xl font-bold text-xs bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition-all"
+                  key={m.id}
+                  onClick={() => setFormData({ ...formData, payment_method: m.id })}
+                  className={`py-2 text-xs font-semibold rounded-xl border transition-all text-center ${
+                    formData.payment_method === m.id ? `${theme.accentBgLight} ${theme.accentText} ${theme.accentBorder}` : 'bg-zinc-950 border-zinc-800 text-zinc-400'
+                  }`}
                 >
-                  &larr; Kembali
+                  {m.label}
                 </button>
+              ))}
+            </div>
+
+            {formData.payment_method === 'QRIS' && (
+              <div className="p-3 bg-zinc-950 border border-zinc-800 rounded-xl text-center space-y-2">
+                <p className={`text-xs font-semibold ${theme.accentText}`}>Scan QRIS Pembayaran</p>
+                <div className="p-2 bg-white rounded-xl inline-block shadow-md">
+                  <img
+                    src={`/${tenant.tenantSlug}.png`}
+                    onError={(e) => { e.currentTarget.src = '/fitrifeb.png' }}
+                    alt="QRIS Code"
+                    className="w-44 h-44 object-contain mx-auto"
+                  />
+                </div>
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-xl transition-all shadow-lg text-xs mt-4"
+            >
+              {loading ? 'Memproses...' : 'Konfirmasi via WA'}
+            </button>
+          </div>
+        )}
+
+        {/* ==================== TAMPILAN 2: EYELASH / BEAUTY (3-STEP WIZARD) ==================== */}
+        {isBeauty && (
+          <>
+            {/* STEP 1 */}
+            {step === 1 && (
+              <div className="space-y-4 animate-fadeIn">
+                <h2 className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Langkah 1 dari 3: Data Diri</h2>
+                <div>
+                  <label className="block text-xs font-medium text-zinc-300 mb-1">Nama Lengkap</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Masukkan nama kamu"
+                    className={`w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-100 placeholder-zinc-500 text-xs ${theme.accentRing}`}
+                    value={formData.customer_name}
+                    onChange={(e) => setFormData({ ...formData, customer_name: e.target.value })}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-zinc-300 mb-1">Nomor WhatsApp</label>
+                  <input
+                    type="tel"
+                    required
+                    placeholder="08123456789"
+                    className={`w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-100 placeholder-zinc-500 text-xs ${theme.accentRing}`}
+                    value={formData.whatsapp_number}
+                    onChange={(e) => setFormData({ ...formData, whatsapp_number: e.target.value })}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-zinc-300 mb-1">Jumlah Orang</label>
+                  <div className="grid grid-cols-5 gap-1.5">
+                    {[1, 2, 3, 4, 5].map((num) => (
+                      <button
+                        type="button"
+                        key={num}
+                        onClick={() => setFormData({ ...formData, person_count: num })}
+                        className={`py-2 text-xs font-semibold rounded-xl border transition-all ${
+                          formData.person_count === num
+                            ? `${theme.accentBg} text-zinc-950 border-white font-bold`
+                            : 'bg-zinc-950 border-zinc-800 text-zinc-400'
+                        }`}
+                      >
+                        {num}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-zinc-400 mb-1">Catatan Style (Opsional)</label>
+                  <input
+                    type="text"
+                    placeholder="Misal: Cat-Eye / Natural"
+                    className={`w-full px-3.5 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-200 text-xs ${theme.accentRing}`}
+                    value={formData.eye_shape_notes}
+                    onChange={(e) => setFormData({ ...formData, eye_shape_notes: e.target.value })}
+                  />
+                </div>
+
+                <label className="flex items-center space-x-2.5 p-3 bg-zinc-950 border border-zinc-800 rounded-xl cursor-pointer">
+                  <input 
+                    type="checkbox" 
+                    className="w-4 h-4 rounded accent-rose-500"
+                    checked={formData.need_remove_lash}
+                    onChange={(e) => setFormData({...formData, need_remove_lash: e.target.checked})}
+                  />
+                  <span className="text-xs text-zinc-300">Perlu lepas eyelash lama dulu</span>
+                </label>
+
+                <label className="flex items-start space-x-2.5 p-3 bg-zinc-950 border border-zinc-800 rounded-xl cursor-pointer">
+                  <input 
+                    type="checkbox" 
+                    required
+                    className="w-4 h-4 rounded accent-rose-500 mt-0.5"
+                    checked={formData.has_eye_allergy_consent}
+                    onChange={(e) => setFormData({...formData, has_eye_allergy_consent: e.target.checked})}
+                  />
+                  <span className="text-xs text-zinc-400 leading-tight">Saya konfirmasi tidak ada alergi mata/sensitivitas lem.</span>
+                </label>
+
                 <button
                   type="button"
                   onClick={handleNextStep}
-                  className={`w-2/3 py-3 rounded-xl font-bold text-xs text-zinc-950 ${theme.accentBg} transition-all`}
+                  className={`w-full py-3 px-4 rounded-xl font-bold text-xs text-zinc-950 ${theme.accentBg} transition-all mt-2`}
                 >
-                  Lanjut Pembayaran &rarr;
+                  Lanjut Pilih Layanan &rarr;
                 </button>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* STEP 3: PEMBAYARAN */}
-          {step === 3 && (
-            <div className="space-y-4 animate-fadeIn">
-              <h2 className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Langkah 3 dari 3: Pembayaran</h2>
+            {/* STEP 2 */}
+            {step === 2 && (
+              <div className="space-y-4 animate-fadeIn">
+                <h2 className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Langkah 2 dari 3: Layanan & Jadwal</h2>
+                
+                <div className="space-y-2">
+                  <label className="block text-xs font-medium text-zinc-300">Pilih Layanan</label>
+                  {fetchingServices ? (
+                    <p className="text-xs text-zinc-500 animate-pulse">Memuat layanan...</p>
+                  ) : (
+                    <div className="grid grid-cols-1 gap-2">
+                      {services.map((item) => {
+                        const active = formData.selected_services.includes(item.name)
+                        return (
+                          <div
+                            key={item.id}
+                            onClick={() => setFormData({ ...formData, selected_services: [item.name] })}
+                            className={`cursor-pointer p-3 rounded-xl border transition-all flex items-center justify-between ${
+                              active ? `${theme.accentBgLight} ${theme.accentBorder} text-white` : 'bg-zinc-950 border-zinc-800 text-zinc-400'
+                            }`}
+                          >
+                            <div>
+                              <p className={`text-xs font-semibold ${active ? theme.accentText : 'text-zinc-200'}`}>{item.name}</p>
+                              <p className="text-[10px] text-zinc-500">{item.desc}</p>
+                            </div>
+                            <span className="text-xs font-bold text-zinc-300 bg-zinc-800 px-2 py-0.5 rounded border border-zinc-700">{item.price}</span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
 
-              {isBeauty && (
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div>
+                    <label className="block text-xs font-medium text-zinc-300 mb-1">Tanggal</label>
+                    <input
+                      type="date"
+                      required
+                      className={`w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-200 text-xs ${theme.accentRing}`}
+                      value={formData.booking_date}
+                      onChange={(e) => setFormData({ ...formData, booking_date: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-zinc-300 mb-1">Jam</label>
+                    <input
+                      type="time"
+                      required
+                      className={`w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-200 text-xs ${theme.accentRing}`}
+                      value={formData.booking_time}
+                      onChange={(e) => setFormData({ ...formData, booking_time: e.target.value })}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex space-x-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={handlePrevStep}
+                    className="w-1/3 py-3 rounded-xl font-bold text-xs bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition-all"
+                  >
+                    &larr; Kembali
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleNextStep}
+                    className={`w-2/3 py-3 rounded-xl font-bold text-xs text-zinc-950 ${theme.accentBg} transition-all`}
+                  >
+                    Lanjut Pembayaran &rarr;
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* STEP 3 */}
+            {step === 3 && (
+              <div className="space-y-4 animate-fadeIn">
+                <h2 className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Langkah 3 dari 3: Pembayaran</h2>
+
                 <div className="grid grid-cols-2 gap-2">
                   {['DP', 'FULL'].map((t) => (
                     <button
@@ -420,68 +567,65 @@ function BookingFormContent() {
                     </button>
                   ))}
                 </div>
-              )}
 
-              <div className="grid grid-cols-3 gap-1.5">
-                {[
-                  { id: 'QRIS', label: 'QRIS' },
-                  { id: 'Transfer BCA', label: 'BCA' },
-                  { id: 'Bayar di Tempat', label: 'Cash' },
-                ].map((m) => (
+                <div className="grid grid-cols-3 gap-1.5">
+                  {[
+                    { id: 'QRIS', label: 'QRIS' },
+                    { id: 'Transfer BCA', label: 'BCA' },
+                    { id: 'Bayar di Tempat', label: 'Cash' },
+                  ].map((m) => (
+                    <button
+                      type="button"
+                      key={m.id}
+                      onClick={() => setFormData({ ...formData, payment_method: m.id })}
+                      className={`py-2 text-xs font-semibold rounded-xl border transition-all text-center ${
+                        formData.payment_method === m.id ? `${theme.accentBgLight} ${theme.accentText} ${theme.accentBorder}` : 'bg-zinc-950 border-zinc-800 text-zinc-400'
+                      }`}
+                    >
+                      {m.label}
+                    </button>
+                  ))}
+                </div>
+
+                {formData.payment_method === 'QRIS' && (
+                  <div className="p-3 bg-zinc-950 border border-zinc-800 rounded-xl text-center space-y-2">
+                    <p className={`text-xs font-semibold ${theme.accentText}`}>Scan QRIS Pembayaran</p>
+                    <div className="p-2 bg-white rounded-xl inline-block shadow-md">
+                      <img
+                        src={`/${tenant.tenantSlug}.png`}
+                        onError={(e) => { e.currentTarget.src = '/fitrifeb.png' }}
+                        alt="QRIS Code"
+                        className="w-44 h-44 object-contain mx-auto"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex space-x-2 pt-2">
                   <button
                     type="button"
-                    key={m.id}
-                    onClick={() => setFormData({ ...formData, payment_method: m.id })}
-                    className={`py-2 text-xs font-semibold rounded-xl border transition-all text-center ${
-                      formData.payment_method === m.id ? `${theme.accentBgLight} ${theme.accentText} ${theme.accentBorder}` : 'bg-zinc-950 border-zinc-800 text-zinc-400'
-                    }`}
+                    onClick={handlePrevStep}
+                    className="w-1/3 py-3 rounded-xl font-bold text-xs bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition-all"
                   >
-                    {m.label}
+                    &larr; Kembali
                   </button>
-                ))}
-              </div>
-
-              {formData.payment_method === 'QRIS' && (
-                <div className="p-3 bg-zinc-950 border border-zinc-800 rounded-xl text-center space-y-2">
-                  <p className={`text-xs font-semibold ${theme.accentText}`}>Scan QRIS Pembayaran</p>
-                  <div className="p-2 bg-white rounded-xl inline-block shadow-md">
-                    <img
-                      src={`/${tenant.tenantSlug}.png`}
-                      onError={(e) => { e.currentTarget.src = '/fitrifeb.png' }}
-                      alt="QRIS Code"
-                      className="w-44 h-44 object-contain mx-auto"
-                    />
-                  </div>
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-2/3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-xl transition-all shadow-lg text-xs flex items-center justify-center space-x-1.5"
+                  >
+                    {loading ? 'Memproses...' : 'Konfirmasi via WA'}
+                  </button>
                 </div>
-              )}
-
-              <div className="flex space-x-2 pt-2">
-                <button
-                  type="button"
-                  onClick={handlePrevStep}
-                  className="w-1/3 py-3 rounded-xl font-bold text-xs bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition-all"
-                >
-                  &larr; Kembali
-                </button>
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="w-2/3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-xl transition-all shadow-lg text-xs flex items-center justify-center space-x-1.5"
-                >
-                  {loading ? (
-                    <span>Memproses...</span>
-                  ) : (
-                    <span>Konfirmasi via WA</span>
-                  )}
-                </button>
               </div>
-            </div>
-          )}
+            )}
+          </>
+        )}
 
-        </form>
-      </div>
-    </main>
-  )
+      </form>
+    </div>
+  </main>
+)
 }
 
 export default function Home() {
