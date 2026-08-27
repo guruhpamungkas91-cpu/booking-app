@@ -11,6 +11,9 @@ interface ServiceItem {
   name: string
   price: string
   desc: string
+  duration?: number
+  is_addon?: boolean
+  image_url?: string
 }
 
 interface StaffItem {
@@ -31,13 +34,13 @@ interface TenantData {
 }
 
 function BookingFormContent() {
-  // Default Tenant Config (Fallback jika di localhost)
+  // Default Tenant Config (Fallback)
   const [tenant, setTenant] = useState<TenantData>({
     clientCode: 'MCUT',
     tenantSlug: 'mcut',
     name: 'MCUT Barbershop',
     adminWa: '6285899997828',
-    subscriptionPlan: 'PREMIUM', // Coba ubah ke 'BASIC' untuk testing batasan fitur
+    subscriptionPlan: 'PREMIUM',
     category: 'barbershop',
     staffLabel: 'Capster'
   })
@@ -54,19 +57,36 @@ function BookingFormContent() {
     selected_services: [] as string[],
     selected_staff: '',
     payment_method: 'QRIS',
+    // Opsi Tambahan Dinamis (Eyelash / Beauty)
+    need_remove_lash: false,
+    has_eye_allergy_consent: false,
+    eye_shape_notes: ''
   })
   const [loading, setLoading] = useState(false)
+
+  // 1. DENEFINISIKAN TEMA UTAMA BERDASARKAN KATEGORI USAHA
+  const categoryLower = tenant.category.toLowerCase()
+  const isBeauty = categoryLower.includes('eyelash') || categoryLower.includes('beauty') || categoryLower.includes('salon')
+
+  const theme = {
+    accentBg: isBeauty ? 'bg-rose-500' : 'bg-amber-500',
+    accentText: isBeauty ? 'text-rose-400' : 'text-amber-500',
+    accentBorder: isBeauty ? 'border-rose-500/60' : 'border-amber-500/60',
+    accentBgLight: isBeauty ? 'bg-rose-500/10' : 'bg-amber-500/10',
+    accentRing: isBeauty ? 'focus:border-rose-500 focus:ring-rose-500' : 'focus:border-amber-500 focus:ring-amber-500',
+    iconBg: isBeauty ? 'bg-rose-500/10 text-rose-500 border-rose-500/20' : 'bg-amber-500/10 text-amber-500 border-amber-500/20',
+  }
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const hostname = window.location.hostname
-      const currentSlug = hostname.includes('sem') ? 'sem' : 'mcut'
+      // Mengambil slug dari subdomain/host (misal: lash.domain.com atau mcut.domain.com)
+      const currentSlug = hostname.split('.')[0] === 'localhost' ? 'mcut' : hostname.split('.')[0]
 
-      // Fetch Tenant Data dari Supabase
       const fetchTenantAndData = async () => {
         setFetchingServices(true)
 
-        // 1. Ambil Info Tenant
+        // Fetch Data Tenant
         const { data: tenantData } = await supabase
           .from('Tenants')
           .select('*')
@@ -78,7 +98,7 @@ function BookingFormContent() {
           activeTenant = {
             clientCode: tenantData.client_code || 'MCUT',
             tenantSlug: tenantData.tenant_slug || currentSlug,
-            name: tenantData.name || 'Barbershop',
+            name: tenantData.name || 'Studio Booking',
             adminWa: tenantData.admin_wa || '6285899997828',
             subscriptionPlan: tenantData.subscription_plan || 'BASIC',
             category: tenantData.category || 'barbershop',
@@ -87,7 +107,7 @@ function BookingFormContent() {
           setTenant(activeTenant)
         }
 
-        // 2. Ambil Daftar Layanan
+        // Fetch Layanan
         const { data: serviceData } = await supabase
           .from('Services')
           .select('*')
@@ -98,7 +118,7 @@ function BookingFormContent() {
           setFormData((prev) => ({ ...prev, selected_services: [serviceData[0].name] }))
         }
 
-        // 3. Ambil Daftar Staff (Jika Paket PREMIUM / PROFESIONAL)
+        // Fetch Staff (Jika Premium/Profesional)
         if (activeTenant.subscriptionPlan !== 'BASIC') {
           const { data: staffData } = await supabase
             .from('Staff')
@@ -119,15 +139,12 @@ function BookingFormContent() {
     }
   }, [])
 
-  // Logic Toggle Pilihan Layanan
   const handleServiceSelect = (serviceName: string) => {
-    // Jika Paket BASIC: Hanya BISA PILIH 1 LAYANAN
     if (tenant.subscriptionPlan === 'BASIC') {
       setFormData({ ...formData, selected_services: [serviceName] })
       return
     }
 
-    // Jika PREMIUM / PROFESIONAL: BISA MULTI-SELECT
     setFormData((prev) => {
       const exists = prev.selected_services.includes(serviceName)
       if (exists) {
@@ -157,20 +174,27 @@ function BookingFormContent() {
 
     const formattedServicesText = formData.selected_services.join(', ')
 
-    // Insert ke Tabel Reservations
-    const { error } = await supabase.from('Reservations').insert([
-      {
-        customer_name: formData.customer_name,
-        whatsapp_number: formData.whatsapp_number,
-        booking_date: formData.booking_date,
-        booking_time: formData.booking_time,
-        service_name: formattedServicesText,
-        staff_name: tenant.subscriptionPlan !== 'BASIC' ? formData.selected_staff : null,
-        payment_method: formData.payment_method,
-        status: 'pending',
-        client_code: tenant.clientCode
-      }
-    ])
+    // Payload Insert ke Supabase Reservations
+    const insertPayload: any = {
+      customer_name: formData.customer_name,
+      whatsapp_number: formData.whatsapp_number,
+      booking_date: formData.booking_date,
+      booking_time: formData.booking_time,
+      service_name: formattedServicesText,
+      staff_name: tenant.subscriptionPlan !== 'BASIC' ? formData.selected_staff : null,
+      payment_method: formData.payment_method,
+      status: 'pending',
+      client_code: tenant.clientCode
+    }
+
+    // Jika usaha kategori beauty/eyelash, tambahkan field khusus
+    if (isBeauty) {
+      insertPayload.need_remove_lash = formData.need_remove_lash
+      insertPayload.has_eye_allergy_consent = formData.has_eye_allergy_consent
+      insertPayload.eye_shape_notes = formData.eye_shape_notes
+    }
+
+    const { error } = await supabase.from('Reservations').insert([insertPayload])
 
     if (error) {
       alert('Gagal membuat reservasi: ' + error.message)
@@ -183,7 +207,7 @@ function BookingFormContent() {
       `Halo Admin *${tenant.name}*, saya mau konfirmasi reservasi:\n\n` +
       `📌 *Nama:* ${formData.customer_name}\n` +
       `📞 *WA:* ${formData.whatsapp_number}\n` +
-      `✂️ *Layanan:* ${formattedServicesText}\n`
+      `✨ *Layanan:* ${formattedServicesText}\n`
 
     if (tenant.subscriptionPlan !== 'BASIC' && formData.selected_staff) {
       messageText += `👤 *${tenant.staffLabel}:* ${formData.selected_staff}\n`
@@ -191,9 +215,16 @@ function BookingFormContent() {
 
     messageText +=
       `📅 *Tanggal:* ${formData.booking_date}\n` +
-      `⏰ *Jam:* ${formData.booking_time}\n` +
-      `💳 *Metode Bayar:* ${formData.payment_method}\n\n` +
-      `Mohon diproses ya, terima kasih!`
+      `⏰ *Jam:* ${formData.booking_time}\n`
+
+    if (isBeauty) {
+      messageText += `👁️ *Lepas Eyelash Lama:* ${formData.need_remove_lash ? 'Ya' : 'Tidak'}\n`
+      if (formData.eye_shape_notes) {
+        messageText += `📝 *Catatan Model:* ${formData.eye_shape_notes}\n`
+      }
+    }
+
+    messageText += `💳 *Metode Bayar:* ${formData.payment_method}\n\nMohon diproses ya, terima kasih!`
 
     const waUrl = `https://wa.me/${tenant.adminWa}?text=${encodeURIComponent(messageText)}`
     window.location.href = waUrl
@@ -205,15 +236,23 @@ function BookingFormContent() {
         
         {/* BRANDING HEADER */}
         <div className="relative p-6 sm:p-8 text-center bg-gradient-to-b from-zinc-800/80 to-zinc-900 border-b border-zinc-800">
-          <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-amber-500/10 text-amber-500 mb-3 border border-amber-500/20">
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.121 14.121L19 19m-7-7l7-7m-7 7l-2.879 2.879M12 12L9.121 9.121m0 0L4 4m5.121 5.121L4 14.121" />
-            </svg>
+          <div className={`inline-flex items-center justify-center w-12 h-12 rounded-full mb-3 border ${theme.iconBg}`}>
+            {isBeauty ? (
+              // Icon Eyelash / Sparkle
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+              </svg>
+            ) : (
+              // Icon Gunting Barber
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.121 14.121L19 19m-7-7l7-7m-7 7l-2.879 2.879M12 12L9.121 9.121m0 0L4 4m5.121 5.121L4 14.121" />
+              </svg>
+            )}
           </div>
           <h1 className="text-3xl font-black tracking-wider text-white uppercase">
             {tenant.clientCode}
           </h1>
-          <p className="text-xs font-semibold text-amber-500 uppercase tracking-widest mt-0.5">
+          <p className={`text-xs font-semibold uppercase tracking-widest mt-0.5 ${theme.accentText}`}>
             {tenant.category}
           </p>
           <p className="text-xs text-zinc-400 mt-2">
@@ -230,28 +269,24 @@ function BookingFormContent() {
               1. Data Diri
             </h2>
             <div>
-              <label className="block text-xs font-medium text-zinc-300 mb-1.5">
-                Nama Lengkap
-              </label>
+              <label className="block text-xs font-medium text-zinc-300 mb-1.5">Nama Lengkap</label>
               <input
                 type="text"
                 required
                 placeholder="Masukkan nama kamu"
-                className="w-full px-4 py-3 bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-all text-sm"
+                className={`w-full px-4 py-3 bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-100 placeholder-zinc-500 focus:outline-none transition-all text-sm ${theme.accentRing}`}
                 value={formData.customer_name}
                 onChange={(e) => setFormData({ ...formData, customer_name: e.target.value })}
               />
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-zinc-300 mb-1.5">
-                Nomor WhatsApp
-              </label>
+              <label className="block text-xs font-medium text-zinc-300 mb-1.5">Nomor WhatsApp</label>
               <input
                 type="tel"
                 required
                 placeholder="08123456789"
-                className="w-full px-4 py-3 bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition-all text-sm"
+                className={`w-full px-4 py-3 bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-100 placeholder-zinc-500 focus:outline-none transition-all text-sm ${theme.accentRing}`}
                 value={formData.whatsapp_number}
                 onChange={(e) => setFormData({ ...formData, whatsapp_number: e.target.value })}
               />
@@ -265,7 +300,7 @@ function BookingFormContent() {
                 2. Pilih Layanan
               </h2>
               {tenant.subscriptionPlan !== 'BASIC' && (
-                <span className="text-[10px] text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20 font-medium">
+                <span className={`text-[10px] px-2 py-0.5 rounded-full border font-medium ${theme.accentBgLight} ${theme.accentText} border-zinc-700/50`}>
                   Bisa pilih lebih dari 1
                 </span>
               )}
@@ -285,13 +320,13 @@ function BookingFormContent() {
                       onClick={() => handleServiceSelect(item.name)}
                       className={`cursor-pointer p-3.5 rounded-xl border transition-all flex items-center justify-between ${
                         active
-                          ? 'bg-amber-500/10 border-amber-500/60 text-white'
+                          ? `${theme.accentBgLight} ${theme.accentBorder} text-white`
                           : 'bg-zinc-950/60 border-zinc-800 text-zinc-400 hover:border-zinc-700'
                       }`}
                     >
                       <div className="flex items-center space-x-3">
                         <div className={`w-5 h-5 rounded-md border flex items-center justify-center transition-all ${
-                          active ? 'bg-amber-500 border-amber-400 text-zinc-950' : 'border-zinc-700 bg-zinc-900'
+                          active ? `${theme.accentBg} border-white text-zinc-950` : 'border-zinc-700 bg-zinc-900'
                         }`}>
                           {active && (
                             <svg className="w-3.5 h-3.5 stroke-current" fill="none" viewBox="0 0 24 24" strokeWidth="3">
@@ -301,7 +336,7 @@ function BookingFormContent() {
                         </div>
 
                         <div>
-                          <p className={`text-sm font-semibold ${active ? 'text-amber-400' : 'text-zinc-200'}`}>
+                          <p className={`text-sm font-semibold ${active ? theme.accentText : 'text-zinc-200'}`}>
                             {item.name}
                           </p>
                           <p className="text-xs text-zinc-500 mt-0.5">{item.desc}</p>
@@ -318,7 +353,53 @@ function BookingFormContent() {
             )}
           </div>
 
-          {/* 3. PILIH STAFF (HANYA MUNCUL DI PAKET PREMIUM & PROFESIONAL) */}
+          {/* OPSI TAMBAHAN KHUSUS EYELASH / BEAUTY */}
+          {isBeauty && (
+            <div className="space-y-3 pt-2">
+              <h2 className="text-xs font-bold text-zinc-400 uppercase tracking-wider">
+                Opsi Khusus Eyelash
+              </h2>
+              
+              {/* Checkbox Lepas Eyelash */}
+              <label className="flex items-center space-x-3 p-3.5 bg-zinc-950 border border-zinc-800 rounded-xl cursor-pointer">
+                <input 
+                  type="checkbox" 
+                  className="w-4 h-4 rounded accent-rose-500"
+                  checked={formData.need_remove_lash}
+                  onChange={(e) => setFormData({...formData, need_remove_lash: e.target.checked})}
+                />
+                <span className="text-xs text-zinc-300">Perlu lepas eyelash lama dulu</span>
+              </label>
+
+              {/* Input Catatan Model Eye Shape */}
+              <div>
+                <label className="block text-xs font-medium text-zinc-400 mb-1">Catatan Style (Opsional)</label>
+                <input
+                  type="text"
+                  placeholder="Misal: Mau model Cat-Eye / Natural"
+                  className={`w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-200 placeholder-zinc-600 focus:outline-none text-xs ${theme.accentRing}`}
+                  value={formData.eye_shape_notes}
+                  onChange={(e) => setFormData({...formData, eye_shape_notes: e.target.value})}
+                />
+              </div>
+
+              {/* Checkbox Consent Alergi (Wajib untuk Eyelash) */}
+              <label className="flex items-start space-x-3 p-3.5 bg-zinc-950 border border-zinc-800 rounded-xl cursor-pointer">
+                <input 
+                  type="checkbox" 
+                  required
+                  className="w-4 h-4 rounded accent-rose-500 mt-0.5"
+                  checked={formData.has_eye_allergy_consent}
+                  onChange={(e) => setFormData({...formData, has_eye_allergy_consent: e.target.checked})}
+                />
+                <span className="text-xs text-zinc-400 leading-relaxed">
+                  Saya mengonfirmasi tidak memiliki riwayat alergi mata / sensitivitas lem.
+                </span>
+              </label>
+            </div>
+          )}
+
+          {/* 3. PILIH STAFF */}
           {tenant.subscriptionPlan !== 'BASIC' && staffList.length > 0 && (
             <div className="space-y-3 pt-2">
               <h2 className="text-xs font-bold text-zinc-400 uppercase tracking-wider">
@@ -334,11 +415,11 @@ function BookingFormContent() {
                       onClick={() => setFormData({ ...formData, selected_staff: staff.name })}
                       className={`p-3 rounded-xl border transition-all text-left ${
                         active
-                          ? 'bg-amber-500/10 border-amber-500/60 text-white'
+                          ? `${theme.accentBgLight} ${theme.accentBorder} text-white`
                           : 'bg-zinc-950/60 border-zinc-800 text-zinc-400 hover:border-zinc-700'
                       }`}
                     >
-                      <p className={`text-xs font-semibold ${active ? 'text-amber-400' : 'text-zinc-200'}`}>
+                      <p className={`text-xs font-semibold ${active ? theme.accentText : 'text-zinc-200'}`}>
                         {staff.name}
                       </p>
                       <p className="text-[10px] text-zinc-500 mt-0.5">{staff.role}</p>
@@ -360,7 +441,7 @@ function BookingFormContent() {
                 <input
                   type="date"
                   required
-                  className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-200 focus:outline-none focus:border-amber-500 text-xs"
+                  className={`w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-200 focus:outline-none text-xs ${theme.accentRing}`}
                   value={formData.booking_date}
                   onChange={(e) => setFormData({ ...formData, booking_date: e.target.value })}
                 />
@@ -371,7 +452,7 @@ function BookingFormContent() {
                 <input
                   type="time"
                   required
-                  className="w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-200 focus:outline-none focus:border-amber-500 text-xs"
+                  className={`w-full px-3.5 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-200 focus:outline-none text-xs ${theme.accentRing}`}
                   value={formData.booking_time}
                   onChange={(e) => setFormData({ ...formData, booking_time: e.target.value })}
                 />
@@ -398,7 +479,7 @@ function BookingFormContent() {
                     onClick={() => setFormData({ ...formData, payment_method: method.id })}
                     className={`py-2.5 px-2 text-xs font-semibold rounded-xl border transition-all text-center ${
                       active
-                        ? 'bg-amber-500 text-zinc-950 border-amber-400 font-bold shadow-lg shadow-amber-500/10'
+                        ? `${theme.accentBg} text-zinc-950 border-white font-bold shadow-lg`
                         : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700'
                     }`}
                   >
@@ -412,7 +493,7 @@ function BookingFormContent() {
             {formData.payment_method === 'QRIS' && (
               <div className="p-5 bg-zinc-950 border border-zinc-800 rounded-2xl text-center space-y-4 mt-3">
                 <div>
-                  <p className="text-sm font-semibold text-amber-400">Scan QRIS untuk Pembayaran</p>
+                  <p className={`text-sm font-semibold ${theme.accentText}`}>Scan QRIS untuk Pembayaran</p>
                   <p className="text-xs text-zinc-400 mt-1">Bisa scan pakai GoPay, OVO, Dana, ShopeePay, atau Bank.</p>
                 </div>
                 <div className="p-4 bg-white rounded-2xl inline-block shadow-2xl border border-zinc-300">
