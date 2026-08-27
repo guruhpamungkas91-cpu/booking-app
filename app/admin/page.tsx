@@ -777,16 +777,20 @@ export default function AdminDashboard() {
 
   if (!isAuthenticated) {
     return (
-      <main className="min-h-screen bg-zinc-950 flex items-center justify-center p-4 font-sans text-zinc-100">
-        <div className="max-w-md w-full bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl p-6 sm:p-8 space-y-6">
-          <div className="text-center space-y-1">
-            <span className="px-3 py-1 rounded-full text-[11px] font-extrabold bg-amber-500/10 text-amber-500 border border-amber-500/20 tracking-wider">
-              ADMIN DASHBOARD
+      <main className="min-h-screen bg-[#09090b] flex items-center justify-center p-4 font-sans text-zinc-100 relative overflow-hidden">
+        {/* Glow ambient effect */}
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-amber-500/10 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div className="max-w-md w-full bg-zinc-900/90 backdrop-blur-xl border border-zinc-800/80 rounded-3xl shadow-2xl shadow-amber-500/5 p-8 space-y-6 relative z-10">
+          <div className="text-center space-y-2">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black bg-gradient-to-r from-amber-500/20 to-amber-600/10 text-amber-400 border border-amber-500/30 tracking-widest uppercase shadow-inner">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
+              Admin Control Center
             </span>
-            <h1 className="text-2xl font-black text-white tracking-wide uppercase mt-2">
+            <h1 className="text-2xl font-black text-white tracking-tight uppercase bg-gradient-to-b from-white to-zinc-400 bg-clip-text text-transparent mt-2">
               {brandTitle ? `${brandTitle}` : 'BARBERSHOP PORTAL'}
             </h1>
-            <p className="text-xs text-zinc-400">Silakan login untuk mengelola sistem reservasi</p>
+            <p className="text-xs text-zinc-400 font-medium">Masuk untuk mengakses dasbor manajemen reservasi</p>
           </div>
 
           <form onSubmit={handleLogin} className="space-y-4">
@@ -796,7 +800,7 @@ export default function AdminDashboard() {
                 type="email"
                 required
                 placeholder="admin@barbershop.com"
-                className="w-full px-4 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-amber-500 transition"
+                className="w-full px-4 py-3 bg-zinc-950/80 border border-zinc-800 rounded-2xl text-xs text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition-all shadow-inner"
                 value={emailInput}
                 onChange={(e) => setEmailInput(e.target.value)}
               />
@@ -807,7 +811,7 @@ export default function AdminDashboard() {
                 type="password"
                 required
                 placeholder="••••••••"
-                className="w-full px-4 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-amber-500 transition"
+                className="w-full px-4 py-3 bg-zinc-950/80 border border-zinc-800 rounded-2xl text-xs text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition-all shadow-inner"
                 value={passwordInput}
                 onChange={(e) => setPasswordInput(e.target.value)}
               />
@@ -816,9 +820,9 @@ export default function AdminDashboard() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold py-3 rounded-xl transition text-xs shadow-lg shadow-amber-500/10 disabled:opacity-50 mt-2"
+              className="w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-zinc-950 font-black py-3.5 rounded-2xl transition-all text-xs tracking-wide shadow-lg shadow-amber-500/20 active:scale-[0.98] disabled:opacity-50 mt-2"
             >
-              {loading ? 'Memproses...' : 'Masuk Dashboard'}
+              {loading ? 'Memproses Authentikasi...' : 'MASUK DASHBOARD'}
             </button>
           </form>
         </div>
@@ -827,57 +831,66 @@ export default function AdminDashboard() {
   }
 
   return (
-    <div className={`min-h-screen p-4 md:p-8 text-zinc-100 font-sans relative transition-colors duration-300 ${
+    <div className={`min-h-screen p-4 md:p-8 text-zinc-100 font-sans relative transition-colors duration-500 ${
       subscriptionPlan === 'PROFESIONAL' 
-        ? 'bg-gradient-to-br from-purple-950/20 via-zinc-950 to-zinc-950' 
+        ? 'bg-[#0a0712]' 
         : subscriptionPlan === 'PREMIUM'
-        ? 'bg-gradient-to-br from-amber-950/20 via-zinc-950 to-zinc-950'
-        : 'bg-zinc-950'
+        ? 'bg-[#0d0a07]'
+        : 'bg-[#09090b]'
     }`}>
-      <div className="max-w-7xl mx-auto space-y-6">
+      {/* Dynamic ambient glow based on plan */}
+      <div className={`fixed top-0 left-1/4 w-[600px] h-[600px] rounded-full blur-[140px] pointer-events-none transition-all duration-700 ${
+        subscriptionPlan === 'PROFESIONAL'
+          ? 'bg-purple-600/10'
+          : subscriptionPlan === 'PREMIUM'
+          ? 'bg-amber-600/10'
+          : 'bg-zinc-800/10'
+      }`}></div>
+
+      <div className="max-w-7xl mx-auto space-y-6 relative z-10">
 
         {/* Header Dashboard */}
-        <div className={`flex flex-col md:flex-row justify-between items-start md:items-center p-6 rounded-2xl shadow-xl gap-4 border transition-all ${
+        <div className={`flex flex-col md:flex-row justify-between items-start md:items-center p-6 md:p-7 rounded-3xl backdrop-blur-xl border shadow-2xl transition-all duration-300 ${
           subscriptionPlan === 'PROFESIONAL'
-            ? 'bg-gradient-to-r from-purple-900/40 via-zinc-900 to-zinc-900 border-purple-500/40 shadow-purple-950/20'
+            ? 'bg-gradient-to-r from-purple-950/40 via-zinc-900/80 to-purple-950/20 border-purple-500/30 shadow-purple-950/30'
             : subscriptionPlan === 'PREMIUM'
-            ? 'bg-gradient-to-r from-amber-900/30 via-zinc-900 to-zinc-900 border-amber-500/40 shadow-amber-950/20'
-            : 'bg-zinc-900 border-zinc-800'
+            ? 'bg-gradient-to-r from-amber-950/40 via-zinc-900/80 to-amber-950/20 border-amber-500/30 shadow-amber-950/30'
+            : 'bg-zinc-900/80 border-zinc-800 shadow-zinc-950/50'
         }`}>
           <div>
-            <div className="flex items-center space-x-3">
-              <h1 className="text-xl sm:text-2xl font-black text-white tracking-wide uppercase">
+            <div className="flex items-center space-x-3 flex-wrap gap-y-2">
+              <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight uppercase">
                 {brandTitle || tenantCode || 'BARBERSHOP'}
               </h1>
               {/* BADGE PAKET */}
-              <span className={`text-[10px] font-extrabold px-3 py-1 rounded-full border tracking-wider transition-all ${
+              <span className={`text-[10px] font-black px-3.5 py-1.5 rounded-full border tracking-wider transition-all uppercase shadow-lg flex items-center gap-1.5 ${
                 subscriptionPlan === 'PROFESIONAL'
-                  ? 'bg-purple-500/10 border-purple-500/40 text-purple-300 shadow-sm shadow-purple-500/20'
+                  ? 'bg-purple-500/10 border-purple-500/50 text-purple-300 shadow-purple-500/10 animate-pulse'
                   : subscriptionPlan === 'PREMIUM'
-                  ? 'bg-amber-500/10 border-amber-500/40 text-amber-400 shadow-sm shadow-amber-500/20'
-                  : 'bg-zinc-800 border-zinc-700 text-zinc-400'
+                  ? 'bg-amber-500/10 border-amber-500/50 text-amber-400 shadow-amber-500/10'
+                  : 'bg-zinc-800/80 border-zinc-700 text-zinc-400'
               }`}>
                 {subscriptionPlan === 'PROFESIONAL' && '👑 '}
                 {subscriptionPlan === 'PREMIUM' && '⭐ '}
                 {subscriptionPlan} PLAN
               </span>
             </div>
-            <p className="text-xs text-zinc-400 mt-1">Kelola dan pantau pesanan masuk secara real-time</p>
+            <p className="text-xs text-zinc-400 mt-1 font-medium">Kelola dan pantau pesanan masuk secara real-time</p>
           </div>
 
-          <div className="space-x-3 w-full md:w-auto flex justify-end">
+          <div className="space-x-3 w-full md:w-auto flex justify-end items-center mt-4 md:mt-0">
             <button
               onClick={fetchReservations}
-              className="bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 px-4 py-2 rounded-xl font-semibold transition text-xs flex items-center gap-1.5"
+              className="bg-zinc-800/80 hover:bg-zinc-700 text-zinc-200 border border-zinc-700/80 px-4 py-2.5 rounded-2xl font-bold transition-all text-xs flex items-center gap-2 hover:shadow-lg active:scale-95"
             >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              <svg className="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
               <span>Refresh Data</span>
             </button>
             <button
               onClick={handleLogout}
-              className="bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white border border-red-500/30 px-4 py-2 rounded-xl font-semibold transition text-xs"
+              className="bg-rose-500/10 hover:bg-rose-500 text-rose-400 hover:text-white border border-rose-500/30 px-4 py-2.5 rounded-2xl font-bold transition-all text-xs active:scale-95"
             >
               Logout
             </button>
@@ -891,48 +904,52 @@ export default function AdminDashboard() {
           
           {/* Card Total Omzet (Sembunyi Total di Paket BASIC) */}
           {(subscriptionPlan === 'PREMIUM' || subscriptionPlan === 'PROFESIONAL') && (
-            <div className={`border p-5 rounded-2xl shadow-xl transition-all ${
+            <div className={`border p-6 rounded-3xl shadow-2xl transition-all relative overflow-hidden group ${
               subscriptionPlan === 'PROFESIONAL'
-                ? 'bg-gradient-to-br from-purple-950/60 to-zinc-900 border-purple-500/40'
-                : 'bg-gradient-to-br from-emerald-950/80 to-zinc-900 border-emerald-500/40'
+                ? 'bg-gradient-to-br from-purple-900/30 via-zinc-900/90 to-zinc-900 border-purple-500/40'
+                : 'bg-gradient-to-br from-emerald-950/40 via-zinc-900/90 to-zinc-900 border-emerald-500/40'
             }`}>
-              <p className={`text-xs font-bold uppercase tracking-wider ${
+              <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                <span className="text-5xl">💰</span>
+              </div>
+              <p className={`text-xs font-black uppercase tracking-wider ${
                 subscriptionPlan === 'PROFESIONAL' ? 'text-purple-300' : 'text-emerald-400'
               }`}>Total Omzet</p>
-              <div className="mt-2">
-                <h3 className="text-2xl font-black text-white">
+              <div className="mt-3">
+                <h3 className="text-3xl font-black text-white tracking-tight">
                   Rp {stats.totalRevenue.toLocaleString('id-ID')}
                 </h3>
-                <p className={`text-[10px] font-medium mt-1 ${
+                <p className={`text-xs font-bold mt-1.5 flex items-center gap-1 ${
                   subscriptionPlan === 'PROFESIONAL' ? 'text-purple-300/80' : 'text-emerald-400/80'
                 }`}>
+                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
                   {stats.completedCount} transaksi selesai
                 </p>
               </div>
             </div>
           )}
 
-          <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl shadow-lg">
-            <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Total Booking</p>
-            <div className="flex items-baseline justify-between mt-2">
-              <h3 className="text-3xl font-black text-white">{stats.totalBookings}</h3>
-              <span className="text-xs text-amber-500 font-medium">Semua data</span>
+          <div className="bg-zinc-900/80 backdrop-blur-xl border border-zinc-800/80 p-6 rounded-3xl shadow-xl hover:border-zinc-700 transition-all">
+            <p className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Total Booking</p>
+            <div className="flex items-baseline justify-between mt-3">
+              <h3 className="text-3xl font-black text-white tracking-tight">{stats.totalBookings}</h3>
+              <span className="text-[11px] text-amber-400 font-extrabold bg-amber-500/10 px-2.5 py-1 rounded-full border border-amber-500/20">Semua Data</span>
             </div>
           </div>
 
-          <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl shadow-lg">
-            <p className="text-xs font-semibold text-amber-400 uppercase tracking-wider">Menunggu</p>
-            <div className="flex items-baseline justify-between mt-2">
-              <h3 className="text-3xl font-black text-amber-400">{stats.pendingCount}</h3>
-              <span className="text-xs text-amber-500/80 font-medium">Perlu Konfirmasi</span>
+          <div className="bg-zinc-900/80 backdrop-blur-xl border border-zinc-800/80 p-6 rounded-3xl shadow-xl hover:border-amber-500/40 transition-all">
+            <p className="text-xs font-bold text-amber-400 uppercase tracking-wider">Menunggu</p>
+            <div className="flex items-baseline justify-between mt-3">
+              <h3 className="text-3xl font-black text-amber-400 tracking-tight">{stats.pendingCount}</h3>
+              <span className="text-[11px] text-amber-400/90 font-bold bg-amber-500/10 px-2.5 py-1 rounded-full border border-amber-500/20">Konfirmasi</span>
             </div>
           </div>
 
-          <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl shadow-lg">
-            <p className="text-xs font-semibold text-emerald-400 uppercase tracking-wider">Selesai</p>
-            <div className="flex items-baseline justify-between mt-2">
-              <h3 className="text-3xl font-black text-emerald-400">{stats.completedCount}</h3>
-              <span className="text-xs font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20">
+          <div className="bg-zinc-900/80 backdrop-blur-xl border border-zinc-800/80 p-6 rounded-3xl shadow-xl hover:border-emerald-500/40 transition-all">
+            <p className="text-xs font-bold text-emerald-400 uppercase tracking-wider">Selesai</p>
+            <div className="flex items-baseline justify-between mt-3">
+              <h3 className="text-3xl font-black text-emerald-400 tracking-tight">{stats.completedCount}</h3>
+              <span className="text-xs font-extrabold text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20">
                 {stats.completedPercentage}%
               </span>
             </div>
@@ -940,28 +957,28 @@ export default function AdminDashboard() {
 
           {/* WIDGET EKSKLUSIF PROFESIONAL: TOP PERFORMER STAFF */}
           {subscriptionPlan === 'PROFESIONAL' ? (
-            <div className="bg-gradient-to-br from-purple-950/40 to-zinc-900 border border-purple-500/30 p-5 rounded-2xl shadow-lg">
-              <p className="text-xs font-extrabold text-purple-300 uppercase tracking-wider flex items-center gap-1">
-                🏆 Top {staffLabel}
+            <div className="bg-gradient-to-br from-purple-950/40 via-zinc-900/90 to-zinc-900 border border-purple-500/30 p-6 rounded-3xl shadow-xl hover:border-purple-500/50 transition-all relative overflow-hidden">
+              <p className="text-xs font-black text-purple-300 uppercase tracking-wider flex items-center gap-1.5">
+                <span>🏆</span> Top {staffLabel}
               </p>
-              <div className="mt-2">
-                <h3 className="text-lg font-black text-white truncate">{stats.topStaffName}</h3>
-                <p className="text-[10px] text-purple-300/80 font-semibold mt-0.5">
+              <div className="mt-3">
+                <h3 className="text-xl font-black text-white truncate">{stats.topStaffName}</h3>
+                <p className="text-xs text-purple-300/80 font-bold mt-1">
                   {stats.topStaffCount} Transaksi Selesai
                 </p>
               </div>
             </div>
           ) : (
-            <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl shadow-lg">
-              <p className="text-xs font-semibold text-rose-400 uppercase tracking-wider">Pembatalan</p>
-              <div className="flex items-baseline justify-between mt-2">
-                <h3 className="text-3xl font-black text-rose-400">{stats.cancelledCount}</h3>
+            <div className="bg-zinc-900/80 backdrop-blur-xl border border-zinc-800/80 p-6 rounded-3xl shadow-xl hover:border-rose-500/40 transition-all">
+              <p className="text-xs font-bold text-rose-400 uppercase tracking-wider">Pembatalan</p>
+              <div className="flex items-baseline justify-between mt-3">
+                <h3 className="text-3xl font-black text-rose-400 tracking-tight">{stats.cancelledCount}</h3>
                 {stats.needRefundCount > 0 ? (
-                  <span className="text-[10px] font-extrabold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/20 animate-pulse">
+                  <span className="text-[10px] font-black text-amber-400 bg-amber-500/10 px-2.5 py-1 rounded-full border border-amber-500/30 animate-pulse">
                     {stats.needRefundCount} Perlu Refund
                   </span>
                 ) : (
-                  <span className="text-xs font-bold text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded-md border border-rose-500/20">
+                  <span className="text-xs font-extrabold text-rose-400 bg-rose-500/10 px-3 py-1 rounded-full border border-rose-500/20">
                     {stats.cancelledPercentage}%
                   </span>
                 )}
@@ -971,53 +988,67 @@ export default function AdminDashboard() {
 
         </div>
 
+        {/* PROMOTION / UPSELL BANNER (KHUSUS BASIC UNTUK UPGRADE KE PREMIUM/PROFESIONAL) */}
+        {subscriptionPlan === 'BASIC' && (
+          <div className="p-6 rounded-3xl bg-gradient-to-r from-amber-500/10 via-purple-500/10 to-zinc-900 border border-amber-500/30 shadow-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 uppercase">Upgrade Fitur Premium</span>
+              <h3 className="text-base font-black text-white">Buka Fitur Laporan Keuangan, Total Omzet, & Manajemen Staff!</h3>
+              <p className="text-xs text-zinc-400">Tingkatkan operasional bisnis kamu ke Paket Premium atau Profesional sekarang.</p>
+            </div>
+            <button onClick={() => alert('Silakan hubungi customer support untuk upgrade paket bisnis kamu!')} className="bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-zinc-950 font-black px-5 py-2.5 rounded-2xl text-xs whitespace-nowrap shadow-lg shadow-amber-500/20 transition-all active:scale-95">
+              Upgrade Sekarang ⭐
+            </button>
+          </div>
+        )}
+
         {/* PENARIKAN LAPORAN KEUANGAN (HANYA DITAMPILKAN UNTUK PREMIUM & PROFESIONAL) */}
         {subscriptionPlan !== 'BASIC' && (
-          <div className={`p-5 rounded-2xl shadow-xl space-y-4 border transition-all ${
+          <div className={`p-6 md:p-7 rounded-3xl shadow-2xl space-y-5 border backdrop-blur-xl transition-all ${
             subscriptionPlan === 'PROFESIONAL'
-              ? 'bg-zinc-900 border-purple-500/30'
-              : 'bg-zinc-900 border-amber-500/30'
+              ? 'bg-zinc-900/90 border-purple-500/30 shadow-purple-950/20'
+              : 'bg-zinc-900/90 border-amber-500/30 shadow-amber-950/20'
           }`}>
-            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-zinc-800/80 pb-4 gap-2">
               <div>
-                <h2 className={`text-base font-extrabold flex items-center gap-2 ${
+                <h2 className={`text-lg font-black flex items-center gap-2 ${
                   subscriptionPlan === 'PROFESIONAL' ? 'text-purple-300' : 'text-amber-400'
                 }`}>
-                  <span>📊 Penarikan Laporan Keuangan (Omzet Netto)</span>
+                  <span>📊 Laporan Keuangan & Omzet Netto</span>
                 </h2>
-                <p className="text-xs text-zinc-400">
+                <p className="text-xs text-zinc-400 font-medium">
                   Data siap diexport ke Excel atau dicetak langsung/disimpan sebagai PDF resmi.
                 </p>
               </div>
               
               {/* HINT KHUSUS UNTUK SETIAP PAKET */}
               {subscriptionPlan === 'PREMIUM' && (
-                <span className="text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30 px-2.5 py-1 rounded-full flex items-center gap-1">
+                <span className="text-[10px] font-black bg-amber-500/10 text-amber-400 border border-amber-500/30 px-3 py-1.5 rounded-full flex items-center gap-1.5 w-max">
                   ⭐ Premium Plan (Export Excel Only)
                 </span>
               )}
               {subscriptionPlan === 'PROFESIONAL' && (
-                <span className="text-[10px] font-bold bg-purple-500/10 text-purple-300 border border-purple-500/30 px-2.5 py-1 rounded-full flex items-center gap-1">
+                <span className="text-[10px] font-black bg-purple-500/10 text-purple-300 border border-purple-500/30 px-3 py-1.5 rounded-full flex items-center gap-1.5 w-max">
                   👑 Profesional Plan (Excel + Cetak PDF)
                 </span>
               )}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-start">
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
               <div className="md:col-span-6 space-y-4">
                 <div>
-                  <label className="block text-xs font-semibold text-zinc-300 mb-1.5">Tipe Laporan:</label>
-                  <div className="grid grid-cols-4 gap-1.5 p-1 bg-zinc-950 rounded-xl border border-zinc-800">
+                  <label className="block text-xs font-bold text-zinc-300 mb-2">Tipe Laporan:</label>
+                  <div className="grid grid-cols-4 gap-2 p-1.5 bg-zinc-950/80 rounded-2xl border border-zinc-800">
                     {(['daily', 'weekly', 'monthly', 'custom'] as const).map((mode) => (
                       <button
                         key={mode}
                         onClick={() => setReportPeriod(mode)}
-                        className={`py-1.5 rounded-lg text-xs font-bold transition capitalize ${
+                        className={`py-2 rounded-xl text-xs font-bold transition-all capitalize ${
                           reportPeriod === mode
                             ? subscriptionPlan === 'PROFESIONAL'
-                              ? 'bg-purple-600 text-white shadow-md'
-                              : 'bg-amber-500 text-zinc-950 shadow-md'
-                            : 'text-zinc-400 hover:text-white'
+                              ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30'
+                              : 'bg-amber-500 text-zinc-950 shadow-lg shadow-amber-500/30'
+                            : 'text-zinc-400 hover:text-white hover:bg-zinc-800/40'
                         }`}
                       >
                         {mode === 'daily' ? 'Harian' : mode === 'weekly' ? 'Mingguan' : mode === 'monthly' ? 'Bulanan' : 'Custom'}
@@ -1028,7 +1059,7 @@ export default function AdminDashboard() {
 
                 {reportPeriod !== 'custom' ? (
                   <div>
-                    <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                    <label className="block text-xs font-bold text-zinc-300 mb-2">
                       {reportPeriod === 'daily' && 'Pilih Tanggal:'}
                       {reportPeriod === 'weekly' && 'Pilih Tanggal Awal (7 Hari):'}
                       {reportPeriod === 'monthly' && 'Pilih Bulan & Tahun:'}
@@ -1041,52 +1072,52 @@ export default function AdminDashboard() {
                         const val = e.target.value
                         setReportDate(reportPeriod === 'monthly' ? `${val}-01` : val)
                       }}
-                      className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-zinc-200 focus:outline-none focus:border-amber-500"
+                      className="w-full px-4 py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-2xl text-xs text-zinc-200 focus:outline-none focus:border-amber-500 shadow-inner"
                     />
 
                     {reportPeriod === 'weekly' && reportData.weekInfo && (
-                      <p className="text-[11px] text-amber-400 font-semibold mt-1">
-                        📅 Periode: {formatDateID(reportData.weekInfo.startStr)} s/d {formatDateID(reportData.weekInfo.endStr)}
+                      <p className="text-[11px] text-amber-400 font-bold mt-2 flex items-center gap-1">
+                        <span>📅</span> Periode: {formatDateID(reportData.weekInfo.startStr)} s/d {formatDateID(reportData.weekInfo.endStr)}
                       </p>
                     )}
                   </div>
                 ) : (
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs font-semibold text-zinc-300 mb-1.5">Dari Tanggal:</label>
+                      <label className="block text-xs font-bold text-zinc-300 mb-2">Dari Tanggal:</label>
                       <input
                         type="date"
                         value={reportStartDate}
                         onChange={(e) => setReportStartDate(e.target.value)}
-                        className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-zinc-200 focus:outline-none focus:border-amber-500"
+                        className="w-full px-4 py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-2xl text-xs text-zinc-200 focus:outline-none focus:border-amber-500 shadow-inner"
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-zinc-300 mb-1.5">Sampai Tanggal:</label>
+                      <label className="block text-xs font-bold text-zinc-300 mb-2">Sampai Tanggal:</label>
                       <input
                         type="date"
                         value={reportEndDate}
                         onChange={(e) => setReportEndDate(e.target.value)}
-                        className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-zinc-200 focus:outline-none focus:border-amber-500"
+                        className="w-full px-4 py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-2xl text-xs text-zinc-200 focus:outline-none focus:border-amber-500 shadow-inner"
                       />
                     </div>
                   </div>
                 )}
               </div>
 
-              <div className="md:col-span-6 space-y-3">
-                <div className="bg-zinc-950 border border-zinc-800 p-4 rounded-xl grid grid-cols-2 gap-4 text-xs">
+              <div className="md:col-span-6 space-y-4">
+                <div className="bg-zinc-950/90 border border-zinc-800/80 p-5 rounded-2xl grid grid-cols-2 gap-4 text-xs shadow-inner">
                   <div>
                     <p className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider">OMZET BRUTO</p>
                     <p className="text-xl font-black text-white mt-1">
                       Rp {reportData.grossRevenue.toLocaleString('id-ID')}
                     </p>
-                    <p className="text-[10px] text-red-400 mt-0.5 font-medium">
+                    <p className="text-[10px] text-rose-400 mt-1 font-bold">
                       Refund: -Rp {reportData.totalRefund.toLocaleString('id-ID')}
                     </p>
                   </div>
                   <div className="text-right border-l border-zinc-800 pl-4">
-                    <p className="text-[11px] font-extrabold text-emerald-400 uppercase tracking-wider">OMZET NETTO</p>
+                    <p className="text-[11px] font-black text-emerald-400 uppercase tracking-wider">OMZET NETTO</p>
                     <p className="text-2xl font-black text-emerald-400 mt-1">
                       Rp {reportData.netRevenue.toLocaleString('id-ID')}
                     </p>
@@ -1098,12 +1129,12 @@ export default function AdminDashboard() {
                   <div className="space-y-2">
                     <button
                       onClick={exportReportToCSV}
-                      className="w-full bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2.5 rounded-xl font-bold transition text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-600/10"
+                      className="w-full bg-emerald-600 hover:bg-emerald-500 text-white px-5 py-3 rounded-2xl font-bold transition-all text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20 active:scale-[0.98]"
                     >
                       <span>📥 Export Laporan Excel</span>
                     </button>
-                    <p className="text-[11px] text-center text-zinc-500">
-                      💡 Upgrade ke <strong className="text-purple-400">Paket Profesional</strong> untuk membuka fitur Cetak / Download PDF.
+                    <p className="text-[11px] text-center text-zinc-500 font-medium">
+                      💡 Upgrade ke <strong className="text-purple-400 font-bold">Paket Profesional</strong> untuk membuka fitur Cetak / Download PDF.
                     </p>
                   </div>
                 )}
@@ -1112,14 +1143,14 @@ export default function AdminDashboard() {
                   <div className="grid grid-cols-2 gap-3">
                     <button
                       onClick={exportReportToCSV}
-                      className="w-full bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2.5 rounded-xl font-bold transition text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-600/10"
+                      className="w-full bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-3 rounded-2xl font-bold transition-all text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20 active:scale-[0.98]"
                     >
-                      <span>📥 Excel</span>
+                      <span>📥 Export Excel</span>
                     </button>
 
                     <button
                       onClick={handlePrintPDF}
-                      className="w-full bg-purple-600 hover:bg-purple-500 text-white px-4 py-2.5 rounded-xl font-bold transition text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-purple-600/10"
+                      className="w-full bg-purple-600 hover:bg-purple-500 text-white px-4 py-3 rounded-2xl font-bold transition-all text-xs flex items-center justify-center gap-2 shadow-lg shadow-purple-600/20 active:scale-[0.98]"
                     >
                       <span>🖨️ Cetak / PDF</span>
                     </button>
@@ -1132,25 +1163,25 @@ export default function AdminDashboard() {
         )}
 
         {/* SEARCH & FILTER TABEL DATA */}
-        <div className="bg-zinc-900 border border-zinc-800 p-4 sm:p-5 rounded-2xl shadow-xl flex flex-wrap gap-4 items-end justify-between">
+        <div className="bg-zinc-900/80 backdrop-blur-xl border border-zinc-800/80 p-5 rounded-3xl shadow-xl flex flex-wrap gap-4 items-end justify-between">
           <div className="flex flex-wrap gap-3 items-end w-full">
-            <div className="w-full sm:w-52">
-              <label className="block text-xs font-semibold text-zinc-400 mb-1.5">Pencarian Tabel:</label>
+            <div className="w-full sm:w-60">
+              <label className="block text-xs font-bold text-zinc-400 mb-1.5">Pencarian Data:</label>
               <input
                 type="text"
                 placeholder="Cari nama, WA, atau layanan..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-amber-500"
+                className="w-full px-4 py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-2xl text-xs text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-amber-500 transition-all shadow-inner"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-zinc-400 mb-1.5">Filter Status:</label>
+              <label className="block text-xs font-bold text-zinc-400 mb-1.5">Filter Status:</label>
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-zinc-200 focus:outline-none focus:border-amber-500"
+                className="px-4 py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-2xl text-xs text-zinc-200 focus:outline-none focus:border-amber-500 font-semibold cursor-pointer shadow-inner"
               >
                 <option value="all">Semua Status</option>
                 <option value="pending">🟡 Pending</option>
@@ -1162,11 +1193,11 @@ export default function AdminDashboard() {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-zinc-400 mb-1.5">Filter Layanan:</label>
+              <label className="block text-xs font-bold text-zinc-400 mb-1.5">Filter Layanan:</label>
               <select
                 value={serviceFilter}
                 onChange={(e) => setServiceFilter(e.target.value)}
-                className="px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-zinc-200 focus:outline-none focus:border-amber-500"
+                className="px-4 py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-2xl text-xs text-zinc-200 focus:outline-none focus:border-amber-500 font-semibold cursor-pointer shadow-inner"
               >
                 <option value="all">Semua Layanan</option>
                 {uniqueServices.map((svc) => (
@@ -1178,11 +1209,11 @@ export default function AdminDashboard() {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-zinc-400 mb-1.5">Filter Metode Bayar:</label>
+              <label className="block text-xs font-bold text-zinc-400 mb-1.5">Filter Metode Bayar:</label>
               <select
                 value={paymentFilter}
                 onChange={(e) => setPaymentFilter(e.target.value)}
-                className="px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-zinc-200 focus:outline-none focus:border-amber-500"
+                className="px-4 py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-2xl text-xs text-zinc-200 focus:outline-none focus:border-amber-500 font-semibold cursor-pointer shadow-inner"
               >
                 <option value="all">Semua Metode</option>
                 {uniquePayments.map((pay) => (
@@ -1203,7 +1234,7 @@ export default function AdminDashboard() {
                   setPaymentFilter('all')
                   setSearchTerm('')
                 }}
-                className="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700 px-3 py-2 rounded-xl text-xs font-medium transition"
+                className="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700/80 px-4 py-2.5 rounded-2xl text-xs font-bold transition-all"
               >
                 Reset Filter
               </button>
@@ -1212,40 +1243,40 @@ export default function AdminDashboard() {
         </div>
 
         {/* TABEL DATA RESERVASI */}
-        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden">
+        <div className="bg-zinc-900/80 backdrop-blur-xl border border-zinc-800/80 rounded-3xl shadow-2xl overflow-hidden">
           {loading ? (
-            <div className="p-12 text-center text-zinc-500 text-xs">Memuat data reservasi...</div>
+            <div className="p-16 text-center text-zinc-500 text-xs font-semibold">Memuat data reservasi...</div>
           ) : filteredReservations.length === 0 ? (
-            <div className="p-12 text-center text-zinc-500 text-xs">Belum ada reservasi masuk / sesuai filter.</div>
+            <div className="p-16 text-center text-zinc-500 text-xs font-semibold">Belum ada reservasi masuk / sesuai filter.</div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="bg-zinc-950 border-b border-zinc-800 text-[11px] font-bold text-zinc-400 uppercase tracking-wider select-none">
+                  <tr className="bg-zinc-950/90 border-b border-zinc-800 text-[10px] font-black text-zinc-400 uppercase tracking-widest select-none">
                     
-                    <th onClick={() => handleSort('booking_date')} className="p-4 cursor-pointer hover:text-amber-400 transition">
-                      <div className="flex items-center gap-1">
+                    <th onClick={() => handleSort('booking_date')} className="p-4.5 cursor-pointer hover:text-amber-400 transition">
+                      <div className="flex items-center gap-1.5">
                         <span>Tanggal Booking</span>
                         {sortField === 'booking_date' && (sortOrder === 'asc' ? '▲' : '▼')}
                       </div>
                     </th>
 
-                    <th onClick={() => handleSort('booking_time')} className="p-4 cursor-pointer hover:text-amber-400 transition">
-                      <div className="flex items-center gap-1">
+                    <th onClick={() => handleSort('booking_time')} className="p-4.5 cursor-pointer hover:text-amber-400 transition">
+                      <div className="flex items-center gap-1.5">
                         <span>Jam</span>
                         {sortField === 'booking_time' && (sortOrder === 'asc' ? '▲' : '▼')}
                       </div>
                     </th>
 
-                    <th onClick={() => handleSort('customer_name')} className="p-4 cursor-pointer hover:text-amber-400 transition">
-                      <div className="flex items-center gap-1">
+                    <th onClick={() => handleSort('customer_name')} className="p-4.5 cursor-pointer hover:text-amber-400 transition">
+                      <div className="flex items-center gap-1.5">
                         <span>Nama Pelanggan</span>
                         {sortField === 'customer_name' && (sortOrder === 'asc' ? '▲' : '▼')}
                       </div>
                     </th>
 
-                    <th onClick={() => handleSort('service_name')} className="p-4 cursor-pointer hover:text-amber-400 transition">
-                      <div className="flex items-center gap-1">
+                    <th onClick={() => handleSort('service_name')} className="p-4.5 cursor-pointer hover:text-amber-400 transition">
+                      <div className="flex items-center gap-1.5">
                         <span>Layanan</span>
                         {sortField === 'service_name' && (sortOrder === 'asc' ? '▲' : '▼')}
                       </div>
@@ -1253,43 +1284,43 @@ export default function AdminDashboard() {
 
                     {/* KOLOM STAFF (Tampil di PREMIUM & PROFESIONAL) */}
                     {(subscriptionPlan === 'PREMIUM' || subscriptionPlan === 'PROFESIONAL') && (
-                      <th onClick={() => handleSort('staff_name')} className={`p-4 cursor-pointer transition ${
+                      <th onClick={() => handleSort('staff_name')} className={`p-4.5 cursor-pointer transition ${
                         subscriptionPlan === 'PROFESIONAL' ? 'text-purple-300' : 'text-amber-400'
                       }`}>
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center gap-1.5">
                           <span>{staffLabel}</span>
                           {sortField === 'staff_name' && (sortOrder === 'asc' ? '▲' : '▼')}
                         </div>
                       </th>
                     )}
 
-                    <th onClick={() => handleSort('price')} className="p-4 cursor-pointer hover:text-amber-400 transition text-emerald-400">
-                      <div className="flex items-center gap-1">
+                    <th onClick={() => handleSort('price')} className="p-4.5 cursor-pointer hover:text-amber-400 transition text-emerald-400">
+                      <div className="flex items-center gap-1.5">
                         <span>Harga</span>
                         {sortField === 'price' && (sortOrder === 'asc' ? '▲' : '▼')}
                       </div>
                     </th>
 
-                    <th onClick={() => handleSort('payment_method')} className="p-4 cursor-pointer hover:text-amber-400 transition">
-                      <div className="flex items-center gap-1">
+                    <th onClick={() => handleSort('payment_method')} className="p-4.5 cursor-pointer hover:text-amber-400 transition">
+                      <div className="flex items-center gap-1.5">
                         <span>Metode Bayar</span>
                         {sortField === 'payment_method' && (sortOrder === 'asc' ? '▲' : '▼')}
                       </div>
                     </th>
 
-                    <th className="p-4">WhatsApp</th>
+                    <th className="p-4.5">WhatsApp</th>
 
-                    <th onClick={() => handleSort('status')} className="p-4 cursor-pointer hover:text-amber-400 transition">
-                      <div className="flex items-center gap-1">
+                    <th onClick={() => handleSort('status')} className="p-4.5 cursor-pointer hover:text-amber-400 transition">
+                      <div className="flex items-center gap-1.5">
                         <span>Status</span>
                         {sortField === 'status' && (sortOrder === 'asc' ? '▲' : '▼')}
                       </div>
                     </th>
 
-                    <th className="p-4 text-center">Aksi</th>
+                    <th className="p-4.5 text-center">Aksi</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-zinc-800/60 text-xs">
+                <tbody className="divide-y divide-zinc-800/40 text-xs font-medium">
                   {filteredReservations.map((item) => {
                     const currentStatus = item.status || 'pending'
                     const cleanPhone = item.whatsapp_number ? item.whatsapp_number.replace(/^0/, '62') : ''
@@ -1301,22 +1332,22 @@ export default function AdminDashboard() {
                     )
 
                     return (
-                      <tr key={item.id} className="hover:bg-zinc-800/40 transition">
-                        <td className="p-4 font-semibold text-zinc-200">{item.booking_date}</td>
-                        <td className="p-4 font-mono text-zinc-400">{item.booking_time} WIB</td>
-                        <td className="p-4 font-bold text-white">
+                      <tr key={item.id} className="hover:bg-zinc-800/30 transition-colors">
+                        <td className="p-4.5 font-bold text-zinc-200">{item.booking_date}</td>
+                        <td className="p-4.5 font-mono text-amber-400/90 font-bold">{item.booking_time} WIB</td>
+                        <td className="p-4.5 font-black text-white">
                           {item.customer_name}
                         </td>
-                        <td className="p-4">
-                          <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2.5 py-1 rounded-md text-[11px] font-semibold">
+                        <td className="p-4.5">
+                          <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 px-3 py-1 rounded-xl text-[11px] font-bold inline-block">
                             {item.service_name}
                           </span>
                         </td>
 
                         {(subscriptionPlan === 'PREMIUM' || subscriptionPlan === 'PROFESIONAL') && (
-                          <td className="p-4 font-medium text-zinc-200">
+                          <td className="p-4.5 font-bold text-zinc-200">
                             {item.staff_name ? (
-                              <span className={`px-2 py-1 rounded-md text-[11px] border ${
+                              <span className={`px-2.5 py-1 rounded-xl text-[11px] border ${
                                 subscriptionPlan === 'PROFESIONAL'
                                   ? 'bg-purple-950/40 border-purple-800/50 text-purple-200'
                                   : 'bg-zinc-800 border-zinc-700'
@@ -1329,28 +1360,28 @@ export default function AdminDashboard() {
                           </td>
                         )}
 
-                        <td className="p-4 font-semibold text-emerald-400">
+                        <td className="p-4.5 font-mono font-bold text-emerald-400">
                           Rp {getServicePrice(item.service_name).toLocaleString('id-ID')}
                         </td>
-                        <td className="p-4">
-                          <span className="bg-zinc-800 text-zinc-300 border border-zinc-700 px-2.5 py-1 rounded-md text-[11px] font-medium">
+                        <td className="p-4.5">
+                          <span className="bg-zinc-800/80 text-zinc-300 border border-zinc-700/80 px-2.5 py-1 rounded-xl text-[11px] font-bold">
                             {item.payment_method || 'QRIS'}
                           </span>
                         </td>
-                        <td className="p-4">
+                        <td className="p-4.5">
                           <a
                             href={`https://wa.me/${cleanPhone}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-emerald-400 hover:text-emerald-300 font-semibold inline-flex items-center gap-1.5"
+                            className="text-emerald-400 hover:text-emerald-300 font-bold inline-flex items-center gap-1.5 transition-colors"
                           >
                             <span>{item.whatsapp_number}</span>
-                            <svg className="w-3 h-3 fill-current" viewBox="0 0 24 24">
+                            <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
                               <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981z"/>
                             </svg>
                           </a>
                         </td>
-                        <td className="p-4">
+                        <td className="p-4.5">
                           <div className="space-y-1.5">
                             <select
                               value={
@@ -1359,14 +1390,14 @@ export default function AdminDashboard() {
                                   : currentStatus
                               }
                               onChange={(e) => handleStatusChange(item, e.target.value)}
-                              className={`p-1.5 rounded-lg text-xs font-bold border bg-zinc-950 focus:outline-none cursor-pointer ${
+                              className={`px-3 py-1.5 rounded-xl text-xs font-black border bg-zinc-950 focus:outline-none cursor-pointer transition-all ${
                                 currentStatus === 'confirmed'
-                                  ? 'text-blue-400 border-blue-500/40'
+                                  ? 'text-blue-400 border-blue-500/40 bg-blue-500/10'
                                   : currentStatus === 'completed'
-                                  ? 'text-emerald-400 border-emerald-500/40'
+                                  ? 'text-emerald-400 border-emerald-500/40 bg-emerald-500/10'
                                   : currentStatus.startsWith('cancelled')
-                                  ? 'text-red-400 border-red-500/40'
-                                  : 'text-amber-400 border-amber-500/40'
+                                  ? 'text-rose-400 border-rose-500/40 bg-rose-500/10'
+                                  : 'text-amber-400 border-amber-500/40 bg-amber-500/10'
                               }`}
                             >
                               <option value="pending">🟡 Pending</option>
@@ -1376,21 +1407,21 @@ export default function AdminDashboard() {
                             </select>
 
                             {currentStatus === 'cancelled_need_refund' && (
-                              <div className="flex flex-col gap-1 mt-1">
-                                <span className="bg-amber-500/10 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded text-[10px] font-extrabold flex items-center gap-1">
+                              <div className="flex flex-col gap-1.5 mt-1">
+                                <span className="bg-amber-500/10 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded-lg text-[10px] font-black flex items-center gap-1">
                                   <span>⚠️</span> PERLU REFUND
                                 </span>
                                 <a
                                   href={`https://wa.me/${cleanPhone}?text=${refundWaMsg}`}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 px-2 py-1 rounded text-[10px] font-bold text-center block transition"
+                                  className="bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 px-2.5 py-1 rounded-xl text-[10px] font-bold text-center block transition-all"
                                 >
                                   💬 Minta Rekening (WA)
                                 </a>
                                 <button
                                   onClick={() => handleCompleteRefund(item.id)}
-                                  className="bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 border border-blue-500/30 px-2 py-1 rounded text-[10px] font-bold transition"
+                                  className="bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 border border-blue-500/30 px-2.5 py-1 rounded-xl text-[10px] font-bold transition-all"
                                 >
                                   ✅ Selesai Refund
                                 </button>
@@ -1398,16 +1429,16 @@ export default function AdminDashboard() {
                             )}
 
                             {currentStatus === 'cancelled_refunded' && (
-                              <span className="bg-zinc-800 text-zinc-400 border border-zinc-700 px-2 py-0.5 rounded text-[10px] font-semibold block w-max">
+                              <span className="bg-zinc-800 text-zinc-400 border border-zinc-700 px-2.5 py-1 rounded-xl text-[10px] font-bold block w-max">
                                 ✓ Refund Selesai
                               </span>
                             )}
                           </div>
                         </td>
-                        <td className="p-4 text-center">
+                        <td className="p-4.5 text-center">
                           <button
                             onClick={() => handleDelete(item.id, item.customer_name)}
-                            className="bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white px-3 py-1.5 rounded-xl text-xs font-semibold border border-red-500/20 transition"
+                            className="bg-rose-500/10 hover:bg-rose-500 text-rose-400 hover:text-white px-3 py-1.5 rounded-xl text-xs font-bold border border-rose-500/30 transition-all active:scale-95"
                           >
                             🗑️ Hapus
                           </button>
@@ -1425,43 +1456,43 @@ export default function AdminDashboard() {
 
       {/* MODAL REFUND */}
       {cancelModalItem && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 max-w-md w-full space-y-4 shadow-2xl animate-in fade-in zoom-in duration-150">
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 md:p-7 max-w-md w-full space-y-5 shadow-2xl animate-in fade-in zoom-in duration-200">
             <div className="text-center space-y-2">
-              <span className="text-3xl">💸</span>
-              <h3 className="text-base font-extrabold text-white">Konfirmasi Pembatalan & Refund</h3>
-              <p className="text-xs text-zinc-400 leading-relaxed">
-                Kamu membatalkan reservasi atas nama <strong className="text-amber-400">{cancelModalItem.customer_name}</strong>. Apakah transaksi ini perlu refund uang pelanggan?
+              <span className="text-4xl inline-block mb-1">💸</span>
+              <h3 className="text-lg font-black text-white">Konfirmasi Pembatalan & Refund</h3>
+              <p className="text-xs text-zinc-400 leading-relaxed font-medium">
+                Kamu membatalkan reservasi atas nama <strong className="text-amber-400 font-bold">{cancelModalItem.customer_name}</strong>. Apakah transaksi ini perlu refund uang pelanggan?
               </p>
             </div>
 
-            <div className="bg-zinc-950 border border-zinc-800 p-3 rounded-xl text-xs space-y-1">
-              <div className="flex justify-between text-zinc-400">
+            <div className="bg-zinc-950/80 border border-zinc-800/80 p-4 rounded-2xl text-xs space-y-2 shadow-inner">
+              <div className="flex justify-between text-zinc-400 font-medium">
                 <span>Layanan:</span>
-                <span className="text-zinc-200 font-semibold">{cancelModalItem.service_name}</span>
+                <span className="text-zinc-200 font-bold">{cancelModalItem.service_name}</span>
               </div>
-              <div className="flex justify-between text-zinc-400">
+              <div className="flex justify-between text-zinc-400 font-medium">
                 <span>Metode Bayar:</span>
-                <span className="text-zinc-200 font-semibold">{cancelModalItem.payment_method || 'QRIS'}</span>
+                <span className="text-zinc-200 font-bold">{cancelModalItem.payment_method || 'QRIS'}</span>
               </div>
-              <div className="flex justify-between text-zinc-400">
+              <div className="flex justify-between text-zinc-400 font-medium">
                 <span>Nominal:</span>
-                <span className="text-emerald-400 font-bold">
+                <span className="text-emerald-400 font-black">
                   Rp {getServicePrice(cancelModalItem.service_name).toLocaleString('id-ID')}
                 </span>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 pt-2">
+            <div className="grid grid-cols-2 gap-3 pt-1">
               <button
                 onClick={() => handleConfirmCancel(false)}
-                className="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-bold py-2.5 px-4 rounded-xl text-xs transition border border-zinc-700"
+                className="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-bold py-3 px-4 rounded-2xl text-xs transition-all border border-zinc-700/80 active:scale-95"
               >
                 Tidak (Belum Bayar)
               </button>
               <button
                 onClick={() => handleConfirmCancel(true)}
-                className="bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold py-2.5 px-4 rounded-xl text-xs transition shadow-lg shadow-amber-500/10"
+                className="bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-zinc-950 font-black py-3 px-4 rounded-2xl text-xs transition-all shadow-lg shadow-amber-500/20 active:scale-95"
               >
                 Ya, Perlu Refund 💸
               </button>
