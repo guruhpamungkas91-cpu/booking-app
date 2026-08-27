@@ -897,12 +897,12 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* STATS CARDS GRID */}
+        {/* STATS CARDS GRID (5 CARD TERATAS UNTUK SEMUA PAKET) */}
         <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 ${
           subscriptionPlan === 'BASIC' ? 'xl:grid-cols-4' : 'xl:grid-cols-5'
         } gap-4`}>
           
-          {/* Card Total Omzet (Sembunyi Total di Paket BASIC) */}
+          {/* Card 1: Total Omzet (Sembunyi di Paket BASIC) */}
           {(subscriptionPlan === 'PREMIUM' || subscriptionPlan === 'PROFESIONAL') && (
             <div className={`border p-6 rounded-3xl shadow-2xl transition-all relative overflow-hidden group ${
               subscriptionPlan === 'PROFESIONAL'
@@ -929,6 +929,7 @@ export default function AdminDashboard() {
             </div>
           )}
 
+          {/* Card 2: Total Booking */}
           <div className="bg-zinc-900/80 backdrop-blur-xl border border-zinc-800/80 p-6 rounded-3xl shadow-xl hover:border-zinc-700 transition-all">
             <p className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Total Booking</p>
             <div className="flex items-baseline justify-between mt-3">
@@ -937,6 +938,7 @@ export default function AdminDashboard() {
             </div>
           </div>
 
+          {/* Card 3: Menunggu */}
           <div className="bg-zinc-900/80 backdrop-blur-xl border border-zinc-800/80 p-6 rounded-3xl shadow-xl hover:border-amber-500/40 transition-all">
             <p className="text-xs font-bold text-amber-400 uppercase tracking-wider">Menunggu</p>
             <div className="flex items-baseline justify-between mt-3">
@@ -945,6 +947,7 @@ export default function AdminDashboard() {
             </div>
           </div>
 
+          {/* Card 4: Selesai */}
           <div className="bg-zinc-900/80 backdrop-blur-xl border border-zinc-800/80 p-6 rounded-3xl shadow-xl hover:border-emerald-500/40 transition-all">
             <p className="text-xs font-bold text-emerald-400 uppercase tracking-wider">Selesai</p>
             <div className="flex items-baseline justify-between mt-3">
@@ -955,38 +958,49 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          {/* WIDGET EKSKLUSIF PROFESIONAL: TOP PERFORMER STAFF */}
-          {subscriptionPlan === 'PROFESIONAL' ? (
-            <div className="bg-gradient-to-br from-purple-950/40 via-zinc-900/90 to-zinc-900 border border-purple-500/30 p-6 rounded-3xl shadow-xl hover:border-purple-500/50 transition-all relative overflow-hidden">
-              <p className="text-xs font-black text-purple-300 uppercase tracking-wider flex items-center gap-1.5">
-                <span>🏆</span> Top {staffLabel}
-              </p>
-              <div className="mt-3">
-                <h3 className="text-xl font-black text-white truncate">{stats.topStaffName}</h3>
-                <p className="text-xs text-purple-300/80 font-bold mt-1">
-                  {stats.topStaffCount} Transaksi Selesai
-                </p>
-              </div>
+          {/* Card 5: Pembatalan (Tetap ada di baris atas untuk semua paket) */}
+          <div className="bg-zinc-900/80 backdrop-blur-xl border border-zinc-800/80 p-6 rounded-3xl shadow-xl hover:border-rose-500/40 transition-all">
+            <p className="text-xs font-bold text-rose-400 uppercase tracking-wider">Pembatalan</p>
+            <div className="flex items-baseline justify-between mt-3">
+              <h3 className="text-3xl font-black text-rose-400 tracking-tight">{stats.cancelledCount}</h3>
+              {stats.needRefundCount > 0 ? (
+                <span className="text-[10px] font-black text-amber-400 bg-amber-500/10 px-2.5 py-1 rounded-full border border-amber-500/30 animate-pulse">
+                  {stats.needRefundCount} Perlu Refund
+                </span>
+              ) : (
+                <span className="text-xs font-extrabold text-rose-400 bg-rose-500/10 px-3 py-1 rounded-full border border-rose-500/20">
+                  {stats.cancelledPercentage}%
+                </span>
+              )}
             </div>
-          ) : (
-            <div className="bg-zinc-900/80 backdrop-blur-xl border border-zinc-800/80 p-6 rounded-3xl shadow-xl hover:border-rose-500/40 transition-all">
-              <p className="text-xs font-bold text-rose-400 uppercase tracking-wider">Pembatalan</p>
-              <div className="flex items-baseline justify-between mt-3">
-                <h3 className="text-3xl font-black text-rose-400 tracking-tight">{stats.cancelledCount}</h3>
-                {stats.needRefundCount > 0 ? (
-                  <span className="text-[10px] font-black text-amber-400 bg-amber-500/10 px-2.5 py-1 rounded-full border border-amber-500/30 animate-pulse">
-                    {stats.needRefundCount} Perlu Refund
-                  </span>
-                ) : (
-                  <span className="text-xs font-extrabold text-rose-400 bg-rose-500/10 px-3 py-1 rounded-full border border-rose-500/20">
-                    {stats.cancelledPercentage}%
-                  </span>
-                )}
-              </div>
-            </div>
-          )}
+          </div>
 
         </div>
+
+        {/* WIDGET SPESIAL HIGHLIGHT TOP CAPSTER (KHUSUS PROFESIONAL - TERPISAH DI BAWAH CARD STATS) */}
+        {subscriptionPlan === 'PROFESIONAL' && (
+          <div className="bg-gradient-to-r from-purple-950/50 via-zinc-900/90 to-purple-950/30 border border-purple-500/40 p-5 rounded-3xl shadow-2xl flex items-center justify-between relative overflow-hidden">
+            <div className="flex items-center space-x-4">
+              <div className="w-12 h-12 rounded-2xl bg-purple-500/20 border border-purple-500/40 flex items-center justify-center text-2xl shadow-inner">
+                🏆
+              </div>
+              <div>
+                <span className="text-[10px] font-black text-purple-300 uppercase tracking-widest bg-purple-500/10 px-2.5 py-0.5 rounded-full border border-purple-500/30">
+                  Performa Staff Terbaik ({staffLabel})
+                </span>
+                <h3 className="text-xl font-black text-white mt-1">
+                  {stats.topStaffName !== '-' ? stats.topStaffName : 'Belum Ada Data Selesai'}
+                </h3>
+              </div>
+            </div>
+            <div className="text-right">
+              <span className="text-2xl font-black text-purple-300 font-mono">
+                {stats.topStaffCount}
+              </span>
+              <p className="text-[11px] text-zinc-400 font-bold uppercase tracking-wider">Transaksi Selesai</p>
+            </div>
+          </div>
+        )}
 
         {/* PROMOTION / UPSELL BANNER (KHUSUS BASIC UNTUK UPGRADE KE PREMIUM/PROFESIONAL) */}
         {subscriptionPlan === 'BASIC' && (
