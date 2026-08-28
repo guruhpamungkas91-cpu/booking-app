@@ -100,86 +100,84 @@ function BookingFormContent() {
   const payableAmount = formData.payment_type === 'DP' ? dpAmount : grandTotal
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const hostname = window.location.hostname
-      const searchParams = new URLSearchParams(window.location.search)
-      const tenantQuery = searchParams.get('tenant')
+  if (typeof window !== 'undefined') {
+    const hostname = window.location.hostname
+    const searchParams = new URLSearchParams(window.location.search)
+    const tenantQuery = searchParams.get('tenant')
 
-      const rawSubdomain = hostname.split('.')[0]
-      const extractedSlug = rawSubdomain.replace('-barbershop', '').replace('-lashes', '')
-      const currentSlug = tenantQuery || (rawSubdomain === 'localhost' ? '' : extractedSlug)
+    const rawSubdomain = hostname.split('.')[0]
+    const extractedSlug = rawSubdomain.replace('-barbershop', '').replace('-lashes', '')
+    const currentSlug = tenantQuery || (rawSubdomain === 'localhost' ? '' : extractedSlug)
 
-      if (!currentSlug && !rawSubdomain) {
-        setFetchingServices(false)
-        return
+    if (!currentSlug && !rawSubdomain) {
+      setFetchingServices(false)
+      return
+    }
+
+    const fetchTenantAndData = async () => {
+      setFetchingServices(true)
+      
+      // 1. Fetch Data Tenant
+      const { data: tenantData } = await supabase
+        .from('Tenants')
+        .select('*')
+        .or(`tenant_slug.eq.${currentSlug},tenant_slug.eq.${rawSubdomain},domain.ilike.%${hostname}%`)
+        .maybeSingle()
+
+      const dbPlan = ((tenantData?.subscription_plan || 'BASIC') as string).toUpperCase() as 'BASIC' | 'PREMIUM' | 'PROFESIONAL'
+      const detectedCategory = tenantData?.category || 
+        (rawSubdomain.includes('lash') || rawSubdomain.includes('beauty') ? 'eyelash' : 'barbershop')
+
+      const activeTenant: TenantData = {
+        clientCode: tenantData?.client_code || currentSlug.toUpperCase(),
+        tenantSlug: tenantData?.tenant_slug || rawSubdomain || currentSlug,
+        name: tenantData?.business_name || tenantData?.name || currentSlug.toUpperCase(),
+        adminWa: tenantData?.admin_wa || '',
+        subscriptionPlan: dbPlan,
+        category: detectedCategory,
+        staffLabel: tenantData?.staff_label || (detectedCategory.includes('eyelash') || detectedCategory.includes('beauty') ? 'Lash Artist' : 'Capster')
       }
 
-      const fetchTenantAndData = async () => {
-        setFetchingServices(true)
-        
-        // FETCH ISOLASI TENANT BERDASARKAN URL AKTIF (TANPA HARDCODE FITRI)
-        const { data: tenantData } = await supabase
-          .from('Tenants')
+      setTenant(activeTenant)
+
+      // 2. Fetch Services (Mencari berdasarkan full subdomain DAN extracted slug)
+      const { data: serviceData } = await supabase
+        .from('Services')
+        .select('*')
+        .or(`tenant_slug.eq.${activeTenant.tenantSlug},tenant_slug.eq.${rawSubdomain},tenant_slug.eq.${currentSlug}`)
+
+      if (serviceData && serviceData.length > 0) {
+        setServices(serviceData)
+        setFormData((prev) => ({ ...prev, selected_services: [serviceData[0].name] }))
+      } else {
+        setServices([])
+      }
+
+      // 3. Fetch Staff
+      if (activeTenant.subscriptionPlan !== 'BASIC') {
+        const { data: staffData } = await supabase
+          .from('Staff')
           .select('*')
-          .or(`tenant_slug.eq.${currentSlug},tenant_slug.eq.${rawSubdomain},domain.ilike.%${hostname}%`)
-          .maybeSingle()
+          .or(`tenant_slug.eq.${activeTenant.tenantSlug},tenant_slug.eq.${rawSubdomain},tenant_slug.eq.${currentSlug}`)
+          .eq('is_active', true)
 
-        const dbPlan = ((tenantData?.subscription_plan || 'BASIC') as string).toUpperCase() as 'BASIC' | 'PREMIUM' | 'PROFESIONAL'
-        
-        // Deteksi kategori presisi dari DB atau Subdomain
-        const detectedCategory = tenantData?.category || 
-          (rawSubdomain.includes('lash') || rawSubdomain.includes('beauty') ? 'eyelash' : 'barbershop')
-
-        const activeTenant: TenantData = {
-          clientCode: tenantData?.client_code || currentSlug.toUpperCase(),
-          tenantSlug: tenantData?.tenant_slug || currentSlug || rawSubdomain,
-          name: tenantData?.business_name || tenantData?.name || currentSlug.toUpperCase(),
-          adminWa: tenantData?.admin_wa || '',
-          subscriptionPlan: dbPlan,
-          category: detectedCategory,
-          staffLabel: tenantData?.staff_label || (detectedCategory.includes('eyelash') || detectedCategory.includes('beauty') ? 'Lash Artist' : 'Capster')
-        }
-
-        setTenant(activeTenant)
-
-        // Fetch Services HANYA untuk tenant yang bersangkutan
-        const { data: serviceData } = await supabase
-          .from('Services')
-          .select('*')
-          .or(`tenant_slug.eq.${activeTenant.tenantSlug},tenant_slug.eq.${rawSubdomain}`)
-
-        if (serviceData && serviceData.length > 0) {
-          setServices(serviceData)
-          setFormData((prev) => ({ ...prev, selected_services: [serviceData[0].name] }))
-        } else {
-          setServices([])
-        }
-
-        // Fetch Staff jika bukan paket BASIC
-        if (activeTenant.subscriptionPlan !== 'BASIC') {
-          const { data: staffData } = await supabase
-            .from('Staff')
-            .select('*')
-            .or(`tenant_slug.eq.${activeTenant.tenantSlug},tenant_slug.eq.${rawSubdomain}`)
-            .eq('is_active', true)
-
-          if (staffData && staffData.length > 0) {
-            setStaffList(staffData)
-            setFormData((prev) => ({ ...prev, selected_staff: staffData[0].name }))
-          } else {
-            setStaffList([])
-          }
+        if (staffData && staffData.length > 0) {
+          setStaffList(staffData)
+          setFormData((prev) => ({ ...prev, selected_staff: staffData[0].name }))
         } else {
           setStaffList([])
-          setFormData((prev) => ({ ...prev, selected_staff: '' }))
         }
-
-        setFetchingServices(false)
+      } else {
+        setStaffList([])
+        setFormData((prev) => ({ ...prev, selected_staff: '' }))
       }
 
-      fetchTenantAndData()
+      setFetchingServices(false)
     }
-  }, [])
+
+    fetchTenantAndData()
+  }
+}, [])
 
   const handleServiceSelect = (serviceName: string) => {
     if (isBasic) {
