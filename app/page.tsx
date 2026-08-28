@@ -83,9 +83,12 @@ function BookingFormContent() {
     const searchParams = new URLSearchParams(window.location.search)
     const tenantQuery = searchParams.get('tenant')
 
-    // Parse subdomain secara lebih bersih (misal: 'mcut-barbershop' atau 'mcut' -> ekstrak kata utama 'mcut')
     const rawSubdomain = hostname.split('.')[0]
-    const extractedSlug = rawSubdomain.replace('-barbershop', '') // otomatis bersihkan '-barbershop' jika ada
+    
+    // Normalisasi slug: jika 'fitrifeb-lashes' atau 'mcut-barbershop', ambil kata utamanya 'fitrifeb' / 'mcut'
+    const extractedSlug = rawSubdomain
+      .replace('-barbershop', '')
+      .replace('-lashes', '')
 
     const currentSlug = tenantQuery || (rawSubdomain === 'localhost' ? 'mcut' : extractedSlug)
 
@@ -99,17 +102,20 @@ function BookingFormContent() {
         .eq('tenant_slug', currentSlug)
         .single()
 
-      // 2. Format Plan
+      // 2. Format Plan & Default Data
       const dbPlan = (tenantData?.subscription_plan || 'BASIC').toUpperCase() as 'BASIC' | 'PREMIUM' | 'PROFESIONAL'
       
+      // Cek apakah ini Eyelash berdasarkan slug atau category DB
+      const isEyelashSlug = currentSlug.includes('fitri')
+      
       const activeTenant: TenantData = {
-        clientCode: tenantData?.client_code || 'MCUT',
+        clientCode: tenantData?.client_code || (isEyelashSlug ? 'FITRI' : 'MCUT'),
         tenantSlug: tenantData?.tenant_slug || currentSlug,
-        name: tenantData?.business_name || tenantData?.name || 'MCUT Barber',
+        name: tenantData?.business_name || tenantData?.name || (isEyelashSlug ? 'Fitri Lash Studio' : 'MCUT Barber'),
         adminWa: tenantData?.admin_wa || '6285899997828',
         subscriptionPlan: dbPlan,
-        category: tenantData?.category || 'barbershop', // <-- DIBUAT DEFAULT BARBERSHOP
-        staffLabel: tenantData?.staff_label || 'Capster'
+        category: tenantData?.category || (isEyelashSlug ? 'eyelash' : 'barbershop'),
+        staffLabel: tenantData?.staff_label || (isEyelashSlug ? 'Lash Artist' : 'Capster')
       }
 
       // Update state Tenant
