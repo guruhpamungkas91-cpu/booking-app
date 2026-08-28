@@ -33,12 +33,13 @@ interface TenantData {
 function BookingFormContent() {
   const [step, setStep] = useState(1)
 
+  // FIX: Default diubah ke BASIC agar render awal langsung menyesuaikan paket BASIC
   const [tenant, setTenant] = useState<TenantData>({
     clientCode: 'MCUT',
     tenantSlug: 'mcut',
-    name: 'MCUT Barbershop',
+    name: 'MCUT',
     adminWa: '6285899997828',
-    subscriptionPlan: 'PREMIUM',
+    subscriptionPlan: 'BASIC',
     category: 'barbershop',
     staffLabel: 'Capster'
   })
@@ -107,13 +108,18 @@ function BookingFormContent() {
           setFormData((prev) => ({ ...prev, selected_services: [serviceData[0].name] }))
         }
 
+        // FIX: Hanya ambil data staff jika BUKAN paket BASIC
         if (activeTenant.subscriptionPlan !== 'BASIC') {
           const { data: staffData } = await supabase.from('Staff').select('*').eq('tenant_slug', activeTenant.tenantSlug).eq('is_active', true)
           if (staffData && staffData.length > 0) {
             setStaffList(staffData)
             setFormData((prev) => ({ ...prev, selected_staff: staffData[0].name }))
           }
+        } else {
+          setStaffList([])
+          setFormData((prev) => ({ ...prev, selected_staff: '' }))
         }
+
         setFetchingServices(false)
       }
       fetchTenantAndData()
@@ -121,14 +127,15 @@ function BookingFormContent() {
   }, [])
 
   const handleServiceSelect = (serviceName: string) => {
+    // FIX: Jika BASIC, selalu override menjadi 1 item saja (tidak bisa multi-select / toggle kosong)
     if (isBasic) {
-      setFormData({ ...formData, selected_services: [serviceName] })
+      setFormData((prev) => ({ ...prev, selected_services: [serviceName] }))
     } else {
       const exists = formData.selected_services.includes(serviceName)
       const updated = exists
         ? formData.selected_services.filter((s) => s !== serviceName)
         : [...formData.selected_services, serviceName]
-      setFormData({ ...formData, selected_services: updated })
+      setFormData((prev) => ({ ...prev, selected_services: updated }))
     }
   }
 
@@ -224,13 +231,11 @@ function BookingFormContent() {
         <div className="relative p-5 text-center bg-gradient-to-b from-zinc-800/80 to-zinc-900 border-b border-zinc-800">
           <div className={`inline-flex items-center justify-center w-10 h-10 rounded-full mb-2 border ${theme.iconBg}`}>
             {isBeauty ? (
-              /* IKON EYELASH / BEAUTY */
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
               </svg>
             ) : (
-              /* IKON BARBER (GUNTING) */
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.121 14.121L19 19m-7-7l7-7m-7 7l-2.879 2.879M12 12L9.121 9.121m0 0L5 5m4.121 4.121L5 19" />
                 <circle cx="6" cy="6" r="2" strokeWidth={2} />
@@ -241,7 +246,6 @@ function BookingFormContent() {
           <h1 className="text-2xl font-black tracking-wider text-white uppercase">{tenant.name}</h1>
           <p className={`text-[10px] font-semibold uppercase tracking-widest mt-0.5 ${theme.accentText}`}>{tenant.category}</p>
 
-          {/* INDICATOR STEP - KHUSUS BEAUTY/EYELASH */}
           {isBeauty && (
             <div className="flex items-center justify-center space-x-2 mt-4">
               {[1, 2, 3].map((s) => (
