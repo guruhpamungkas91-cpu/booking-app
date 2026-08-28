@@ -25,7 +25,7 @@ type SortOrder = 'asc' | 'desc'
 type SubscriptionPlanType = 'BASIC' | 'PREMIUM' | 'PROFESIONAL'
 type BusinessType = 'eyelash' | 'barber'
 
-// FIX: Deteksi Hostname Murni TANPA Default Fallback ke Brand Tertentu
+// HELPER: Deteksi Brand & Tipe Bisnis Synchronous langsung saat komponen dibuat
 const detectBrandFromHostname = (): { brand: string; type: BusinessType } => {
   if (typeof window !== 'undefined') {
     const host = window.location.hostname.toLowerCase()
@@ -35,16 +35,16 @@ const detectBrandFromHostname = (): { brand: string; type: BusinessType } => {
       return { brand: 'FITRIFEB', type: 'eyelash' }
     }
   }
-  return { brand: '', type: 'barber' } // Netral/Kosong tanpa preset visual awal
+  return { brand: 'FITRIFEB', type: 'eyelash' } // Default Fallback
 }
 
 export default function AdminDashboard() {
-  // State Initialization untuk Mencegah Flash Screen UI
-  const [isInitializing, setIsInitializing] = useState(true)
-
+  // FIX DELAY/FLASH: Gunakan fungsi callback pada useState agar terdeteksi INSTAN sebelum render pertama
   const [brandTitle, setBrandTitle] = useState<string>(() => detectBrandFromHostname().brand)
   const [businessType, setBusinessType] = useState<BusinessType>(() => detectBrandFromHostname().type)
-  const [staffLabel, setStaffLabel] = useState<string>('Staff')
+  const [staffLabel, setStaffLabel] = useState<string>(() => 
+    detectBrandFromHostname().type === 'eyelash' ? 'Lash Artist' : 'Capster / Staff'
+  )
 
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [tenantCode, setTenantCode] = useState<string>('')
@@ -102,7 +102,7 @@ export default function AdminDashboard() {
       if (cleanCode) {
         const { data } = await supabase
           .from('Tenants')
-          .select('subscription_plan, staff_label, tenant_slug, category, business_name, name')
+          .select('subscription_plan, staff_label, tenant_slug')
           .ilike('tenant_slug', `%${cleanCode}%`)
           .maybeSingle()
         tenantData = data
@@ -111,7 +111,7 @@ export default function AdminDashboard() {
       if (!tenantData && detectedBrandHint) {
         const { data } = await supabase
           .from('Tenants')
-          .select('subscription_plan, staff_label, tenant_slug, category, business_name, name')
+          .select('subscription_plan, staff_label, tenant_slug')
           .ilike('tenant_slug', `%${detectedBrandHint.toLowerCase()}%`)
           .maybeSingle()
         tenantData = data
@@ -128,7 +128,7 @@ export default function AdminDashboard() {
           setSubscriptionPlan('BASIC')
         }
 
-        const category = tenantData.category ? determineCategory(tenantData.category) : determineCategory(tenantData.tenant_slug || cleanCode || detectedBrandHint)
+        const category = determineCategory(tenantData.tenant_slug || cleanCode || detectedBrandHint)
         setBusinessType(category)
 
         if (tenantData.staff_label) {
@@ -137,10 +137,9 @@ export default function AdminDashboard() {
           setStaffLabel(category === 'eyelash' ? 'Lash Artist' : 'Capster / Staff')
         }
 
-        const titleName = tenantData.business_name || tenantData.name || tenantData.tenant_slug
-        if (titleName) {
-          setBrandTitle(titleName.toUpperCase())
-          setTenantCode(tenantData.tenant_slug || cleanCode)
+        if (tenantData.tenant_slug) {
+          setBrandTitle(tenantData.tenant_slug.toUpperCase())
+          setTenantCode(tenantData.tenant_slug)
         }
       }     
     } catch (err) {
@@ -181,7 +180,7 @@ export default function AdminDashboard() {
     setIsAuthenticated(false)
   }
 
-  // Fetch Reservations dengan Fallback Query Aman
+  // Fetch Reservations
   const fetchReservations = useCallback(async () => {
     setLoading(true)
     const { data: { user } } = await supabase.auth.getUser()
@@ -191,21 +190,10 @@ export default function AdminDashboard() {
 
     await fetchTenantDetail(userClientCode)
 
-    let query = supabase.from('Reservations').select('*').order('created_at', { ascending: false })
-    
-    if (userClientCode) {
-      // Ditambahkan penanganan agar jika kolom tenant_slug / client_code tidak ditemukan, query tidak melempar alert error kasar
-      query = query.or(`client_code.ilike.%${userClientCode}%,tenant_slug.ilike.%${userClientCode}%`)
-    }
-
-    let { data, error } = await query
-
-    // Fallback jika database belum ada kolom tenant_slug / client_code
-    if (error && error.message.includes('tenant_slug')) {
-      const fallback = await supabase.from('Reservations').select('*').order('created_at', { ascending: false })
-      data = fallback.data
-      error = fallback.error
-    }
+    const { data, error } = await supabase
+      .from('Reservations')
+      .select('*')
+      .order('created_at', { ascending: false })
 
     if (error) {
       alert('Gagal mengambil data: ' + error.message)
@@ -466,7 +454,7 @@ export default function AdminDashboard() {
     } else if (reportPeriod === 'monthly') labelPeriode = `Bulanan (${reportDate.substring(0, 7)})`
     else labelPeriode = `Custom (${formatDateID(reportStartDate)} s/d ${formatDateID(reportEndDate)})`
 
-    const displayBrand = brandTitle || tenantCode || 'DASHBOARD ADMIN'
+    const displayBrand = brandTitle || tenantCode || (businessType === 'eyelash' ? 'FITRIFEB LASHES' : 'BARBERSHOP')
     const themeColor = businessType === 'eyelash' ? '#ec4899' : '#f59e0b'
 
     const htmlContent = `
@@ -577,7 +565,7 @@ export default function AdminDashboard() {
     } else if (reportPeriod === 'monthly') labelPeriode = `Bulanan (${reportDate.substring(0, 7)})`
     else labelPeriode = `Custom (${formatDateID(reportStartDate)} s/d ${formatDateID(reportEndDate)})`
 
-    const displayBrand = brandTitle || tenantCode || 'DASHBOARD ADMIN'
+    const displayBrand = brandTitle || tenantCode || (businessType === 'eyelash' ? 'FITRIFEB LASHES' : 'BARBERSHOP')
     const printWindow = window.open('', '_blank')
     if (!printWindow) return
 
@@ -719,6 +707,7 @@ export default function AdminDashboard() {
       result = result.filter((item) => {
         const s = (item.status || 'pending').toLowerCase()
         if (statusFilter === 'cancelled') return s.startsWith('cancelled')
+        if (statusFilter === 'cancelled_need_refund') return s === 'cancelled_need_refund'
         return s === statusFilter.toLowerCase()
       })
     }
@@ -783,7 +772,7 @@ export default function AdminDashboard() {
     }
   }
 
-  // INITIALIZER UNTUK CEK SESSION SUPABASE SAAT AWAL LOAD (MENDAHULUI FLASH CONTENT)
+  // INITIALIZER UNTUK CEK SESSION SUPABASE SAAT AWAL LOAD
   useEffect(() => {
     const initSession = async () => {
       const info = detectBrandFromHostname()
@@ -803,7 +792,6 @@ export default function AdminDashboard() {
       } else {
         await fetchTenantDetail('', info.brand)
       }
-      setIsInitializing(false)
     }
 
     initSession()
@@ -813,18 +801,6 @@ export default function AdminDashboard() {
     if (isAuthenticated) fetchReservations()
   }, [isAuthenticated, fetchReservations])
 
-  // SCREENING INTI UNTUK MENCEGAH FLASH UI BEBERAPA MILIDETIK
-  if (isInitializing) {
-    return (
-      <div className="min-h-screen bg-[#09090b] flex items-center justify-center text-white font-sans">
-        <div className="text-center space-y-3">
-          <div className="w-8 h-8 border-4 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
-          <p className="text-zinc-500 text-xs font-semibold tracking-wide">Memuat Sistem Admin...</p>
-        </div>
-      </div>
-    )
-  }
-
   // RENDERING HALAMAN LOGIN DENGAN PERBEDAAAN THEME UI
   if (!isAuthenticated) {
     const isEyelash = businessType === 'eyelash'
@@ -833,6 +809,7 @@ export default function AdminDashboard() {
       <main className={`min-h-screen flex items-center justify-center p-4 font-sans text-zinc-100 relative overflow-hidden transition-colors duration-300 ${
         isEyelash ? 'bg-[#0f0914]' : 'bg-[#09090b]'
       }`}>
+        {/* Glow ambient effect dinamis */}
         <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-80 sm:w-96 h-80 sm:h-96 rounded-full blur-3xl pointer-events-none transition-all duration-500 ${
           isEyelash ? 'bg-pink-500/15' : 'bg-amber-500/10'
         }`}></div>
@@ -852,7 +829,7 @@ export default function AdminDashboard() {
               {isEyelash ? '✨ Eyelash Control Center' : '💈 Barber Control Center'}
             </span>
             <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight uppercase bg-gradient-to-b from-white to-zinc-400 bg-clip-text text-transparent mt-2">
-              {brandTitle || 'ADMIN CONTROL PORTAL'}
+              {brandTitle || (isEyelash ? 'FITRIFEB LASHES' : 'BARBERSHOP PORTAL')}
             </h1>
             <p className="text-xs text-zinc-400 font-medium">Masuk untuk mengakses dasbor manajemen reservasi</p>
           </div>
@@ -863,7 +840,7 @@ export default function AdminDashboard() {
               <input
                 type="email"
                 required
-                placeholder="admin@email.com"
+                placeholder={isEyelash ? "admin@fitrieyelash.com" : "admin@barbershop.com"}
                 className={`w-full px-4 py-3 bg-zinc-950/80 border rounded-2xl text-xs text-zinc-100 placeholder-zinc-600 focus:outline-none transition-all shadow-inner ${
                   isEyelash ? 'border-pink-900/50 focus:border-pink-500 focus:ring-2 focus:ring-pink-500/20' : 'border-zinc-800 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20'
                 }`}
@@ -902,6 +879,7 @@ export default function AdminDashboard() {
     )
   }
 
+  // VARIAN KATEGORI BISNIS KHUSUS DASHBOARD (EYELASH vs BARBER)
   const isEyelash = businessType === 'eyelash'
   const primaryAccent = isEyelash ? 'text-pink-400' : 'text-amber-400'
 
@@ -911,6 +889,7 @@ export default function AdminDashboard() {
         ? subscriptionPlan === 'PROFESIONAL' ? 'bg-[#0f0714]' : subscriptionPlan === 'PREMIUM' ? 'bg-[#120814]' : 'bg-[#0f0914]'
         : subscriptionPlan === 'PROFESIONAL' ? 'bg-[#0a0712]' : subscriptionPlan === 'PREMIUM' ? 'bg-[#0d0a07]' : 'bg-[#09090b]'
     }`}>
+      {/* Glow Ambient Dynamic Background */}
       <div className={`fixed top-0 left-1/4 w-[300px] sm:w-[600px] h-[300px] sm:h-[600px] rounded-full blur-[100px] sm:blur-[140px] pointer-events-none transition-all duration-700 ${
         isEyelash
           ? subscriptionPlan === 'PROFESIONAL' ? 'bg-purple-600/15' : 'bg-pink-600/15'
@@ -933,8 +912,9 @@ export default function AdminDashboard() {
             <div className="flex items-center space-x-3 flex-wrap gap-y-2">
               <span className="text-xl sm:text-2xl">{isEyelash ? '✨' : '💈'}</span>
               <h1 className="text-xl sm:text-2xl md:text-3xl font-black text-white tracking-tight uppercase">
-                {brandTitle || tenantCode || 'ADMIN PORTAL'}
+                {brandTitle || tenantCode || (isEyelash ? 'FITRIFEB LASHES' : 'BARBERSHOP')}
               </h1>
+              {/* BADGE PAKET LANGGANAN */}
               <span className={`text-[9px] sm:text-[10px] font-black px-3 py-1 sm:px-3.5 sm:py-1.5 rounded-full border tracking-wider transition-all uppercase shadow-lg flex items-center gap-1.5 ${
                 subscriptionPlan === 'PROFESIONAL'
                   ? 'bg-purple-500/10 border-purple-500/50 text-purple-300 shadow-purple-500/10 animate-pulse'
@@ -976,6 +956,7 @@ export default function AdminDashboard() {
           subscriptionPlan === 'BASIC' ? 'lg:grid-cols-4' : 'lg:grid-cols-5'
         } gap-3 sm:gap-4`}>
           
+          {/* Card 1: Total Omzet */}
           {(subscriptionPlan === 'PREMIUM' || subscriptionPlan === 'PROFESIONAL') && (
             <div className={`col-span-2 sm:col-span-1 border p-4 sm:p-6 rounded-2xl sm:rounded-3xl shadow-2xl transition-all relative overflow-hidden group ${
               isEyelash
@@ -1000,6 +981,7 @@ export default function AdminDashboard() {
             </div>
           )}
 
+          {/* Card 2: Total Booking */}
           <div className="bg-zinc-900/80 backdrop-blur-xl border border-zinc-800/80 p-4 sm:p-6 rounded-2xl sm:rounded-3xl shadow-xl hover:border-zinc-700 transition-all">
             <p className="text-[10px] sm:text-xs font-bold text-zinc-400 uppercase tracking-wider">Total Booking</p>
             <div className="flex flex-col sm:flex-row sm:items-baseline justify-between mt-2 sm:mt-3 gap-1">
@@ -1010,6 +992,7 @@ export default function AdminDashboard() {
             </div>
           </div>
 
+          {/* Card 3: Menunggu */}
           <div className="bg-zinc-900/80 backdrop-blur-xl border border-zinc-800/80 p-4 sm:p-6 rounded-2xl sm:rounded-3xl shadow-xl hover:border-amber-500/40 transition-all">
             <p className="text-[10px] sm:text-xs font-bold text-amber-400 uppercase tracking-wider">Menunggu</p>
             <div className="flex flex-col sm:flex-row sm:items-baseline justify-between mt-2 sm:mt-3 gap-1">
@@ -1018,6 +1001,7 @@ export default function AdminDashboard() {
             </div>
           </div>
 
+          {/* Card 4: Selesai */}
           <div className="bg-zinc-900/80 backdrop-blur-xl border border-zinc-800/80 p-4 sm:p-6 rounded-2xl sm:rounded-3xl shadow-xl hover:border-emerald-500/40 transition-all">
             <p className="text-[10px] sm:text-xs font-bold text-emerald-400 uppercase tracking-wider">Selesai</p>
             <div className="flex flex-col sm:flex-row sm:items-baseline justify-between mt-2 sm:mt-3 gap-1">
@@ -1028,6 +1012,7 @@ export default function AdminDashboard() {
             </div>
           </div>
 
+          {/* Card 5: Pembatalan */}
           <div className="bg-zinc-900/80 backdrop-blur-xl border border-zinc-800/80 p-4 sm:p-6 rounded-2xl sm:rounded-3xl shadow-xl hover:border-rose-500/40 transition-all">
             <p className="text-[10px] sm:text-xs font-bold text-rose-400 uppercase tracking-wider">Pembatalan</p>
             <div className="flex flex-col sm:flex-row sm:items-baseline justify-between mt-2 sm:mt-3 gap-1">
@@ -1046,6 +1031,321 @@ export default function AdminDashboard() {
 
         </div>
 
+        {/* WIDGET HIGHLIGHT TOP STAFF (PROFESIONAL ONLY) */}
+        {subscriptionPlan === 'PROFESIONAL' && (
+          <div className={`border p-4 sm:p-5 rounded-2xl sm:rounded-3xl shadow-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 relative overflow-hidden ${
+            isEyelash 
+              ? 'bg-gradient-to-r from-pink-950/50 via-zinc-900/90 to-purple-950/30 border-pink-500/40' 
+              : 'bg-gradient-to-r from-purple-950/50 via-zinc-900/90 to-purple-950/30 border-purple-500/40'
+          }`}>
+            <div className="flex items-center space-x-3 sm:space-x-4">
+              <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl border flex items-center justify-center text-xl sm:text-2xl shrink-0 ${
+                isEyelash ? 'bg-pink-500/20 border-pink-500/40' : 'bg-purple-500/20 border-purple-500/40'
+              }`}>
+                {isEyelash ? '👑' : '🏆'}
+              </div>
+              <div className="min-w-0">
+                <span className={`text-[9px] sm:text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full border ${
+                  isEyelash ? 'text-pink-300 bg-pink-500/10 border-pink-500/30' : 'text-purple-300 bg-purple-500/10 border-purple-500/30'
+                }`}>
+                  Performa Staff Terbaik ({staffLabel})
+                </span>
+                <h3 className="text-lg sm:text-xl font-black text-white mt-1 truncate">
+                  {stats.topStaffName !== '-' ? stats.topStaffName : 'Belum Ada Data'}
+                </h3>
+              </div>
+            </div>
+            <div className="flex sm:flex-col items-center sm:items-end justify-between border-t border-zinc-800 sm:border-t-0 pt-2 sm:pt-0">
+              <span className={`text-xl sm:text-2xl font-black font-mono ${isEyelash ? 'text-pink-300' : 'text-purple-300'}`}>
+                {stats.topStaffCount}
+              </span>
+              <p className="text-[10px] sm:text-[11px] text-zinc-400 font-bold uppercase tracking-wider">Transaksi Selesai</p>
+            </div>
+          </div>
+        )}
+
+        {/* PROMOTION / UPSELL BANNER (BASIC) */}
+        {subscriptionPlan === 'BASIC' && (
+          <div className={`p-4 sm:p-6 rounded-2xl sm:rounded-3xl border shadow-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4 ${
+            isEyelash 
+              ? 'bg-gradient-to-r from-pink-500/10 via-purple-500/10 to-zinc-900 border-pink-500/30' 
+              : 'bg-gradient-to-r from-amber-500/10 via-purple-500/10 to-zinc-900 border-amber-500/30'
+          }`}>
+            <div className="space-y-1">
+              <span className={`text-[9px] sm:text-[10px] font-black px-2.5 py-0.5 rounded-full border uppercase ${
+                isEyelash ? 'bg-pink-500/20 text-pink-300 border-pink-500/40' : 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+              }`}>Upgrade Fitur Premium</span>
+              <h3 className="text-sm sm:text-base font-black text-white">Buka Fitur Laporan Keuangan, Total Omzet, & Manajemen Staff!</h3>
+              <p className="text-[11px] sm:text-xs text-zinc-400">Tingkatkan operasional bisnis kamu ke Paket Premium atau Profesional sekarang.</p>
+            </div>
+            <button onClick={() => alert('Silakan hubungi customer support untuk upgrade paket bisnis kamu!')} className={`w-full md:w-auto font-black px-5 py-2.5 rounded-xl sm:rounded-2xl text-xs whitespace-nowrap shadow-lg transition-all active:scale-95 ${
+              isEyelash 
+                ? 'bg-gradient-to-r from-pink-500 to-rose-600 hover:from-pink-400 hover:to-rose-500 text-white shadow-pink-500/20' 
+                : 'bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-zinc-950 shadow-amber-500/20'
+            }`}>
+              Upgrade Sekarang ⭐
+            </button>
+          </div>
+        )}
+
+        {/* PENARIKAN LAPORAN KEUANGAN (PREMIUM & PROFESIONAL) */}
+        {subscriptionPlan !== 'BASIC' && (
+          <div className={`p-4 sm:p-6 md:p-7 rounded-2xl sm:rounded-3xl shadow-2xl space-y-4 sm:space-y-5 border backdrop-blur-xl transition-all ${
+            isEyelash 
+              ? 'bg-zinc-900/90 border-pink-500/30 shadow-pink-950/20' 
+              : 'bg-zinc-900/90 border-amber-500/30 shadow-amber-950/20'
+          }`}>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-zinc-800/80 pb-4 gap-2">
+              <div>
+                <h2 className={`text-base sm:text-lg font-black flex items-center gap-2 ${
+                  isEyelash ? 'text-pink-300' : 'text-amber-400'
+                }`}>
+                  <span>📊 Laporan Keuangan & Omzet Netto</span>
+                </h2>
+                <p className="text-[11px] sm:text-xs text-zinc-400 font-medium">
+                  Data siap diexport ke Excel atau dicetak langsung/disimpan sebagai PDF resmi.
+                </p>
+              </div>
+              
+              {subscriptionPlan === 'PREMIUM' && (
+                <span className={`text-[9px] sm:text-[10px] font-black border px-3 py-1 rounded-full flex items-center gap-1.5 w-max ${
+                  isEyelash ? 'bg-pink-500/10 text-pink-300 border-pink-500/30' : 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+                }`}>
+                  ⭐ Premium Plan (Export Excel Only)
+                </span>
+              )}
+              {subscriptionPlan === 'PROFESIONAL' && (
+                <span className="text-[9px] sm:text-[10px] font-black bg-purple-500/10 text-purple-300 border border-purple-500/30 px-3 py-1 rounded-full flex items-center gap-1.5 w-max">
+                  👑 Profesional Plan (Excel + Cetak PDF)
+                </span>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-4 sm:gap-6 items-start">
+              <div className="md:col-span-6 space-y-3 sm:space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-zinc-300 mb-2">Tipe Laporan:</label>
+                  <div className="grid grid-cols-4 gap-1 sm:gap-2 p-1 bg-zinc-950/80 rounded-xl sm:rounded-2xl border border-zinc-800">
+                    {(['daily', 'weekly', 'monthly', 'custom'] as const).map((mode) => (
+                      <button
+                        key={mode}
+                        onClick={() => setReportPeriod(mode)}
+                        className={`py-1.5 sm:py-2 rounded-lg sm:rounded-xl text-[10px] sm:text-xs font-bold transition-all capitalize ${
+                          reportPeriod === mode
+                            ? isEyelash 
+                              ? 'bg-pink-600 text-white shadow-lg shadow-pink-600/30' 
+                              : 'bg-amber-500 text-zinc-950 shadow-lg shadow-amber-500/30'
+                            : 'text-zinc-400 hover:text-white hover:bg-zinc-800/40'
+                        }`}
+                      >
+                        {mode === 'daily' ? 'Harian' : mode === 'weekly' ? 'Mingguan' : mode === 'monthly' ? 'Bulanan' : 'Custom'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {reportPeriod !== 'custom' ? (
+                  <div>
+                    <label className="block text-xs font-bold text-zinc-300 mb-1.5 sm:mb-2">
+                      {reportPeriod === 'daily' && 'Pilih Tanggal:'}
+                      {reportPeriod === 'weekly' && 'Pilih Tanggal Awal (7 Hari):'}
+                      {reportPeriod === 'monthly' && 'Pilih Bulan & Tahun:'}
+                    </label>
+
+                    <input
+                      type={reportPeriod === 'monthly' ? 'month' : 'date'}
+                      value={reportPeriod === 'monthly' ? reportDate.substring(0, 7) : reportDate}
+                      onChange={(e) => {
+                        const val = e.target.value
+                        setReportDate(reportPeriod === 'monthly' ? `${val}-01` : val)
+                      }}
+                      className={`w-full px-3.5 sm:px-4 py-2 sm:py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-xl sm:rounded-2xl text-xs text-zinc-200 focus:outline-none shadow-inner ${
+                        isEyelash ? 'focus:border-pink-500' : 'focus:border-amber-500'
+                      }`}
+                    />
+
+                    {reportPeriod === 'weekly' && reportData.weekInfo && (
+                      <p className={`text-[10px] sm:text-[11px] font-bold mt-2 flex items-center gap-1 ${isEyelash ? 'text-pink-300' : 'text-amber-400'}`}>
+                        <span>📅</span> Periode: {formatDateID(reportData.weekInfo.startStr)} s/d {formatDateID(reportData.weekInfo.endStr)}
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-2 sm:gap-3">
+                    <div>
+                      <label className="block text-[11px] sm:text-xs font-bold text-zinc-300 mb-1.5">Dari Tanggal:</label>
+                      <input
+                        type="date"
+                        value={reportStartDate}
+                        onChange={(e) => setReportStartDate(e.target.value)}
+                        className={`w-full px-3 py-2 bg-zinc-950/80 border border-zinc-800 rounded-xl text-xs text-zinc-200 focus:outline-none shadow-inner ${
+                          isEyelash ? 'focus:border-pink-500' : 'focus:border-amber-500'
+                        }`}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] sm:text-xs font-bold text-zinc-300 mb-1.5">Sampai Tanggal:</label>
+                      <input
+                        type="date"
+                        value={reportEndDate}
+                        onChange={(e) => setReportEndDate(e.target.value)}
+                        className={`w-full px-3 py-2 bg-zinc-950/80 border border-zinc-800 rounded-xl text-xs text-zinc-200 focus:outline-none shadow-inner ${
+                          isEyelash ? 'focus:border-pink-500' : 'focus:border-amber-500'
+                        }`}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="md:col-span-6 space-y-3 sm:space-y-4">
+                <div className="bg-zinc-950/90 border border-zinc-800/80 p-4 sm:p-5 rounded-xl sm:rounded-2xl grid grid-cols-2 gap-3 sm:gap-4 text-xs shadow-inner">
+                  <div>
+                    <p className="text-[10px] sm:text-[11px] font-bold text-zinc-400 uppercase tracking-wider">OMZET BRUTO</p>
+                    <p className="text-lg sm:text-xl font-black text-white mt-1">
+                      Rp {reportData.grossRevenue.toLocaleString('id-ID')}
+                    </p>
+                    <p className="text-[9px] sm:text-[10px] text-rose-400 mt-1 font-bold">
+                      Refund: -Rp {reportData.totalRefund.toLocaleString('id-ID')}
+                    </p>
+                  </div>
+                  <div className="text-right border-l border-zinc-800 pl-3 sm:pl-4">
+                    <p className="text-[10px] sm:text-[11px] font-black text-emerald-400 uppercase tracking-wider">OMZET NETTO</p>
+                    <p className="text-xl sm:text-2xl font-black text-emerald-400 mt-1">
+                      Rp {reportData.netRevenue.toLocaleString('id-ID')}
+                    </p>
+                  </div>
+                </div>
+
+                {subscriptionPlan === 'PREMIUM' && (
+                  <div className="space-y-2">
+                    <button
+                      onClick={exportReportToCSV}
+                      className="w-full bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl font-bold transition-all text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20 active:scale-[0.98]"
+                    >
+                      <span>📥 Export Laporan Excel</span>
+                    </button>
+                    <p className="text-[10px] sm:text-[11px] text-center text-zinc-500 font-medium">
+                      💡 Upgrade ke <strong className="text-purple-400 font-bold">Paket Profesional</strong> untuk membuka fitur Cetak / Download PDF.
+                    </p>
+                  </div>
+                )}
+
+                {subscriptionPlan === 'PROFESIONAL' && (
+                  <div className="grid grid-cols-2 gap-2 sm:gap-3">
+                    <button
+                      onClick={exportReportToCSV}
+                      className="w-full bg-emerald-600 hover:bg-emerald-500 text-white px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl font-bold transition-all text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20 active:scale-[0.98]"
+                    >
+                      <span>📥 Export Excel</span>
+                    </button>
+
+                    <button
+                      onClick={handlePrintPDF}
+                      className="w-full bg-purple-600 hover:bg-purple-500 text-white px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl font-bold transition-all text-xs flex items-center justify-center gap-2 shadow-lg shadow-purple-600/20 active:scale-[0.98]"
+                    >
+                      <span>🖨️ Cetak / PDF</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+
+            </div>
+          </div>
+        )}
+
+        {/* SEARCH & FILTER TABEL DATA */}
+        <div className="bg-zinc-900/80 backdrop-blur-xl border border-zinc-800/80 p-4 sm:p-5 rounded-2xl sm:rounded-3xl shadow-xl flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-4 items-end justify-between">
+          <div className="grid grid-cols-1 sm:flex sm:flex-wrap gap-3 items-end w-full">
+            <div className="w-full sm:w-60">
+              <label className="block text-xs font-bold text-zinc-400 mb-1.5">Pencarian Data:</label>
+              <input
+                type="text"
+                placeholder="Cari nama, WA, atau layanan..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className={`w-full px-3.5 sm:px-4 py-2 sm:py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-xl sm:rounded-2xl text-xs text-zinc-200 placeholder-zinc-600 focus:outline-none transition-all shadow-inner ${
+                  isEyelash ? 'focus:border-pink-500' : 'focus:border-amber-500'
+                }`}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 sm:gap-3 w-full sm:w-auto">
+              <div>
+                <label className="block text-[11px] sm:text-xs font-bold text-zinc-400 mb-1.5">Status:</label>
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  className={`w-full sm:w-auto px-3 py-2 sm:py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-xl sm:rounded-2xl text-xs text-zinc-200 focus:outline-none font-semibold cursor-pointer shadow-inner ${
+                    isEyelash ? 'focus:border-pink-500' : 'focus:border-amber-500'
+                  }`}
+                >
+                  <option value="all">Semua Status</option>
+                  <option value="pending">🟡 Pending</option>
+                  <option value="confirmed">🟢 Confirmed</option>
+                  <option value="completed">🔵 Completed</option>
+                  <option value="cancelled">🔴 Cancelled</option>
+                  <option value="cancelled_need_refund">⚠️ Need Refund</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[11px] sm:text-xs font-bold text-zinc-400 mb-1.5">Layanan:</label>
+                <select
+                  value={serviceFilter}
+                  onChange={(e) => setServiceFilter(e.target.value)}
+                  className={`w-full sm:w-auto px-3 py-2 sm:py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-xl sm:rounded-2xl text-xs text-zinc-200 focus:outline-none font-semibold cursor-pointer shadow-inner ${
+                    isEyelash ? 'focus:border-pink-500' : 'focus:border-amber-500'
+                  }`}
+                >
+                  <option value="all">Semua Layanan</option>
+                  {uniqueServices.map((svc) => (
+                    <option key={svc} value={svc}>
+                      {isEyelash ? '💅' : '✂️'} {svc}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <div className="w-full sm:w-auto">
+                <label className="block text-[11px] sm:text-xs font-bold text-zinc-400 mb-1.5">Metode Bayar:</label>
+                <select
+                  value={paymentFilter}
+                  onChange={(e) => setPaymentFilter(e.target.value)}
+                  className={`w-full sm:w-auto px-3 py-2 sm:py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-xl sm:rounded-2xl text-xs text-zinc-200 focus:outline-none font-semibold cursor-pointer shadow-inner ${
+                    isEyelash ? 'focus:border-pink-500' : 'focus:border-amber-500'
+                  }`}
+                >
+                  <option value="all">Semua Metode</option>
+                  {uniquePayments.map((pay) => (
+                    <option key={pay} value={pay}>
+                      💳 {pay}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {(startDate || endDate || statusFilter !== 'all' || serviceFilter !== 'all' || paymentFilter !== 'all' || searchTerm) && (
+                <button
+                  onClick={() => {
+                    setStartDate('')
+                    setEndDate('')
+                    setStatusFilter('all')
+                    setServiceFilter('all')
+                    setPaymentFilter('all')
+                    setSearchTerm('')
+                  }}
+                  className="mt-auto bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700/80 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl text-xs font-bold transition-all whitespace-nowrap"
+                >
+                  Reset
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
         {/* TABEL DATA RESERVASI DYNAMIC ACCENT */}
         <div className="bg-zinc-900/80 backdrop-blur-xl border border-zinc-800/80 rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden">
           {loading ? (
@@ -1057,6 +1357,7 @@ export default function AdminDashboard() {
               <table className="w-full text-left border-collapse min-w-[800px]">
                 <thead>
                   <tr className="bg-zinc-950/90 border-b border-zinc-800 text-[10px] font-black text-zinc-400 uppercase tracking-widest select-none">
+                    
                     <th onClick={() => handleSort('booking_date')} className={`p-3.5 sm:p-4.5 cursor-pointer transition hover:${primaryAccent}`}>
                       <div className="flex items-center gap-1.5">
                         <span>Tanggal</span>
@@ -1124,8 +1425,15 @@ export default function AdminDashboard() {
                 </thead>
                 <tbody className="divide-y divide-zinc-800/40 text-xs font-medium">
                   {filteredReservations.map((item) => {
+                    const currentStatus = item.status || 'pending'
                     const cleanPhone = item.whatsapp_number ? item.whatsapp_number.replace(/^0/, '62') : ''
+                    const displayBrand = brandTitle || tenantCode || (isEyelash ? 'FITRIFEB LASHES' : 'BARBERSHOP')
                     
+                    const refundWaMsg = encodeURIComponent(
+                      `Halo Kak ${item.customer_name}, mohon maaf reservasi Kamu di ${displayBrand} pada tanggal ${formatDateID(item.booking_date)} jam ${item.booking_time} WIB kami batalkan.\n\n` +
+                      `Karena Kakak sudah melakukan pembayaran, mohon infokan Nomor Rekening / E-Wallet Kakak agar dana sebesar Rp ${getServicePrice(item.service_name).toLocaleString('id-ID')} bisa kami refund segera ya. Terima kasih!`
+                    )
+
                     return (
                       <tr key={item.id} className="hover:bg-zinc-800/30 transition-colors">
                         <td className="p-3.5 sm:p-4.5 font-bold text-zinc-200">{item.booking_date}</td>
@@ -1173,26 +1481,71 @@ export default function AdminDashboard() {
                             className="text-emerald-400 hover:text-emerald-300 font-bold inline-flex items-center gap-1.5 transition-colors whitespace-nowrap"
                           >
                             <span>{item.whatsapp_number}</span>
+                            <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
+                              <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981z"/>
+                            </svg>
                           </a>
                         </td>
                         <td className="p-3.5 sm:p-4.5">
-                          <select
-                            value={item.status || 'pending'}
-                            onChange={(e) => handleStatusChange(item, e.target.value)}
-                            className="bg-zinc-950 border border-zinc-800 rounded-xl px-2.5 py-1 text-xs font-bold text-zinc-200 outline-none"
-                          >
-                            <option value="pending">🟡 Pending</option>
-                            <option value="confirmed">🟢 Confirmed</option>
-                            <option value="completed">🔵 Completed</option>
-                            <option value="cancelled">🔴 Cancelled</option>
-                          </select>
+                          <div className="space-y-1.5">
+                            <select
+                              value={
+                                currentStatus.startsWith('cancelled')
+                                  ? 'cancelled'
+                                  : currentStatus
+                              }
+                              onChange={(e) => handleStatusChange(item, e.target.value)}
+                              className={`px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-xl text-xs font-black border bg-zinc-950 focus:outline-none cursor-pointer transition-all ${
+                                currentStatus === 'confirmed'
+                                  ? 'text-blue-400 border-blue-500/40 bg-blue-500/10'
+                                  : currentStatus === 'completed'
+                                  ? 'text-emerald-400 border-emerald-500/40 bg-emerald-500/10'
+                                  : currentStatus.startsWith('cancelled')
+                                  ? 'text-rose-400 border-rose-500/40 bg-rose-500/10'
+                                  : 'text-amber-400 border-amber-500/40 bg-amber-500/10'
+                              }`}
+                            >
+                              <option value="pending">🟡 Pending</option>
+                              <option value="confirmed">🟢 Confirmed</option>
+                              <option value="completed">🔵 Completed</option>
+                              <option value="cancelled">🔴 Cancelled</option>
+                            </select>
+
+                            {currentStatus === 'cancelled_need_refund' && (
+                              <div className="flex flex-col gap-1.5 mt-1">
+                                <span className="bg-amber-500/10 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded-lg text-[10px] font-black flex items-center gap-1 w-max">
+                                  <span>⚠️</span> PERLU REFUND
+                                </span>
+                                <a
+                                  href={`https://wa.me/${cleanPhone}?text=${refundWaMsg}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 px-2.5 py-1 rounded-xl text-[10px] font-bold text-center block transition-all"
+                                >
+                                  💬 Minta Rekening (WA)
+                                </a>
+                                <button
+                                  onClick={() => handleCompleteRefund(item.id)}
+                                  className="bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 border border-blue-500/30 px-2.5 py-1 rounded-xl text-[10px] font-bold transition-all"
+                                >
+                                  ✅ Selesai Refund
+                                </button>
+                              </div>
+                            )}
+
+                            {currentStatus === 'cancelled_refunded' && (
+                              <span className="bg-zinc-800 text-zinc-400 border border-zinc-700 px-2.5 py-1 rounded-xl text-[10px] font-bold block w-max">
+                                ✓ Refund Selesai
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="p-3.5 sm:p-4.5 text-center">
                           <button
                             onClick={() => handleDelete(item.id, item.customer_name)}
-                            className="text-rose-400 hover:text-rose-300 font-bold text-xs"
+                            className="bg-rose-500/10 hover:bg-rose-500 text-rose-400 hover:text-white px-2.5 sm:px-3 py-1.5 rounded-xl text-[11px] sm:text-xs font-bold border border-rose-500/30 transition-all active:scale-95 whitespace-nowrap"
                           >
-                            Hapus
+                            🗑️ Hapus
                           </button>
                         </td>
                       </tr>
@@ -1205,6 +1558,57 @@ export default function AdminDashboard() {
         </div>
 
       </div>
+
+      {/* MODAL REFUND */}
+      {cancelModalItem && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 sm:p-7 max-w-md w-full space-y-4 sm:space-y-5 shadow-2xl animate-in fade-in zoom-in duration-200">
+            <div className="text-center space-y-2">
+              <span className="text-3xl sm:text-4xl inline-block mb-1">💸</span>
+              <h3 className="text-base sm:text-lg font-black text-white">Konfirmasi Pembatalan & Refund</h3>
+              <p className="text-xs text-zinc-400 leading-relaxed font-medium">
+                Kamu membatalkan reservasi atas nama <strong className={`${primaryAccent} font-bold`}>{cancelModalItem.customer_name}</strong>. Apakah transaksi ini perlu refund uang pelanggan?
+              </p>
+            </div>
+
+            <div className="bg-zinc-950/80 border border-zinc-800/80 p-3.5 sm:p-4 rounded-2xl text-xs space-y-2 shadow-inner">
+              <div className="flex justify-between text-zinc-400 font-medium">
+                <span>Layanan:</span>
+                <span className="text-zinc-200 font-bold">{cancelModalItem.service_name}</span>
+              </div>
+              <div className="flex justify-between text-zinc-400 font-medium">
+                <span>Metode Bayar:</span>
+                <span className="text-zinc-200 font-bold">{cancelModalItem.payment_method || 'QRIS'}</span>
+              </div>
+              <div className="flex justify-between text-zinc-400 font-medium">
+                <span>Nominal:</span>
+                <span className="text-emerald-400 font-black">
+                  Rp {getServicePrice(cancelModalItem.service_name).toLocaleString('id-ID')}
+                </span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 pt-1">
+              <button
+                onClick={() => handleConfirmCancel(false)}
+                className="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-bold py-2.5 sm:py-3 px-3 sm:px-4 rounded-2xl text-xs transition-all border border-zinc-700/80 active:scale-95"
+              >
+                Tidak (Belum Bayar)
+              </button>
+              <button
+                onClick={() => handleConfirmCancel(true)}
+                className={`font-black py-2.5 sm:py-3 px-3 sm:px-4 rounded-2xl text-xs transition-all shadow-lg active:scale-95 ${
+                  isEyelash 
+                    ? 'bg-gradient-to-r from-pink-500 to-rose-600 hover:from-pink-400 hover:to-rose-500 text-white shadow-pink-500/20' 
+                    : 'bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-zinc-950 shadow-amber-500/20'
+                }`}
+              >
+                Ya, Perlu Refund 💸
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
