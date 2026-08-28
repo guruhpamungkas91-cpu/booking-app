@@ -28,6 +28,10 @@ interface TenantData {
   subscriptionPlan: 'BASIC' | 'PREMIUM' | 'PROFESIONAL'
   category: string
   staffLabel: string
+  // KOLOM DINAMIS BARU
+  layoutType: 'BASIC_SINGLE_PAGE' | 'STEP_WIZARD'
+  themeColor: 'rose' | 'amber' | 'teal' | 'indigo' | 'emerald' | string
+  requireConsent: boolean
 }
 
 function BookingFormContent() {
@@ -40,7 +44,10 @@ function BookingFormContent() {
     adminWa: '',
     subscriptionPlan: 'BASIC',
     category: '',
-    staffLabel: 'Staff'
+    staffLabel: 'Staff',
+    layoutType: 'BASIC_SINGLE_PAGE',
+    themeColor: 'amber',
+    requireConsent: false
   })
 
   const [services, setServices] = useState<ServiceItem[]>([])
@@ -57,26 +64,64 @@ function BookingFormContent() {
     payment_method: 'QRIS',
     person_count: 1,
     payment_type: 'DP',
-    need_remove_lash: false,
-    has_eye_allergy_consent: false,
-    eye_shape_notes: ''
+    need_extra_addon: false,
+    has_consent: false,
+    custom_notes: ''
   })
   const [loading, setLoading] = useState(false)
 
-  const categoryLower = tenant.category.toLowerCase()
-  const isBeauty = categoryLower.includes('eyelash') || categoryLower.includes('beauty') || categoryLower.includes('salon') || categoryLower.includes('lashes')
+  // LOGIKA DINAMIS BERDASARKAN DATABASE (TANPA HARDCODE KATEGORI)
+  const isWizard = tenant.layoutType === 'STEP_WIZARD'
   const isBasic = tenant.subscriptionPlan === 'BASIC'
 
-  const theme = {
-    accentBg: isBeauty ? 'bg-rose-500 hover:bg-rose-600' : 'bg-amber-500 hover:bg-amber-600',
-    accentText: isBeauty ? 'text-rose-400' : 'text-amber-500',
-    accentBorder: isBeauty ? 'border-rose-500/60' : 'border-amber-500/60',
-    accentBgLight: isBeauty ? 'bg-rose-500/10' : 'bg-amber-500/10',
-    accentRing: isBeauty ? 'focus:border-rose-500 focus:ring-rose-500' : 'focus:border-amber-500 focus:ring-amber-500',
-    iconBg: isBeauty ? 'bg-rose-500/10 text-rose-500 border-rose-500/20' : 'bg-amber-500/10 text-amber-500 border-amber-500/20',
+  // Pemetaan Warna Dinamis
+  const getThemeClasses = (color: string) => {
+    switch (color) {
+      case 'rose':
+        return {
+          accentBg: 'bg-rose-500 hover:bg-rose-600',
+          accentText: 'text-rose-400',
+          accentBorder: 'border-rose-500/60',
+          accentBgLight: 'bg-rose-500/10',
+          accentRing: 'focus:border-rose-500 focus:ring-rose-500',
+          iconBg: 'bg-rose-500/10 text-rose-500 border-rose-500/20',
+          checkbox: 'accent-rose-500'
+        }
+      case 'teal':
+        return {
+          accentBg: 'bg-teal-500 hover:bg-teal-600',
+          accentText: 'text-teal-400',
+          accentBorder: 'border-teal-500/60',
+          accentBgLight: 'bg-teal-500/10',
+          accentRing: 'focus:border-teal-500 focus:ring-teal-500',
+          iconBg: 'bg-teal-500/10 text-teal-500 border-teal-500/20',
+          checkbox: 'accent-teal-500'
+        }
+      case 'indigo':
+        return {
+          accentBg: 'bg-indigo-500 hover:bg-indigo-600',
+          accentText: 'text-indigo-400',
+          accentBorder: 'border-indigo-500/60',
+          accentBgLight: 'bg-indigo-500/10',
+          accentRing: 'focus:border-indigo-500 focus:ring-indigo-500',
+          iconBg: 'bg-indigo-500/10 text-indigo-500 border-indigo-500/20',
+          checkbox: 'accent-indigo-500'
+        }
+      default: // Default 'amber' (Barber/General)
+        return {
+          accentBg: 'bg-amber-500 hover:bg-amber-600',
+          accentText: 'text-amber-500',
+          accentBorder: 'border-amber-500/60',
+          accentBgLight: 'bg-amber-500/10',
+          accentRing: 'focus:border-amber-500 focus:ring-amber-500',
+          iconBg: 'bg-amber-500/10 text-amber-500 border-amber-500/20',
+          checkbox: 'accent-amber-500'
+        }
+    }
   }
 
-  // LOGIKA HITUNG HARGA
+  const theme = getThemeClasses(tenant.themeColor)
+
   const parsePrice = (priceStr: string) => {
     const numeric = priceStr.replace(/[^0-9]/g, '')
     return numeric ? parseInt(numeric, 10) : 0
@@ -87,12 +132,12 @@ function BookingFormContent() {
       .filter((s) => formData.selected_services.includes(s.name))
       .reduce((sum, item) => sum + parsePrice(item.price), 0)
 
-    if (isBeauty && !isBasic) {
+    if (isWizard && !isBasic) {
       serviceTotal = serviceTotal * formData.person_count
     }
 
-    const removeLashFee = isBeauty && formData.need_remove_lash ? 30000 : 0
-    return serviceTotal + removeLashFee
+    const extraFee = isWizard && formData.need_extra_addon ? 30000 : 0
+    return serviceTotal + extraFee
   }
 
   const grandTotal = calculateTotal()
@@ -100,84 +145,91 @@ function BookingFormContent() {
   const payableAmount = formData.payment_type === 'DP' ? dpAmount : grandTotal
 
   useEffect(() => {
-  if (typeof window !== 'undefined') {
-    const hostname = window.location.hostname
-    const searchParams = new URLSearchParams(window.location.search)
-    const tenantQuery = searchParams.get('tenant')
+    if (typeof window !== 'undefined') {
+      const hostname = window.location.hostname
+      const searchParams = new URLSearchParams(window.location.search)
+      const tenantQuery = searchParams.get('tenant')
 
-    const rawSubdomain = hostname.split('.')[0]
-    const extractedSlug = rawSubdomain.replace('-barbershop', '').replace('-lashes', '')
-    const currentSlug = tenantQuery || (rawSubdomain === 'localhost' ? '' : extractedSlug)
+      const rawSubdomain = hostname.split('.')[0]
+      const extractedSlug = rawSubdomain.replace('-barbershop', '').replace('-lashes', '').replace('-dental', '')
+      const currentSlug = tenantQuery || (rawSubdomain === 'localhost' ? '' : extractedSlug)
 
-    if (!currentSlug && !rawSubdomain) {
-      setFetchingServices(false)
-      return
-    }
-
-    const fetchTenantAndData = async () => {
-      setFetchingServices(true)
-      
-      // 1. Fetch Data Tenant
-      const { data: tenantData } = await supabase
-        .from('Tenants')
-        .select('*')
-        .or(`tenant_slug.eq.${currentSlug},tenant_slug.eq.${rawSubdomain},domain.ilike.%${hostname}%`)
-        .maybeSingle()
-
-      const dbPlan = ((tenantData?.subscription_plan || 'BASIC') as string).toUpperCase() as 'BASIC' | 'PREMIUM' | 'PROFESIONAL'
-      const detectedCategory = tenantData?.category || 
-        (rawSubdomain.includes('lash') || rawSubdomain.includes('beauty') ? 'eyelash' : 'barbershop')
-
-      const activeTenant: TenantData = {
-        clientCode: tenantData?.client_code || currentSlug.toUpperCase(),
-        tenantSlug: tenantData?.tenant_slug || rawSubdomain || currentSlug,
-        name: tenantData?.business_name || tenantData?.name || currentSlug.toUpperCase(),
-        adminWa: tenantData?.admin_wa || '',
-        subscriptionPlan: dbPlan,
-        category: detectedCategory,
-        staffLabel: tenantData?.staff_label || (detectedCategory.includes('eyelash') || detectedCategory.includes('beauty') ? 'Lash Artist' : 'Capster')
+      if (!currentSlug && !rawSubdomain) {
+        setFetchingServices(false)
+        return
       }
 
-      setTenant(activeTenant)
+      const fetchTenantAndData = async () => {
+        setFetchingServices(true)
+        
+        // 1. Fetch Tenant dari Supabase
+        const { data: tenantData } = await supabase
+          .from('Tenants')
+          .select('*')
+          .or(`tenant_slug.eq.${currentSlug},tenant_slug.eq.${rawSubdomain},domain.ilike.%${hostname}%`)
+          .maybeSingle()
 
-      // 2. Fetch Services (Mencari berdasarkan full subdomain DAN extracted slug)
-      const { data: serviceData } = await supabase
-        .from('Services')
-        .select('*')
-        .or(`tenant_slug.eq.${activeTenant.tenantSlug},tenant_slug.eq.${rawSubdomain},tenant_slug.eq.${currentSlug}`)
+        const dbPlan = ((tenantData?.subscription_plan || 'BASIC') as string).toUpperCase() as 'BASIC' | 'PREMIUM' | 'PROFESIONAL'
+        const rawCategory = tenantData?.category || 'Layanan'
 
-      if (serviceData && serviceData.length > 0) {
-        setServices(serviceData)
-        setFormData((prev) => ({ ...prev, selected_services: [serviceData[0].name] }))
-      } else {
-        setServices([])
-      }
+        // Fallback otomatis jika kolom baru belum diisi di DB untuk tenant lama
+        const defaultLayout = tenantData?.layout_type || (rawCategory.toLowerCase().includes('lash') ? 'STEP_WIZARD' : 'BASIC_SINGLE_PAGE')
+        const defaultColor = tenantData?.theme_color || (rawCategory.toLowerCase().includes('lash') ? 'rose' : 'amber')
+        const defaultConsent = tenantData?.require_consent ?? rawCategory.toLowerCase().includes('lash')
 
-      // 3. Fetch Staff
-      if (activeTenant.subscriptionPlan !== 'BASIC') {
-        const { data: staffData } = await supabase
-          .from('Staff')
+        const activeTenant: TenantData = {
+          clientCode: tenantData?.client_code || currentSlug.toUpperCase(),
+          tenantSlug: tenantData?.tenant_slug || rawSubdomain || currentSlug,
+          name: tenantData?.business_name || tenantData?.name || currentSlug.toUpperCase(),
+          adminWa: tenantData?.admin_wa || '',
+          subscriptionPlan: dbPlan,
+          category: rawCategory,
+          staffLabel: tenantData?.staff_label || 'Staff / Spesialis',
+          layoutType: defaultLayout,
+          themeColor: defaultColor,
+          requireConsent: defaultConsent
+        }
+
+        setTenant(activeTenant)
+
+        // 2. Fetch Services
+        const { data: serviceData } = await supabase
+          .from('Services')
           .select('*')
           .or(`tenant_slug.eq.${activeTenant.tenantSlug},tenant_slug.eq.${rawSubdomain},tenant_slug.eq.${currentSlug}`)
-          .eq('is_active', true)
 
-        if (staffData && staffData.length > 0) {
-          setStaffList(staffData)
-          setFormData((prev) => ({ ...prev, selected_staff: staffData[0].name }))
+        if (serviceData && serviceData.length > 0) {
+          setServices(serviceData)
+          setFormData((prev) => ({ ...prev, selected_services: [serviceData[0].name] }))
+        } else {
+          setServices([])
+        }
+
+        // 3. Fetch Staff jika bukan paket BASIC
+        if (activeTenant.subscriptionPlan !== 'BASIC') {
+          const { data: staffData } = await supabase
+            .from('Staff')
+            .select('*')
+            .or(`tenant_slug.eq.${activeTenant.tenantSlug},tenant_slug.eq.${rawSubdomain},tenant_slug.eq.${currentSlug}`)
+            .eq('is_active', true)
+
+          if (staffData && staffData.length > 0) {
+            setStaffList(staffData)
+            setFormData((prev) => ({ ...prev, selected_staff: staffData[0].name }))
+          } else {
+            setStaffList([])
+          }
         } else {
           setStaffList([])
+          setFormData((prev) => ({ ...prev, selected_staff: '' }))
         }
-      } else {
-        setStaffList([])
-        setFormData((prev) => ({ ...prev, selected_staff: '' }))
+
+        setFetchingServices(false)
       }
 
-      setFetchingServices(false)
+      fetchTenantAndData()
     }
-
-    fetchTenantAndData()
-  }
-}, [])
+  }, [])
 
   const handleServiceSelect = (serviceName: string) => {
     if (isBasic) {
@@ -197,8 +249,8 @@ function BookingFormContent() {
         alert('Mohon isi nama dan nomor WhatsApp!')
         return
       }
-      if (isBeauty && !formData.has_eye_allergy_consent) {
-        alert('Mohon centang persetujuan bebas alergi mata.')
+      if (tenant.requireConsent && !formData.has_consent) {
+        alert('Mohon centang persetujuan terlebih dahulu.')
         return
       }
     }
@@ -238,12 +290,12 @@ function BookingFormContent() {
       tenant_slug: tenant.tenantSlug
     }
 
-    if (isBeauty) {
+    if (isWizard) {
       insertPayload.person_count = formData.person_count
       insertPayload.payment_type = formData.payment_type
-      insertPayload.need_remove_lash = formData.need_remove_lash
-      insertPayload.has_eye_allergy_consent = formData.has_eye_allergy_consent
-      insertPayload.eye_shape_notes = formData.eye_shape_notes
+      insertPayload.need_remove_lash = formData.need_extra_addon
+      insertPayload.has_eye_allergy_consent = formData.has_consent
+      insertPayload.eye_shape_notes = formData.custom_notes
     }
 
     const { error } = await supabase.from('Reservations').insert([insertPayload])
@@ -259,16 +311,15 @@ function BookingFormContent() {
       `📌 *Nama:* ${formData.customer_name}\n` +
       `📞 *WA:* ${formData.whatsapp_number}\n`
 
-    if (isBeauty && !isBasic) messageText += `👥 *Jumlah Orang:* ${formData.person_count} Orang\n`
+    if (isWizard && !isBasic) messageText += `👥 *Jumlah Orang/Pasien:* ${formData.person_count} Orang\n`
     messageText += `✨ *Layanan:* ${formattedServicesText}\n`
     if (!isBasic && formData.selected_staff) {
       messageText += `👤 *${tenant.staffLabel}:* ${formData.selected_staff}\n`
     }
     messageText += `📅 *Tanggal:* ${formData.booking_date}\n⏰ *Jam:* ${formData.booking_time}\n`
 
-    if (isBeauty) {
-      messageText += `👁️ *Lepas Eyelash Lama:* ${formData.need_remove_lash ? 'Ya (+Rp 30.000)' : 'Tidak'}\n`
-      if (formData.eye_shape_notes) messageText += `📝 *Catatan Model:* ${formData.eye_shape_notes}\n`
+    if (isWizard) {
+      if (formData.custom_notes) messageText += `📝 *Catatan Khusus:* ${formData.custom_notes}\n`
       messageText += `💵 *Opsi Bayar:* ${formData.payment_type === 'DP' ? 'Down Payment (DP 50%)' : 'Pelunasan Full'}\n`
       messageText += `💰 *Total Bayar:* Rp ${payableAmount.toLocaleString('id-ID')} (${formData.payment_type})\n`
     }
@@ -294,23 +345,14 @@ function BookingFormContent() {
         
         <div className="relative p-5 text-center bg-gradient-to-b from-zinc-800/80 to-zinc-900 border-b border-zinc-800">
           <div className={`inline-flex items-center justify-center w-10 h-10 rounded-full mb-2 border ${theme.iconBg}`}>
-            {isBeauty ? (
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-              </svg>
-            ) : (
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.121 14.121L19 19m-7-7l7-7m-7 7l-2.879 2.879M12 12L9.121 9.121m0 0L5 5m4.121 4.121L5 19" />
-                <circle cx="6" cy="6" r="2" strokeWidth={2} />
-                <circle cx="6" cy="18" r="2" strokeWidth={2} />
-              </svg>
-            )}
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
           </div>
           <h1 className="text-2xl font-black tracking-wider text-white uppercase">{tenant.name}</h1>
           <p className={`text-[10px] font-semibold uppercase tracking-widest mt-0.5 ${theme.accentText}`}>{tenant.category}</p>
 
-          {isBeauty && (
+          {isWizard && (
             <div className="flex items-center justify-center space-x-2 mt-4">
               {[1, 2, 3].map((s) => (
                 <div
@@ -325,7 +367,9 @@ function BookingFormContent() {
         </div>
 
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
-          {!isBeauty && (
+          
+          {/* LAYOUT 1: SINGLE PAGE (Untuk Barber, Carwash, General) */}
+          {!isWizard && (
             <div className="space-y-4">
               <div>
                 <label className="block text-xs font-medium text-zinc-300 mb-1">Nama Lengkap</label>
@@ -357,7 +401,7 @@ function BookingFormContent() {
                   {isBasic ? (
                     <span className="text-[10px] text-zinc-500">*Pilih 1 layanan</span>
                   ) : (
-                    <span className="text-[10px] text-amber-500 font-medium">*Bisa pilih lebih dari 1</span>
+                    <span className={`text-[10px] ${theme.accentText} font-medium`}>*Bisa pilih lebih dari 1</span>
                   )}
                 </div>
 
@@ -486,7 +530,8 @@ function BookingFormContent() {
             </div>
           )}
 
-          {isBeauty && (
+          {/* LAYOUT 2: STEP WIZARD (Untuk Eyelash, Klinik Gigi, Konsultasi, dll) */}
+          {isWizard && (
             <>
               {step === 1 && (
                 <div className="space-y-4 animate-fadeIn">
@@ -517,7 +562,7 @@ function BookingFormContent() {
 
                   {!isBasic && (
                     <div>
-                      <label className="block text-xs font-medium text-zinc-300 mb-1">Jumlah Orang</label>
+                      <label className="block text-xs font-medium text-zinc-300 mb-1">Jumlah Orang / Pasien</label>
                       <div className="grid grid-cols-5 gap-1.5">
                         {[1, 2, 3, 4, 5].map((num) => (
                           <button
@@ -538,43 +583,28 @@ function BookingFormContent() {
                   )}
 
                   <div>
-                    <label className="block text-xs font-medium text-zinc-400 mb-1">Catatan Style (Opsional)</label>
+                    <label className="block text-xs font-medium text-zinc-400 mb-1">Catatan Khusus (Opsional)</label>
                     <input
                       type="text"
-                      placeholder="Misal: Cat-Eye / Natural"
+                      placeholder="Misal: Keluhan / Model request"
                       className={`w-full px-3.5 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-200 text-xs outline-none ${theme.accentRing}`}
-                      value={formData.eye_shape_notes}
-                      onChange={(e) => setFormData({ ...formData, eye_shape_notes: e.target.value })}
+                      value={formData.custom_notes}
+                      onChange={(e) => setFormData({ ...formData, custom_notes: e.target.value })}
                     />
                   </div>
 
-                  <label className="flex items-center justify-between p-3 bg-zinc-950 border border-zinc-800 rounded-xl cursor-pointer">
-                    <div className="flex items-center space-x-2.5">
+                  {tenant.requireConsent && (
+                    <label className="flex items-start space-x-2.5 p-3 bg-zinc-950 border border-zinc-800 rounded-xl cursor-pointer">
                       <input 
                         type="checkbox" 
-                        className="w-4 h-4 rounded accent-rose-500"
-                        checked={formData.need_remove_lash}
-                        onChange={(e) => setFormData({...formData, need_remove_lash: e.target.checked})}
+                        required
+                        className={`w-4 h-4 rounded ${theme.checkbox} mt-0.5`}
+                        checked={formData.has_consent}
+                        onChange={(e) => setFormData({...formData, has_consent: e.target.checked})}
                       />
-                      <span className="text-xs text-zinc-300">Perlu lepas eyelash lama dulu</span>
-                    </div>
-                    {formData.need_remove_lash && (
-                      <span className="text-[11px] font-bold text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded border border-rose-500/20 animate-fadeIn">
-                        +30.000
-                      </span>
-                    )}
-                  </label>
-
-                  <label className="flex items-start space-x-2.5 p-3 bg-zinc-950 border border-zinc-800 rounded-xl cursor-pointer">
-                    <input 
-                      type="checkbox" 
-                      required
-                      className="w-4 h-4 rounded accent-rose-500 mt-0.5"
-                      checked={formData.has_eye_allergy_consent}
-                      onChange={(e) => setFormData({...formData, has_eye_allergy_consent: e.target.checked})}
-                    />
-                    <span className="text-xs text-zinc-400 leading-tight">Saya konfirmasi tidak ada alergi mata/sensitivitas lem.</span>
-                  </label>
+                      <span className="text-xs text-zinc-400 leading-tight">Saya menyetujui ketentuan dan konfirmasi tidak ada riwayat alergi medis terkait.</span>
+                    </label>
+                  )}
 
                   <button
                     type="button"
@@ -596,7 +626,7 @@ function BookingFormContent() {
                       {isBasic ? (
                         <span className="text-[10px] text-zinc-500">*Pilih 1 layanan</span>
                       ) : (
-                        <span className="text-[10px] text-rose-400 font-medium">*Bisa pilih lebih dari 1</span>
+                        <span className={`text-[10px] ${theme.accentText} font-medium`}>*Bisa pilih lebih dari 1</span>
                       )}
                     </div>
 
@@ -708,15 +738,8 @@ function BookingFormContent() {
                   <div className="p-3.5 bg-zinc-950 border border-zinc-800 rounded-xl space-y-2 text-xs">
                     <div className="flex justify-between text-zinc-400">
                       <span>Layanan {(!isBasic && formData.person_count > 1) ? `(${formData.person_count} Orang)` : ''}</span>
-                      <span>Rp {(grandTotal - (formData.need_remove_lash ? 30000 : 0)).toLocaleString('id-ID')}</span>
+                      <span>Rp {grandTotal.toLocaleString('id-ID')}</span>
                     </div>
-
-                    {formData.need_remove_lash && (
-                      <div className="flex justify-between text-rose-400">
-                        <span>Lepas Eyelash Lama</span>
-                        <span>+Rp 30.000</span>
-                      </div>
-                    )}
 
                     <div className="border-t border-zinc-800 pt-2 flex justify-between font-bold text-white">
                       <span>Total Biaya</span>
