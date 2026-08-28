@@ -183,57 +183,54 @@ export default function AdminDashboard() {
   }
 
   // Fetch Reservations DENGAN ISOLASI TENANT (Mencegah Data Usaha Lain Muncul)
-const fetchReservations = useCallback(async () => {
-  setLoading(true)
-  const { data: { user } } = await supabase.auth.getUser()
+  const fetchReservations = useCallback(async () => {
+    setLoading(true)
+    const { data: { user } } = await supabase.auth.getUser()
 
-  if (!user) {
+    if (!user) {
+      setLoading(false)
+      return
+    }
+
+    const { data: tenantData } = await supabase
+      .from('Tenants')
+      .select('client_code, tenant_slug')
+      .or(`admin_email.eq.${user.email},client_code.eq.${tenantCode},tenant_slug.eq.${tenantCode}`)
+      .maybeSingle()
+
+    const activeClientCode = tenantData?.client_code || user?.app_metadata?.client_code || 'FITRI'
+    const activeTenantSlug = tenantData?.tenant_slug || user?.app_metadata?.tenant_slug || 'fitrifeb'
+
+    await fetchTenantDetail(activeClientCode)
+
+    const { data, error } = await supabase
+      .from('Reservations')
+      .select('*')
+      .or(`client_code.eq.${activeClientCode},tenant_slug.eq.${activeTenantSlug},client_code.ilike.%${activeClientCode}%`)
+      .order('created_at', { ascending: false })
+
+    if (error) {
+      alert('Gagal mengambil data: ' + error.message)
+    } else {
+      setReservations(data || [])
+      setFilteredReservations(data || [])
+    }
     setLoading(false)
-    return
+  }, [tenantCode, fetchTenantDetail])
+
+  // Update Status
+  const updateStatusInDB = async (id: number, newStatus: string) => {
+    const { error } = await supabase
+      .from('Reservations')
+      .update({ status: newStatus })
+      .eq('id', id)
+
+    if (error) {
+      alert('Gagal update status: ' + error.message)
+    } else {
+      fetchReservations()
+    }
   }
-
-  // 1. Ambil identitas Tenant resmi dari database berdasarkan Email / User Metadata / TenantCode
-  const { data: tenantData } = await supabase
-    .from('Tenants')
-    .select('client_code, tenant_slug')
-    .or(`admin_email.eq.${user.email},client_code.eq.${tenantCode},tenant_slug.eq.${tenantCode}`)
-    .maybeSingle()
-
-  // Fallback jika tidak ditemukan di database Tenants
-  const activeClientCode = tenantData?.client_code || user?.app_metadata?.client_code || 'FITRI'
-  const activeTenantSlug = tenantData?.tenant_slug || user?.app_metadata?.tenant_slug || 'fitrifeb'
-
-  await fetchTenantDetail(activeClientCode)
-
-  // 2. Query Supabase dengan match persis pada client_code ATAU tenant_slug
-  const { data, error } = await supabase
-    .from('Reservations')
-    .select('*')
-    .or(`client_code.eq.${activeClientCode},tenant_slug.eq.${activeTenantSlug},client_code.ilike.%${activeClientCode}%`)
-    .order('created_at', { ascending: false })
-
-  if (error) {
-    alert('Gagal mengambil data: ' + error.message)
-  } else {
-    setReservations(data || [])
-    setFilteredReservations(data || [])
-  }
-  setLoading(false)
-}, [tenantCode, fetchTenantDetail])
-
-// Update Status
-const updateStatusInDB = async (id: number, newStatus: string) => {
-  const { error } = await supabase
-    .from('Reservations')
-    .update({ status: newStatus })
-    .eq('id', id)
-
-  if (error) {
-    alert('Gagal update status: ' + error.message)
-  } else {
-    fetchReservations()
-  }
-}
 
   const handleStatusChange = (item: Reservation, newStatus: string) => {
     if (newStatus === 'cancelled') {
@@ -582,7 +579,7 @@ const updateStatusInDB = async (id: number, newStatus: string) => {
     } else if (reportPeriod === 'monthly') labelPeriode = `Bulanan (${reportDate.substring(0, 7)})`
     else labelPeriode = `Custom (${formatDateID(reportStartDate)} s/d ${formatDateID(reportEndDate)})`
 
-    const displayBrand = brandTitle || tenantCode || (businessType === 'eyelash' ? 'FITRIFEB LASHES' : 'BARBERSHOP')
+    const displayBrand = brandTitle || tenantCode || (businessType === 'eyelash' ? 'Fitrifeb Eyelash' : 'BARBERSHOP')
     const printWindow = window.open('', '_blank')
     if (!printWindow) return
 
@@ -820,46 +817,45 @@ const updateStatusInDB = async (id: number, newStatus: string) => {
     if (isAuthenticated) fetchReservations()
   }, [isAuthenticated, fetchReservations])
 
-  // PRE-RENDER LOADER: Cegah Delay / Flashing tampilan default sebelum session siap
+  // PRE-RENDER LOADER
   if (isInitializing) {
     return (
-      <main className="min-h-screen bg-[#09090b] flex items-center justify-center font-sans text-zinc-400">
+      <main className="min-h-screen bg-[#06040A] flex items-center justify-center font-sans text-zinc-400">
         <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 border-2 border-zinc-700 border-t-zinc-200 rounded-full animate-spin"></div>
-          <span className="text-xs font-medium tracking-wide">Memuat Sistem Dashboard...</span>
+          <div className="w-8 h-8 border-2 border-purple-500/30 border-t-purple-400 rounded-full animate-spin"></div>
+          <span className="text-xs font-medium tracking-wider text-purple-200/80">Memuat Sistem Dashboard Premium...</span>
         </div>
       </main>
     )
   }
 
-  // RENDERING HALAMAN LOGIN DENGAN PERBEDAAAN THEME UI
+  // LOGIN PAGE
   if (!isAuthenticated) {
     const isEyelash = businessType === 'eyelash'
 
     return (
       <main className={`min-h-screen flex items-center justify-center p-4 font-sans text-zinc-100 relative overflow-hidden transition-colors duration-300 ${
-        isEyelash ? 'bg-[#0f0914]' : 'bg-[#09090b]'
+        isEyelash ? 'bg-[#0b0510]' : 'bg-[#06040a]'
       }`}>
-        {/* Glow ambient effect dinamis */}
         <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-80 sm:w-96 h-80 sm:h-96 rounded-full blur-3xl pointer-events-none transition-all duration-500 ${
-          isEyelash ? 'bg-pink-500/15' : 'bg-amber-500/10'
+          isEyelash ? 'bg-pink-500/15' : 'bg-purple-600/15'
         }`}></div>
 
-        <div className={`max-w-md w-full backdrop-blur-xl border rounded-3xl shadow-2xl p-6 sm:p-8 space-y-6 relative z-10 transition-all duration-300 ${
+        <div className={`max-w-md w-full backdrop-blur-2xl border rounded-3xl shadow-2xl p-6 sm:p-8 space-y-6 relative z-10 transition-all duration-300 ${
           isEyelash 
             ? 'bg-pink-950/20 border-pink-500/30 shadow-pink-950/30' 
-            : 'bg-zinc-900/90 border-zinc-800 shadow-amber-500/5'
+            : 'bg-zinc-900/60 border-purple-500/30 shadow-purple-950/40'
         }`}>
           <div className="text-center space-y-2">
             <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black border tracking-widest uppercase shadow-inner ${
               isEyelash 
                 ? 'bg-gradient-to-r from-pink-500/20 to-rose-600/10 text-pink-300 border-pink-500/30' 
-                : 'bg-gradient-to-r from-amber-500/20 to-amber-600/10 text-amber-400 border-amber-500/30'
+                : 'bg-gradient-to-r from-purple-500/20 via-indigo-500/20 to-purple-600/10 text-purple-300 border-purple-500/30'
             }`}>
-              <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${isEyelash ? 'bg-pink-400' : 'bg-amber-400'}`}></span>
+              <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${isEyelash ? 'bg-pink-400' : 'bg-purple-400'}`}></span>
               {isEyelash ? '✨ Eyelash Control Center' : '💈 Barber Control Center'}
             </span>
-            <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight uppercase bg-gradient-to-b from-white to-zinc-400 bg-clip-text text-transparent mt-2">
+            <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight uppercase bg-gradient-to-b from-white via-zinc-200 to-purple-200/60 bg-clip-text text-transparent mt-2">
               {brandTitle || (isEyelash ? 'FITRIFEB LASHES' : 'BARBERSHOP PORTAL')}
             </h1>
             <p className="text-xs text-zinc-400 font-medium">Masuk untuk mengakses dasbor manajemen reservasi</p>
@@ -873,7 +869,7 @@ const updateStatusInDB = async (id: number, newStatus: string) => {
                 required
                 placeholder={isEyelash ? "admin@fitrieyelash.com" : "admin@barbershop.com"}
                 className={`w-full px-4 py-3 bg-zinc-950/80 border rounded-2xl text-xs text-zinc-100 placeholder-zinc-600 focus:outline-none transition-all shadow-inner ${
-                  isEyelash ? 'border-pink-900/50 focus:border-pink-500 focus:ring-2 focus:ring-pink-500/20' : 'border-zinc-800 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20'
+                  isEyelash ? 'border-pink-900/50 focus:border-pink-500 focus:ring-2 focus:ring-pink-500/20' : 'border-zinc-800 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20'
                 }`}
                 value={emailInput}
                 onChange={(e) => setEmailInput(e.target.value)}
@@ -886,7 +882,7 @@ const updateStatusInDB = async (id: number, newStatus: string) => {
                 required
                 placeholder="••••••••"
                 className={`w-full px-4 py-3 bg-zinc-950/80 border rounded-2xl text-xs text-zinc-100 placeholder-zinc-600 focus:outline-none transition-all shadow-inner ${
-                  isEyelash ? 'border-pink-900/50 focus:border-pink-500 focus:ring-2 focus:ring-pink-500/20' : 'border-zinc-800 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20'
+                  isEyelash ? 'border-pink-900/50 focus:border-pink-500 focus:ring-2 focus:ring-pink-500/20' : 'border-zinc-800 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20'
                 }`}
                 value={passwordInput}
                 onChange={(e) => setPasswordInput(e.target.value)}
@@ -899,7 +895,7 @@ const updateStatusInDB = async (id: number, newStatus: string) => {
               className={`w-full font-black py-3.5 rounded-2xl transition-all text-xs tracking-wide shadow-lg active:scale-[0.98] disabled:opacity-50 mt-2 ${
                 isEyelash 
                   ? 'bg-gradient-to-r from-pink-500 to-rose-600 hover:from-pink-400 hover:to-rose-500 text-white shadow-pink-500/20' 
-                  : 'bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-zinc-950 shadow-amber-500/20'
+                  : 'bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-700 hover:from-purple-500 hover:to-indigo-500 text-white shadow-purple-600/30'
               }`}
             >
               {loading ? 'Memproses Authentikasi...' : 'MASUK DASHBOARD'}
@@ -910,50 +906,54 @@ const updateStatusInDB = async (id: number, newStatus: string) => {
     )
   }
 
-  // VARIAN KATEGORI BISNIS KHUSUS DASHBOARD (EYELASH vs BARBER)
+  // VARIAN KATEGORI BISNIS KHUSUS DASHBOARD
   const isEyelash = businessType === 'eyelash'
-  const primaryAccent = isEyelash ? 'text-pink-400' : 'text-amber-400'
+  const isProfesional = subscriptionPlan === 'PROFESIONAL'
+  
+  // Dynamic Accent Theme Color
+  const primaryAccent = isEyelash ? 'text-pink-400' : isProfesional ? 'text-purple-300' : 'text-amber-400'
 
   return (
     <div className={`min-h-screen p-3 sm:p-6 md:p-8 text-zinc-100 font-sans relative transition-colors duration-500 ${
       isEyelash 
-        ? subscriptionPlan === 'PROFESIONAL' ? 'bg-[#0f0714]' : subscriptionPlan === 'PREMIUM' ? 'bg-[#120814]' : 'bg-[#0f0914]'
-        : subscriptionPlan === 'PROFESIONAL' ? 'bg-[#0a0712]' : subscriptionPlan === 'PREMIUM' ? 'bg-[#0d0a07]' : 'bg-[#09090b]'
+        ? isProfesional ? 'bg-[#0c0512]' : subscriptionPlan === 'PREMIUM' ? 'bg-[#120814]' : 'bg-[#0f0914]'
+        : isProfesional ? 'bg-[#06040a]' : subscriptionPlan === 'PREMIUM' ? 'bg-[#0d0a07]' : 'bg-[#09090b]'
     }`}>
       {/* Glow Ambient Dynamic Background */}
-      <div className={`fixed top-0 left-1/4 w-[300px] sm:w-[600px] h-[300px] sm:h-[600px] rounded-full blur-[100px] sm:blur-[140px] pointer-events-none transition-all duration-700 ${
+      <div className={`fixed top-0 left-1/4 w-[350px] sm:w-[650px] h-[350px] sm:h-[650px] rounded-full blur-[120px] sm:blur-[160px] pointer-events-none transition-all duration-700 ${
         isEyelash
-          ? subscriptionPlan === 'PROFESIONAL' ? 'bg-purple-600/15' : 'bg-pink-600/15'
-          : subscriptionPlan === 'PROFESIONAL' ? 'bg-purple-600/10' : 'bg-amber-600/10'
+          ? isProfesional ? 'bg-purple-600/20' : 'bg-pink-600/15'
+          : isProfesional ? 'bg-purple-700/20' : 'bg-amber-600/10'
       }`}></div>
 
       <div className="max-w-7xl mx-auto space-y-4 sm:space-y-6 relative z-10">
 
         {/* Header Dashboard Dynamic UI */}
-        <div className={`flex flex-col md:flex-row justify-between items-start md:items-center p-4 sm:p-6 md:p-7 rounded-2xl sm:rounded-3xl backdrop-blur-xl border shadow-2xl transition-all duration-300 gap-4 ${
+        <div className={`flex flex-col md:flex-row justify-between items-start md:items-center p-4 sm:p-6 md:p-7 rounded-2xl sm:rounded-3xl backdrop-blur-2xl border shadow-2xl transition-all duration-300 gap-4 ${
           isEyelash 
-            ? subscriptionPlan === 'PROFESIONAL' 
-              ? 'bg-gradient-to-r from-purple-950/50 via-pink-950/40 to-zinc-900 border-pink-500/40 shadow-pink-950/30'
+            ? isProfesional 
+              ? 'bg-gradient-to-r from-purple-950/60 via-pink-950/40 to-zinc-950/80 border-purple-500/40 shadow-purple-950/40'
               : 'bg-gradient-to-r from-pink-950/40 via-zinc-900/90 to-rose-950/30 border-pink-500/30 shadow-pink-950/20'
-            : subscriptionPlan === 'PROFESIONAL'
-              ? 'bg-gradient-to-r from-purple-950/40 via-zinc-900/80 to-purple-950/20 border-purple-500/30 shadow-purple-950/30'
+            : isProfesional
+              ? 'bg-gradient-to-r from-purple-950/70 via-zinc-950/90 to-indigo-950/50 border-purple-500/40 shadow-purple-950/50'
               : 'bg-gradient-to-r from-amber-950/40 via-zinc-900/80 to-amber-950/20 border-amber-500/30 shadow-amber-950/30'
         }`}>
           <div>
             <div className="flex items-center space-x-3 flex-wrap gap-y-2">
               <span className="text-xl sm:text-2xl">{isEyelash ? '✨' : '💈'}</span>
-              <h1 className="text-xl sm:text-2xl md:text-3xl font-black text-white tracking-tight uppercase">
+              <h1 className="text-xl sm:text-2xl md:text-3xl font-black text-white tracking-tight uppercase bg-gradient-to-r from-white via-zinc-200 to-purple-200 bg-clip-text text-transparent">
                 {brandTitle || tenantCode || (isEyelash ? 'FITRIFEB LASHES' : 'BARBERSHOP')}
               </h1>
+              
               {/* BADGE PAKET LANGGANAN */}
-              <span className={`text-[9px] sm:text-[10px] font-black px-3 py-1 sm:px-3.5 sm:py-1.5 rounded-full border tracking-wider transition-all uppercase shadow-lg flex items-center gap-1.5 ${
-                subscriptionPlan === 'PROFESIONAL'
-                  ? 'bg-purple-500/10 border-purple-500/50 text-purple-300 shadow-purple-500/10 animate-pulse'
+              <span className={`text-[9px] sm:text-[10px] font-black px-3.5 py-1.5 rounded-full border tracking-widest transition-all uppercase shadow-xl flex items-center gap-1.5 ${
+                isProfesional
+                  ? 'bg-gradient-to-r from-purple-500/20 via-indigo-500/20 to-purple-600/30 border-purple-400/60 text-purple-200 shadow-purple-500/20 ring-1 ring-purple-500/30 animate-pulse'
                   : subscriptionPlan === 'PREMIUM'
                   ? isEyelash ? 'bg-pink-500/10 border-pink-500/50 text-pink-300 shadow-pink-500/10' : 'bg-amber-500/10 border-amber-500/50 text-amber-400 shadow-amber-500/10'
                   : 'bg-zinc-800/80 border-zinc-700 text-zinc-400'
               }`}>
-                {subscriptionPlan === 'PROFESIONAL' && '👑 '}
+                {isProfesional && '👑 '}
                 {subscriptionPlan === 'PREMIUM' && '⭐ '}
                 {subscriptionPlan} PLAN
               </span>
@@ -966,7 +966,7 @@ const updateStatusInDB = async (id: number, newStatus: string) => {
           <div className="space-x-2 sm:space-x-3 w-full md:w-auto flex justify-end items-center">
             <button
               onClick={fetchReservations}
-              className="flex-1 md:flex-initial justify-center bg-zinc-800/80 hover:bg-zinc-700 text-zinc-200 border border-zinc-700/80 px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl font-bold transition-all text-[11px] sm:text-xs flex items-center gap-1.5 sm:gap-2 hover:shadow-lg active:scale-95"
+              className={`flex-1 md:flex-initial justify-center bg-zinc-900/80 hover:bg-zinc-800 text-zinc-200 border border-zinc-800 hover:border-purple-500/50 px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl font-bold transition-all text-[11px] sm:text-xs flex items-center gap-1.5 sm:gap-2 shadow-lg active:scale-95`}
             >
               <svg className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${primaryAccent}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -975,7 +975,7 @@ const updateStatusInDB = async (id: number, newStatus: string) => {
             </button>
             <button
               onClick={handleLogout}
-              className="bg-rose-500/10 hover:bg-rose-500 text-rose-400 hover:text-white border border-rose-500/30 px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl font-bold transition-all text-[11px] sm:text-xs active:scale-95"
+              className="bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl font-bold transition-all text-[11px] sm:text-xs active:scale-95"
             >
               Logout
             </button>
@@ -988,9 +988,11 @@ const updateStatusInDB = async (id: number, newStatus: string) => {
         } gap-3 sm:gap-4`}>
           
           {/* Card 1: Total Omzet */}
-          {(subscriptionPlan === 'PREMIUM' || subscriptionPlan === 'PROFESIONAL') && (
+          {(subscriptionPlan === 'PREMIUM' || isProfesional) && (
             <div className={`col-span-2 sm:col-span-1 border p-4 sm:p-6 rounded-2xl sm:rounded-3xl shadow-2xl transition-all relative overflow-hidden group ${
-              isEyelash
+              isProfesional
+                ? 'bg-gradient-to-br from-purple-950/60 via-zinc-950/90 to-zinc-900/80 border-purple-500/40 shadow-purple-950/30'
+                : isEyelash
                 ? 'bg-gradient-to-br from-pink-950/40 via-zinc-900/90 to-zinc-900 border-pink-500/40'
                 : 'bg-gradient-to-br from-emerald-950/40 via-zinc-900/90 to-zinc-900 border-emerald-500/40'
             }`}>
@@ -998,14 +1000,14 @@ const updateStatusInDB = async (id: number, newStatus: string) => {
                 <span className="text-3xl sm:text-5xl">{isEyelash ? '💄' : '💰'}</span>
               </div>
               <p className={`text-[10px] sm:text-xs font-black uppercase tracking-wider ${
-                isEyelash ? 'text-pink-300' : 'text-emerald-400'
+                isProfesional ? 'text-purple-300' : isEyelash ? 'text-pink-300' : 'text-emerald-400'
               }`}>Total Omzet</p>
               <div className="mt-2 sm:mt-3">
                 <h3 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
                   Rp {stats.totalRevenue.toLocaleString('id-ID')}
                 </h3>
-                <p className="text-[10px] sm:text-xs font-bold mt-1 flex items-center gap-1 text-emerald-400/80">
-                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                <p className="text-[10px] sm:text-xs font-bold mt-1 flex items-center gap-1 text-emerald-400">
+                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
                   {stats.completedCount} transaksi selesai
                 </p>
               </div>
@@ -1013,27 +1015,33 @@ const updateStatusInDB = async (id: number, newStatus: string) => {
           )}
 
           {/* Card 2: Total Booking */}
-          <div className="bg-zinc-900/80 backdrop-blur-xl border border-zinc-800/80 p-4 sm:p-6 rounded-2xl sm:rounded-3xl shadow-xl hover:border-zinc-700 transition-all">
+          <div className={`backdrop-blur-2xl border p-4 sm:p-6 rounded-2xl sm:rounded-3xl shadow-xl transition-all ${
+            isProfesional ? 'bg-zinc-950/70 border-purple-500/20 hover:border-purple-500/40' : 'bg-zinc-900/80 border-zinc-800/80 hover:border-zinc-700'
+          }`}>
             <p className="text-[10px] sm:text-xs font-bold text-zinc-400 uppercase tracking-wider">Total Booking</p>
             <div className="flex flex-col sm:flex-row sm:items-baseline justify-between mt-2 sm:mt-3 gap-1">
               <h3 className="text-2xl sm:text-3xl font-black text-white tracking-tight">{stats.totalBookings}</h3>
               <span className={`w-fit text-[9px] sm:text-[11px] font-extrabold px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full border ${
-                isEyelash ? 'text-pink-300 bg-pink-500/10 border-pink-500/20' : 'text-amber-400 bg-amber-500/10 border-amber-500/20'
+                isProfesional ? 'text-purple-300 bg-purple-500/10 border-purple-500/30' : isEyelash ? 'text-pink-300 bg-pink-500/10 border-pink-500/20' : 'text-amber-400 bg-amber-500/10 border-amber-500/20'
               }`}>Semua Data</span>
             </div>
           </div>
 
           {/* Card 3: Menunggu */}
-          <div className="bg-zinc-900/80 backdrop-blur-xl border border-zinc-800/80 p-4 sm:p-6 rounded-2xl sm:rounded-3xl shadow-xl hover:border-amber-500/40 transition-all">
+          <div className={`backdrop-blur-2xl border p-4 sm:p-6 rounded-2xl sm:rounded-3xl shadow-xl transition-all ${
+            isProfesional ? 'bg-zinc-950/70 border-purple-500/20 hover:border-amber-500/40' : 'bg-zinc-900/80 border-zinc-800/80 hover:border-amber-500/40'
+          }`}>
             <p className="text-[10px] sm:text-xs font-bold text-amber-400 uppercase tracking-wider">Menunggu</p>
             <div className="flex flex-col sm:flex-row sm:items-baseline justify-between mt-2 sm:mt-3 gap-1">
               <h3 className="text-2xl sm:text-3xl font-black text-amber-400 tracking-tight">{stats.pendingCount}</h3>
-              <span className="w-fit text-[9px] sm:text-[11px] text-amber-400/90 font-bold bg-amber-500/10 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full border border-amber-500/20">Konfirmasi</span>
+              <span className="w-fit text-[9px] sm:text-[11px] text-amber-400 font-bold bg-amber-500/10 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full border border-amber-500/20">Konfirmasi</span>
             </div>
           </div>
 
           {/* Card 4: Selesai */}
-          <div className="bg-zinc-900/80 backdrop-blur-xl border border-zinc-800/80 p-4 sm:p-6 rounded-2xl sm:rounded-3xl shadow-xl hover:border-emerald-500/40 transition-all">
+          <div className={`backdrop-blur-2xl border p-4 sm:p-6 rounded-2xl sm:rounded-3xl shadow-xl transition-all ${
+            isProfesional ? 'bg-zinc-950/70 border-purple-500/20 hover:border-emerald-500/40' : 'bg-zinc-900/80 border-zinc-800/80 hover:border-emerald-500/40'
+          }`}>
             <p className="text-[10px] sm:text-xs font-bold text-emerald-400 uppercase tracking-wider">Selesai</p>
             <div className="flex flex-col sm:flex-row sm:items-baseline justify-between mt-2 sm:mt-3 gap-1">
               <h3 className="text-2xl sm:text-3xl font-black text-emerald-400 tracking-tight">{stats.completedCount}</h3>
@@ -1044,7 +1052,9 @@ const updateStatusInDB = async (id: number, newStatus: string) => {
           </div>
 
           {/* Card 5: Pembatalan */}
-          <div className="bg-zinc-900/80 backdrop-blur-xl border border-zinc-800/80 p-4 sm:p-6 rounded-2xl sm:rounded-3xl shadow-xl hover:border-rose-500/40 transition-all">
+          <div className={`backdrop-blur-2xl border p-4 sm:p-6 rounded-2xl sm:rounded-3xl shadow-xl transition-all ${
+            isProfesional ? 'bg-zinc-950/70 border-purple-500/20 hover:border-rose-500/40' : 'bg-zinc-900/80 border-zinc-800/80 hover:border-rose-500/40'
+          }`}>
             <p className="text-[10px] sm:text-xs font-bold text-rose-400 uppercase tracking-wider">Pembatalan</p>
             <div className="flex flex-col sm:flex-row sm:items-baseline justify-between mt-2 sm:mt-3 gap-1">
               <h3 className="text-2xl sm:text-3xl font-black text-rose-400 tracking-tight">{stats.cancelledCount}</h3>
@@ -1063,22 +1073,18 @@ const updateStatusInDB = async (id: number, newStatus: string) => {
         </div>
 
         {/* WIDGET HIGHLIGHT TOP STAFF (PROFESIONAL ONLY) */}
-        {subscriptionPlan === 'PROFESIONAL' && (
-          <div className={`border p-4 sm:p-5 rounded-2xl sm:rounded-3xl shadow-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 relative overflow-hidden ${
+        {isProfesional && (
+          <div className={`border p-4 sm:p-5 rounded-2xl sm:rounded-3xl shadow-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 relative overflow-hidden backdrop-blur-2xl transition-all ${
             isEyelash 
-              ? 'bg-gradient-to-r from-pink-950/50 via-zinc-900/90 to-purple-950/30 border-pink-500/40' 
-              : 'bg-gradient-to-r from-purple-950/50 via-zinc-900/90 to-purple-950/30 border-purple-500/40'
+              ? 'bg-gradient-to-r from-purple-950/70 via-pink-950/40 to-zinc-950/80 border-purple-500/40 shadow-purple-950/30' 
+              : 'bg-gradient-to-r from-purple-950/70 via-zinc-950/90 to-indigo-950/50 border-purple-500/40 shadow-purple-950/40'
           }`}>
             <div className="flex items-center space-x-3 sm:space-x-4">
-              <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl border flex items-center justify-center text-xl sm:text-2xl shrink-0 ${
-                isEyelash ? 'bg-pink-500/20 border-pink-500/40' : 'bg-purple-500/20 border-purple-500/40'
-              }`}>
-                {isEyelash ? '👑' : '🏆'}
+              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl border border-purple-400/40 bg-purple-500/20 flex items-center justify-center text-xl sm:text-2xl shrink-0 shadow-lg shadow-purple-500/10">
+                👑
               </div>
               <div className="min-w-0">
-                <span className={`text-[9px] sm:text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full border ${
-                  isEyelash ? 'text-pink-300 bg-pink-500/10 border-pink-500/30' : 'text-purple-300 bg-purple-500/10 border-purple-500/30'
-                }`}>
+                <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-full border text-purple-200 bg-purple-500/20 border-purple-400/40 shadow-sm">
                   Performa Staff Terbaik ({staffLabel})
                 </span>
                 <h3 className="text-lg sm:text-xl font-black text-white mt-1 truncate">
@@ -1086,11 +1092,11 @@ const updateStatusInDB = async (id: number, newStatus: string) => {
                 </h3>
               </div>
             </div>
-            <div className="flex sm:flex-col items-center sm:items-end justify-between border-t border-zinc-800 sm:border-t-0 pt-2 sm:pt-0">
-              <span className={`text-xl sm:text-2xl font-black font-mono ${isEyelash ? 'text-pink-300' : 'text-purple-300'}`}>
+            <div className="flex sm:flex-col items-center sm:items-end justify-between border-t border-purple-900/40 sm:border-t-0 pt-2 sm:pt-0">
+              <span className="text-xl sm:text-2xl font-black font-mono text-purple-300">
                 {stats.topStaffCount}
               </span>
-              <p className="text-[10px] sm:text-[11px] text-zinc-400 font-bold uppercase tracking-wider">Transaksi Selesai</p>
+              <p className="text-[10px] sm:text-[11px] text-purple-200/70 font-bold uppercase tracking-wider">Transaksi Selesai</p>
             </div>
           </div>
         )}
@@ -1121,15 +1127,19 @@ const updateStatusInDB = async (id: number, newStatus: string) => {
 
         {/* PENARIKAN LAPORAN KEUANGAN (PREMIUM & PROFESIONAL) */}
         {subscriptionPlan !== 'BASIC' && (
-          <div className={`p-4 sm:p-6 md:p-7 rounded-2xl sm:rounded-3xl shadow-2xl space-y-4 sm:space-y-5 border backdrop-blur-xl transition-all ${
-            isEyelash 
+          <div className={`p-4 sm:p-6 md:p-7 rounded-2xl sm:rounded-3xl shadow-2xl space-y-4 sm:space-y-5 border backdrop-blur-2xl transition-all ${
+            isProfesional
+              ? 'bg-zinc-950/80 border-purple-500/30 shadow-purple-950/20'
+              : isEyelash 
               ? 'bg-zinc-900/90 border-pink-500/30 shadow-pink-950/20' 
               : 'bg-zinc-900/90 border-amber-500/30 shadow-amber-950/20'
           }`}>
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-zinc-800/80 pb-4 gap-2">
+            <div className={`flex flex-col sm:flex-row sm:items-center justify-between border-b pb-4 gap-2 ${
+              isProfesional ? 'border-purple-900/40' : 'border-zinc-800/80'
+            }`}>
               <div>
                 <h2 className={`text-base sm:text-lg font-black flex items-center gap-2 ${
-                  isEyelash ? 'text-pink-300' : 'text-amber-400'
+                  isProfesional ? 'text-purple-300' : isEyelash ? 'text-pink-300' : 'text-amber-400'
                 }`}>
                   <span>📊 Laporan Keuangan & Omzet Netto</span>
                 </h2>
@@ -1145,8 +1155,8 @@ const updateStatusInDB = async (id: number, newStatus: string) => {
                   ⭐ Premium Plan (Export Excel Only)
                 </span>
               )}
-              {subscriptionPlan === 'PROFESIONAL' && (
-                <span className="text-[9px] sm:text-[10px] font-black bg-purple-500/10 text-purple-300 border border-purple-500/30 px-3 py-1 rounded-full flex items-center gap-1.5 w-max">
+              {isProfesional && (
+                <span className="text-[9px] sm:text-[10px] font-black bg-purple-500/20 text-purple-200 border border-purple-400/50 px-3.5 py-1.5 rounded-full flex items-center gap-1.5 w-max shadow-lg shadow-purple-500/10">
                   👑 Profesional Plan (Excel + Cetak PDF)
                 </span>
               )}
@@ -1163,7 +1173,9 @@ const updateStatusInDB = async (id: number, newStatus: string) => {
                         onClick={() => setReportPeriod(mode)}
                         className={`py-1.5 sm:py-2 rounded-lg sm:rounded-xl text-[10px] sm:text-xs font-bold transition-all capitalize ${
                           reportPeriod === mode
-                            ? isEyelash 
+                            ? isProfesional
+                              ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30'
+                              : isEyelash 
                               ? 'bg-pink-600 text-white shadow-lg shadow-pink-600/30' 
                               : 'bg-amber-500 text-zinc-950 shadow-lg shadow-amber-500/30'
                             : 'text-zinc-400 hover:text-white hover:bg-zinc-800/40'
@@ -1191,12 +1203,14 @@ const updateStatusInDB = async (id: number, newStatus: string) => {
                         setReportDate(reportPeriod === 'monthly' ? `${val}-01` : val)
                       }}
                       className={`w-full px-3.5 sm:px-4 py-2 sm:py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-xl sm:rounded-2xl text-xs text-zinc-200 focus:outline-none shadow-inner ${
-                        isEyelash ? 'focus:border-pink-500' : 'focus:border-amber-500'
+                        isProfesional ? 'focus:border-purple-500' : isEyelash ? 'focus:border-pink-500' : 'focus:border-amber-500'
                       }`}
                     />
 
                     {reportPeriod === 'weekly' && reportData.weekInfo && (
-                      <p className={`text-[10px] sm:text-[11px] font-bold mt-2 flex items-center gap-1 ${isEyelash ? 'text-pink-300' : 'text-amber-400'}`}>
+                      <p className={`text-[10px] sm:text-[11px] font-bold mt-2 flex items-center gap-1 ${
+                        isProfesional ? 'text-purple-300' : isEyelash ? 'text-pink-300' : 'text-amber-400'
+                      }`}>
                         <span>📅</span> Periode: {formatDateID(reportData.weekInfo.startStr)} s/d {formatDateID(reportData.weekInfo.endStr)}
                       </p>
                     )}
@@ -1210,7 +1224,7 @@ const updateStatusInDB = async (id: number, newStatus: string) => {
                         value={reportStartDate}
                         onChange={(e) => setReportStartDate(e.target.value)}
                         className={`w-full px-3 py-2 bg-zinc-950/80 border border-zinc-800 rounded-xl text-xs text-zinc-200 focus:outline-none shadow-inner ${
-                          isEyelash ? 'focus:border-pink-500' : 'focus:border-amber-500'
+                          isProfesional ? 'focus:border-purple-500' : isEyelash ? 'focus:border-pink-500' : 'focus:border-amber-500'
                         }`}
                       />
                     </div>
@@ -1221,7 +1235,7 @@ const updateStatusInDB = async (id: number, newStatus: string) => {
                         value={reportEndDate}
                         onChange={(e) => setReportEndDate(e.target.value)}
                         className={`w-full px-3 py-2 bg-zinc-950/80 border border-zinc-800 rounded-xl text-xs text-zinc-200 focus:outline-none shadow-inner ${
-                          isEyelash ? 'focus:border-pink-500' : 'focus:border-amber-500'
+                          isProfesional ? 'focus:border-purple-500' : isEyelash ? 'focus:border-pink-500' : 'focus:border-amber-500'
                         }`}
                       />
                     </div>
@@ -1230,7 +1244,9 @@ const updateStatusInDB = async (id: number, newStatus: string) => {
               </div>
 
               <div className="md:col-span-6 space-y-3 sm:space-y-4">
-                <div className="bg-zinc-950/90 border border-zinc-800/80 p-4 sm:p-5 rounded-xl sm:rounded-2xl grid grid-cols-2 gap-3 sm:gap-4 text-xs shadow-inner">
+                <div className={`bg-zinc-950/90 border p-4 sm:p-5 rounded-xl sm:rounded-2xl grid grid-cols-2 gap-3 sm:gap-4 text-xs shadow-inner ${
+                  isProfesional ? 'border-purple-900/40' : 'border-zinc-800/80'
+                }`}>
                   <div>
                     <p className="text-[10px] sm:text-[11px] font-bold text-zinc-400 uppercase tracking-wider">OMZET BRUTO</p>
                     <p className="text-lg sm:text-xl font-black text-white mt-1">
@@ -1240,7 +1256,7 @@ const updateStatusInDB = async (id: number, newStatus: string) => {
                       Refund: -Rp {reportData.totalRefund.toLocaleString('id-ID')}
                     </p>
                   </div>
-                  <div className="text-right border-l border-zinc-800 pl-3 sm:pl-4">
+                  <div className={`text-right border-l pl-3 sm:pl-4 ${isProfesional ? 'border-purple-900/40' : 'border-zinc-800'}`}>
                     <p className="text-[10px] sm:text-[11px] font-black text-emerald-400 uppercase tracking-wider">OMZET NETTO</p>
                     <p className="text-xl sm:text-2xl font-black text-emerald-400 mt-1">
                       Rp {reportData.netRevenue.toLocaleString('id-ID')}
@@ -1262,7 +1278,7 @@ const updateStatusInDB = async (id: number, newStatus: string) => {
                   </div>
                 )}
 
-                {subscriptionPlan === 'PROFESIONAL' && (
+                {isProfesional && (
                   <div className="grid grid-cols-2 gap-2 sm:gap-3">
                     <button
                       onClick={exportReportToCSV}
@@ -1273,7 +1289,7 @@ const updateStatusInDB = async (id: number, newStatus: string) => {
 
                     <button
                       onClick={handlePrintPDF}
-                      className="w-full bg-purple-600 hover:bg-purple-500 text-white px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl font-bold transition-all text-xs flex items-center justify-center gap-2 shadow-lg shadow-purple-600/20 active:scale-[0.98]"
+                      className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl font-bold transition-all text-xs flex items-center justify-center gap-2 shadow-lg shadow-purple-600/30 active:scale-[0.98]"
                     >
                       <span>🖨️ Cetak / PDF</span>
                     </button>
@@ -1286,7 +1302,9 @@ const updateStatusInDB = async (id: number, newStatus: string) => {
         )}
 
         {/* SEARCH & FILTER TABEL DATA */}
-        <div className="bg-zinc-900/80 backdrop-blur-xl border border-zinc-800/80 p-4 sm:p-5 rounded-2xl sm:rounded-3xl shadow-xl flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-4 items-end justify-between">
+        <div className={`backdrop-blur-2xl border p-4 sm:p-5 rounded-2xl sm:rounded-3xl shadow-xl flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-4 items-end justify-between ${
+          isProfesional ? 'bg-zinc-950/70 border-purple-500/20' : 'bg-zinc-900/80 border-zinc-800/80'
+        }`}>
           <div className="grid grid-cols-1 sm:flex sm:flex-wrap gap-3 items-end w-full">
             
             {/* Input Pencarian dengan Tombol Clear (X) */}
@@ -1299,7 +1317,7 @@ const updateStatusInDB = async (id: number, newStatus: string) => {
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className={`w-full pl-3.5 pr-8 py-2 sm:py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-xl sm:rounded-2xl text-xs text-zinc-200 placeholder-zinc-600 focus:outline-none transition-all shadow-inner ${
-                    isEyelash ? 'focus:border-pink-500' : 'focus:border-amber-500'
+                    isProfesional ? 'focus:border-purple-500' : isEyelash ? 'focus:border-pink-500' : 'focus:border-amber-500'
                   }`}
                 />
                 {searchTerm && (
@@ -1323,7 +1341,7 @@ const updateStatusInDB = async (id: number, newStatus: string) => {
                   value={startDate}
                   onChange={(e) => setStartDate(e.target.value)}
                   className={`w-full sm:w-auto px-3 py-2 sm:py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-xl sm:rounded-2xl text-xs text-zinc-200 focus:outline-none shadow-inner ${
-                    isEyelash ? 'focus:border-pink-500' : 'focus:border-amber-500'
+                    isProfesional ? 'focus:border-purple-500' : isEyelash ? 'focus:border-pink-500' : 'focus:border-amber-500'
                   }`}
                 />
               </div>
@@ -1334,7 +1352,7 @@ const updateStatusInDB = async (id: number, newStatus: string) => {
                   value={endDate}
                   onChange={(e) => setEndDate(e.target.value)}
                   className={`w-full sm:w-auto px-3 py-2 sm:py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-xl sm:rounded-2xl text-xs text-zinc-200 focus:outline-none shadow-inner ${
-                    isEyelash ? 'focus:border-pink-500' : 'focus:border-amber-500'
+                    isProfesional ? 'focus:border-purple-500' : isEyelash ? 'focus:border-pink-500' : 'focus:border-amber-500'
                   }`}
                 />
               </div>
@@ -1347,7 +1365,7 @@ const updateStatusInDB = async (id: number, newStatus: string) => {
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value)}
                   className={`w-full sm:w-auto px-3 py-2 sm:py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-xl sm:rounded-2xl text-xs text-zinc-200 focus:outline-none font-semibold cursor-pointer shadow-inner ${
-                    isEyelash ? 'focus:border-pink-500' : 'focus:border-amber-500'
+                    isProfesional ? 'focus:border-purple-500' : isEyelash ? 'focus:border-pink-500' : 'focus:border-amber-500'
                   }`}
                 >
                   <option value="all">Semua Status</option>
@@ -1365,7 +1383,7 @@ const updateStatusInDB = async (id: number, newStatus: string) => {
                   value={serviceFilter}
                   onChange={(e) => setServiceFilter(e.target.value)}
                   className={`w-full sm:w-auto px-3 py-2 sm:py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-xl sm:rounded-2xl text-xs text-zinc-200 focus:outline-none font-semibold cursor-pointer shadow-inner ${
-                    isEyelash ? 'focus:border-pink-500' : 'focus:border-amber-500'
+                    isProfesional ? 'focus:border-purple-500' : isEyelash ? 'focus:border-pink-500' : 'focus:border-amber-500'
                   }`}
                 >
                   <option value="all">Semua Layanan</option>
@@ -1385,7 +1403,7 @@ const updateStatusInDB = async (id: number, newStatus: string) => {
                   value={paymentFilter}
                   onChange={(e) => setPaymentFilter(e.target.value)}
                   className={`w-full sm:w-auto px-3 py-2 sm:py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-xl sm:rounded-2xl text-xs text-zinc-200 focus:outline-none font-semibold cursor-pointer shadow-inner ${
-                    isEyelash ? 'focus:border-pink-500' : 'focus:border-amber-500'
+                    isProfesional ? 'focus:border-purple-500' : isEyelash ? 'focus:border-pink-500' : 'focus:border-amber-500'
                   }`}
                 >
                   <option value="all">Semua Metode</option>
@@ -1417,7 +1435,9 @@ const updateStatusInDB = async (id: number, newStatus: string) => {
         </div>
 
         {/* TABEL DATA RESERVASI DYNAMIC ACCENT */}
-        <div className="bg-zinc-900/80 backdrop-blur-xl border border-zinc-800/80 rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden">
+        <div className={`backdrop-blur-2xl border rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden ${
+          isProfesional ? 'bg-zinc-950/70 border-purple-500/20' : 'bg-zinc-900/80 border-zinc-800/80'
+        }`}>
           {loading ? (
             <div className="p-12 text-center text-zinc-500 text-xs font-semibold">Memuat data reservasi...</div>
           ) : filteredReservations.length === 0 ? (
@@ -1426,7 +1446,9 @@ const updateStatusInDB = async (id: number, newStatus: string) => {
             <div className="w-full overflow-x-auto">
               <table className="w-full text-left border-collapse min-w-[800px]">
                 <thead>
-                  <tr className="bg-zinc-950/90 border-b border-zinc-800 text-[10px] font-black text-zinc-400 uppercase tracking-widest select-none">
+                  <tr className={`border-b text-[10px] font-black uppercase tracking-widest select-none ${
+                    isProfesional ? 'bg-zinc-950/95 border-purple-900/40 text-purple-200/70' : 'bg-zinc-950/90 border-zinc-800 text-zinc-400'
+                  }`}>
                     
                     <th onClick={() => handleSort('booking_date')} className={`p-3.5 sm:p-4.5 cursor-pointer transition hover:${primaryAccent}`}>
                       <div className="flex items-center gap-1.5">
@@ -1456,9 +1478,9 @@ const updateStatusInDB = async (id: number, newStatus: string) => {
                       </div>
                     </th>
 
-                    {(subscriptionPlan === 'PREMIUM' || subscriptionPlan === 'PROFESIONAL') && (
+                    {(subscriptionPlan === 'PREMIUM' || isProfesional) && (
                       <th onClick={() => handleSort('staff_name')} className={`p-3.5 sm:p-4.5 cursor-pointer transition ${
-                        isEyelash ? 'text-pink-300' : 'text-amber-400'
+                        isProfesional ? 'text-purple-300' : isEyelash ? 'text-pink-300' : 'text-amber-400'
                       }`}>
                         <div className="flex items-center gap-1.5">
                           <span>{staffLabel}</span>
@@ -1493,7 +1515,7 @@ const updateStatusInDB = async (id: number, newStatus: string) => {
                     <th className="p-3.5 sm:p-4.5 text-center">Aksi</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-zinc-800/40 text-xs font-medium">
+                <tbody className={`divide-y text-xs font-medium ${isProfesional ? 'divide-purple-900/20' : 'divide-zinc-800/40'}`}>
                   {filteredReservations.map((item) => {
                     const currentStatus = item.status || 'pending'
                     const cleanPhone = item.whatsapp_number ? item.whatsapp_number.replace(/^0/, '62') : ''
@@ -1505,7 +1527,7 @@ const updateStatusInDB = async (id: number, newStatus: string) => {
                     )
 
                     return (
-                      <tr key={item.id} className="hover:bg-zinc-800/30 transition-colors">
+                      <tr key={item.id} className="hover:bg-zinc-800/20 transition-colors">
                         <td className="p-3.5 sm:p-4.5 font-bold text-zinc-200">{item.booking_date}</td>
                         <td className={`p-3.5 sm:p-4.5 font-mono font-bold ${primaryAccent}`}>{item.booking_time} WIB</td>
                         <td className="p-3.5 sm:p-4.5 font-black text-white">
@@ -1513,17 +1535,23 @@ const updateStatusInDB = async (id: number, newStatus: string) => {
                         </td>
                         <td className="p-3.5 sm:p-4.5">
                           <span className={`px-2.5 py-1 rounded-xl text-[11px] font-bold inline-block whitespace-nowrap border ${
-                            isEyelash ? 'bg-pink-500/10 text-pink-300 border-pink-500/20' : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                            isProfesional
+                              ? 'bg-purple-500/10 text-purple-200 border-purple-500/30'
+                              : isEyelash 
+                              ? 'bg-pink-500/10 text-pink-300 border-pink-500/20' 
+                              : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
                           }`}>
                             {item.service_name}
                           </span>
                         </td>
 
-                        {(subscriptionPlan === 'PREMIUM' || subscriptionPlan === 'PROFESIONAL') && (
+                        {(subscriptionPlan === 'PREMIUM' || isProfesional) && (
                           <td className="p-3.5 sm:p-4.5 font-bold text-zinc-200">
                             {item.staff_name ? (
                               <span className={`px-2.5 py-1 rounded-xl text-[11px] border whitespace-nowrap ${
-                                isEyelash
+                                isProfesional
+                                  ? 'bg-purple-950/40 border-purple-800/50 text-purple-200'
+                                  : isEyelash
                                   ? 'bg-pink-950/40 border-pink-800/50 text-pink-200'
                                   : 'bg-zinc-800 border-zinc-700'
                               }`}>
@@ -1632,9 +1660,8 @@ const updateStatusInDB = async (id: number, newStatus: string) => {
       {/* MODAL REFUND */}
       {cancelModalItem && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 sm:p-7 max-w-md w-full space-y-4 sm:space-y-5 shadow-2xl animate-in fade-in zoom-in duration-200 relative">
+          <div className="bg-zinc-900 border border-purple-500/30 rounded-3xl p-5 sm:p-7 max-w-md w-full space-y-4 sm:space-y-5 shadow-2xl animate-in fade-in zoom-in duration-200 relative">
             
-            {/* Tombol X Close Modal */}
             <button
               onClick={() => setCancelModalItem(null)}
               className="absolute top-4 right-4 text-zinc-400 hover:text-white bg-zinc-800/60 hover:bg-zinc-800 w-8 h-8 rounded-full flex items-center justify-center transition-all text-sm font-bold border border-zinc-700/50"
@@ -1680,7 +1707,7 @@ const updateStatusInDB = async (id: number, newStatus: string) => {
                 className={`font-black py-2.5 sm:py-3 px-3 sm:px-4 rounded-2xl text-xs transition-all shadow-lg active:scale-95 ${
                   isEyelash 
                     ? 'bg-gradient-to-r from-pink-500 to-rose-600 hover:from-pink-400 hover:to-rose-500 text-white shadow-pink-500/20' 
-                    : 'bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-zinc-950 shadow-amber-500/20'
+                    : 'bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-700 hover:from-purple-500 hover:to-indigo-500 text-white shadow-purple-600/30'
                 }`}
               >
                 Ya, Perlu Refund 💸
