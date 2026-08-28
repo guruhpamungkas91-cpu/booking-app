@@ -333,7 +333,7 @@ function BookingFormContent() {
       messageText += `💵 *Opsi Bayar:* ${formData.payment_type === 'DP' ? 'Down Payment (DP 50%)' : 'Pelunasan Full'}\n`
       messageText += `💰 *Total Bayar:* Rp ${payableAmount.toLocaleString('id-ID')} (${formData.payment_type})\n`
     }
-    messageText += `💳 *Metode Bayar:* ${formData.payment_method}\n\nMohon diproses ya, terima kasih!`
+    messageText += `💳 *Metode Bayar:* ${formData.payment_method}\n\nMohon diproses ya, terima kasih 😊`
 
     window.location.href = `https://wa.me/${tenant.adminWa}?text=${encodeURIComponent(messageText)}`
   }
