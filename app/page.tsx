@@ -240,7 +240,7 @@ function BookingFormContent() {
       `📌 *Nama:* ${formData.customer_name}\n` +
       `📞 *WA:* ${formData.whatsapp_number}\n`
 
-    if (isBeauty) messageText += `👥 *Jumlah Orang:* ${formData.person_count} Orang\n`
+    if (isBeauty && !isBasic) messageText += `👥 *Jumlah Orang:* ${formData.person_count} Orang\n`
     messageText += `✨ *Layanan:* ${formattedServicesText}\n`
     if (!isBasic && formData.selected_staff) {
       messageText += `👤 *${tenant.staffLabel}:* ${formData.selected_staff}\n`
@@ -248,7 +248,7 @@ function BookingFormContent() {
     messageText += `📅 *Tanggal:* ${formData.booking_date}\n⏰ *Jam:* ${formData.booking_time}\n`
 
     if (isBeauty) {
-      messageText += `👁️ *Lepas Eyelash Lama:* ${formData.need_remove_lash ? 'Ya' : 'Tidak'}\n`
+      messageText += `👁️ *Lepas Eyelash Lama:* ${formData.need_remove_lash ? 'Ya (+Rp 30.000)' : 'Tidak'}\n`
       if (formData.eye_shape_notes) messageText += `📝 *Catatan Model:* ${formData.eye_shape_notes}\n`
       messageText += `💵 *Opsi Bayar:* ${formData.payment_type === 'DP' ? 'Down Payment (DP)' : 'Pelunasan Full'}\n`
     }
@@ -506,25 +506,28 @@ function BookingFormContent() {
                     />
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-medium text-zinc-300 mb-1">Jumlah Orang</label>
-                    <div className="grid grid-cols-5 gap-1.5">
-                      {[1, 2, 3, 4, 5].map((num) => (
-                        <button
-                          type="button"
-                          key={num}
-                          onClick={() => setFormData({ ...formData, person_count: num })}
-                          className={`py-2 text-xs font-semibold rounded-xl border transition-all ${
-                            formData.person_count === num
-                              ? `${theme.accentBg} text-zinc-950 border-white font-bold`
-                              : 'bg-zinc-950 border-zinc-800 text-zinc-400'
-                          }`}
-                        >
-                          {num}
-                        </button>
-                      ))}
+                  {/* OPSI JUMLAH ORANG HANYA UNTUK PAKET PREMIUM & PROFESIONAL */}
+                  {!isBasic && (
+                    <div>
+                      <label className="block text-xs font-medium text-zinc-300 mb-1">Jumlah Orang</label>
+                      <div className="grid grid-cols-5 gap-1.5">
+                        {[1, 2, 3, 4, 5].map((num) => (
+                          <button
+                            type="button"
+                            key={num}
+                            onClick={() => setFormData({ ...formData, person_count: num })}
+                            className={`py-2 text-xs font-semibold rounded-xl border transition-all ${
+                              formData.person_count === num
+                                ? `${theme.accentBg} text-zinc-950 border-white font-bold`
+                                : 'bg-zinc-950 border-zinc-800 text-zinc-400'
+                            }`}
+                          >
+                            {num}
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                  </div>
+                  )}
 
                   <div>
                     <label className="block text-xs font-medium text-zinc-400 mb-1">Catatan Style (Opsional)</label>
@@ -537,14 +540,22 @@ function BookingFormContent() {
                     />
                   </div>
 
-                  <label className="flex items-center space-x-2.5 p-3 bg-zinc-950 border border-zinc-800 rounded-xl cursor-pointer">
-                    <input 
-                      type="checkbox" 
-                      className="w-4 h-4 rounded accent-rose-500"
-                      checked={formData.need_remove_lash}
-                      onChange={(e) => setFormData({...formData, need_remove_lash: e.target.checked})}
-                    />
-                    <span className="text-xs text-zinc-300">Perlu lepas eyelash lama dulu</span>
+                  {/* CHECKBOX LEPAS EYELASH LAMA DENGAN HARGA DYNAMIC */}
+                  <label className="flex items-center justify-between p-3 bg-zinc-950 border border-zinc-800 rounded-xl cursor-pointer">
+                    <div className="flex items-center space-x-2.5">
+                      <input 
+                        type="checkbox" 
+                        className="w-4 h-4 rounded accent-rose-500"
+                        checked={formData.need_remove_lash}
+                        onChange={(e) => setFormData({...formData, need_remove_lash: e.target.checked})}
+                      />
+                      <span className="text-xs text-zinc-300">Perlu lepas eyelash lama dulu</span>
+                    </div>
+                    {formData.need_remove_lash && (
+                      <span className="text-[11px] font-bold text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded border border-rose-500/20 animate-fadeIn">
+                        +30.000
+                      </span>
+                    )}
                   </label>
 
                   <label className="flex items-start space-x-2.5 p-3 bg-zinc-950 border border-zinc-800 rounded-xl cursor-pointer">
