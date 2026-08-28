@@ -60,7 +60,7 @@ export default function AdminDashboard() {
   const [filteredReservations, setFilteredReservations] = useState<Reservation[]>([])
   const [loading, setLoading] = useState(false)
 
-  // State Filter Tabel Utama
+  // State Filter Tabel Utama (Ditambahkan startDate & endDate)
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
@@ -1278,17 +1278,56 @@ export default function AdminDashboard() {
         {/* SEARCH & FILTER TABEL DATA */}
         <div className="bg-zinc-900/80 backdrop-blur-xl border border-zinc-800/80 p-4 sm:p-5 rounded-2xl sm:rounded-3xl shadow-xl flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-4 items-end justify-between">
           <div className="grid grid-cols-1 sm:flex sm:flex-wrap gap-3 items-end w-full">
+            
+            {/* Input Pencarian dengan Tombol Clear (X) */}
             <div className="w-full sm:w-60">
               <label className="block text-xs font-bold text-zinc-400 mb-1.5">Pencarian Data:</label>
-              <input
-                type="text"
-                placeholder="Cari nama, WA, atau layanan..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className={`w-full px-3.5 sm:px-4 py-2 sm:py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-xl sm:rounded-2xl text-xs text-zinc-200 placeholder-zinc-600 focus:outline-none transition-all shadow-inner ${
-                  isEyelash ? 'focus:border-pink-500' : 'focus:border-amber-500'
-                }`}
-              />
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="Cari nama, WA, atau layanan..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className={`w-full pl-3.5 pr-8 py-2 sm:py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-xl sm:rounded-2xl text-xs text-zinc-200 placeholder-zinc-600 focus:outline-none transition-all shadow-inner ${
+                    isEyelash ? 'focus:border-pink-500' : 'focus:border-amber-500'
+                  }`}
+                />
+                {searchTerm && (
+                  <button
+                    onClick={() => setSearchTerm('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white text-xs font-bold w-5 h-5 flex items-center justify-center rounded-full hover:bg-zinc-800 transition-all"
+                    title="Clear Search"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Filter Rentang Tanggal (Dari & Sampai) */}
+            <div className="grid grid-cols-2 gap-2 sm:gap-3 w-full sm:w-auto">
+              <div>
+                <label className="block text-[11px] sm:text-xs font-bold text-zinc-400 mb-1.5">Dari Tanggal:</label>
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className={`w-full sm:w-auto px-3 py-2 sm:py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-xl sm:rounded-2xl text-xs text-zinc-200 focus:outline-none shadow-inner ${
+                    isEyelash ? 'focus:border-pink-500' : 'focus:border-amber-500'
+                  }`}
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] sm:text-xs font-bold text-zinc-400 mb-1.5">Sampai Tanggal:</label>
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  className={`w-full sm:w-auto px-3 py-2 sm:py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-xl sm:rounded-2xl text-xs text-zinc-200 focus:outline-none shadow-inner ${
+                    isEyelash ? 'focus:border-pink-500' : 'focus:border-amber-500'
+                  }`}
+                />
+              </div>
             </div>
 
             <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 sm:gap-3 w-full sm:w-auto">
@@ -1360,7 +1399,7 @@ export default function AdminDashboard() {
                   }}
                   className="mt-auto bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700/80 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl text-xs font-bold transition-all whitespace-nowrap"
                 >
-                  Reset
+                  Reset All
                 </button>
               )}
             </div>
