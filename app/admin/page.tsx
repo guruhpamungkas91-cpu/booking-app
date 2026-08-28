@@ -39,6 +39,9 @@ const detectBrandFromHostname = (): { brand: string; type: BusinessType } => {
 }
 
 export default function AdminDashboard() {
+  // State Initialization untuk Mencegah Flash Screen UI
+  const [isInitializing, setIsInitializing] = useState(true)
+
   const [brandTitle, setBrandTitle] = useState<string>(() => detectBrandFromHostname().brand)
   const [businessType, setBusinessType] = useState<BusinessType>(() => detectBrandFromHostname().type)
   const [staffLabel, setStaffLabel] = useState<string>('Staff')
@@ -178,7 +181,7 @@ export default function AdminDashboard() {
     setIsAuthenticated(false)
   }
 
-  // Fetch Reservations
+  // Fetch Reservations dengan Fallback Query Aman
   const fetchReservations = useCallback(async () => {
     setLoading(true)
     const { data: { user } } = await supabase.auth.getUser()
@@ -191,10 +194,18 @@ export default function AdminDashboard() {
     let query = supabase.from('Reservations').select('*').order('created_at', { ascending: false })
     
     if (userClientCode) {
+      // Ditambahkan penanganan agar jika kolom tenant_slug / client_code tidak ditemukan, query tidak melempar alert error kasar
       query = query.or(`client_code.ilike.%${userClientCode}%,tenant_slug.ilike.%${userClientCode}%`)
     }
 
-    const { data, error } = await query
+    let { data, error } = await query
+
+    // Fallback jika database belum ada kolom tenant_slug / client_code
+    if (error && error.message.includes('tenant_slug')) {
+      const fallback = await supabase.from('Reservations').select('*').order('created_at', { ascending: false })
+      data = fallback.data
+      error = fallback.error
+    }
 
     if (error) {
       alert('Gagal mengambil data: ' + error.message)
@@ -772,7 +783,7 @@ export default function AdminDashboard() {
     }
   }
 
-  // INITIALIZER UNTUK CEK SESSION SUPABASE SAAT AWAL LOAD
+  // INITIALIZER UNTUK CEK SESSION SUPABASE SAAT AWAL LOAD (MENDAHULUI FLASH CONTENT)
   useEffect(() => {
     const initSession = async () => {
       const info = detectBrandFromHostname()
@@ -792,6 +803,7 @@ export default function AdminDashboard() {
       } else {
         await fetchTenantDetail('', info.brand)
       }
+      setIsInitializing(false)
     }
 
     initSession()
@@ -800,6 +812,18 @@ export default function AdminDashboard() {
   useEffect(() => {
     if (isAuthenticated) fetchReservations()
   }, [isAuthenticated, fetchReservations])
+
+  // SCREENING INTI UNTUK MENCEGAH FLASH UI BEBERAPA MILIDETIK
+  if (isInitializing) {
+    return (
+      <div className="min-h-screen bg-[#09090b] flex items-center justify-center text-white font-sans">
+        <div className="text-center space-y-3">
+          <div className="w-8 h-8 border-4 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
+          <p className="text-zinc-500 text-xs font-semibold tracking-wide">Memuat Sistem Admin...</p>
+        </div>
+      </div>
+    )
+  }
 
   // RENDERING HALAMAN LOGIN DENGAN PERBEDAAAN THEME UI
   if (!isAuthenticated) {
