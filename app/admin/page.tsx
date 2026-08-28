@@ -163,12 +163,10 @@ export default function AdminDashboard() {
 
     await fetchTenantDetail(userClientCode)
 
-    let query = supabase
+    const { data, error } = await supabase
       .from('Reservations')
       .select('*')
       .order('created_at', { ascending: false })
-
-    const { data, error } = await query
 
     if (error) {
       alert('Gagal mengambil data: ' + error.message)
@@ -897,12 +895,12 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* STATS CARDS GRID (MOBILE: 2 KOLOM | DESKTOP: 5 KOLOM) */}
+        {/* STATS CARDS GRID */}
         <div className={`grid grid-cols-2 sm:grid-cols-3 ${
           subscriptionPlan === 'BASIC' ? 'lg:grid-cols-4' : 'lg:grid-cols-5'
         } gap-3 sm:gap-4`}>
           
-          {/* Card 1: Total Omzet (Sembunyi di BASIC, Spans 2 Kolom di HP) */}
+          {/* Card 1: Total Omzet */}
           {(subscriptionPlan === 'PREMIUM' || subscriptionPlan === 'PROFESIONAL') && (
             <div className={`col-span-2 sm:col-span-1 border p-4 sm:p-6 rounded-2xl sm:rounded-3xl shadow-2xl transition-all relative overflow-hidden group ${
               subscriptionPlan === 'PROFESIONAL'
@@ -977,7 +975,7 @@ export default function AdminDashboard() {
 
         </div>
 
-        {/* WIDGET SPESIAL HIGHLIGHT TOP CAPSTER (RESPONSIVE MOBILE BANNER) */}
+        {/* WIDGET SPESIAL HIGHLIGHT TOP CAPSTER */}
         {subscriptionPlan === 'PROFESIONAL' && (
           <div className="bg-gradient-to-r from-purple-950/50 via-zinc-900/90 to-purple-950/30 border border-purple-500/40 p-4 sm:p-5 rounded-2xl sm:rounded-3xl shadow-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 relative overflow-hidden">
             <div className="flex items-center space-x-3 sm:space-x-4">
@@ -1002,7 +1000,7 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* PROMOTION / UPSELL BANNER (KHUSUS BASIC UNTUK UPGRADE KE PREMIUM/PROFESIONAL) */}
+        {/* PROMOTION / UPSELL BANNER (BASIC) */}
         {subscriptionPlan === 'BASIC' && (
           <div className="p-4 sm:p-6 rounded-2xl sm:rounded-3xl bg-gradient-to-r from-amber-500/10 via-purple-500/10 to-zinc-900 border border-amber-500/30 shadow-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
             <div className="space-y-1">
@@ -1016,7 +1014,7 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* PENARIKAN LAPORAN KEUANGAN (HANYA DITAMPILKAN UNTUK PREMIUM & PROFESIONAL) */}
+        {/* PENARIKAN LAPORAN KEUANGAN (PREMIUM & PROFESIONAL) */}
         {subscriptionPlan !== 'BASIC' && (
           <div className={`p-4 sm:p-6 md:p-7 rounded-2xl sm:rounded-3xl shadow-2xl space-y-4 sm:space-y-5 border backdrop-blur-xl transition-all ${
             subscriptionPlan === 'PROFESIONAL'
@@ -1035,7 +1033,6 @@ export default function AdminDashboard() {
                 </p>
               </div>
               
-              {/* HINT KHUSUS UNTUK SETIAP PAKET */}
               {subscriptionPlan === 'PREMIUM' && (
                 <span className="text-[9px] sm:text-[10px] font-black bg-amber-500/10 text-amber-400 border border-amber-500/30 px-3 py-1 rounded-full flex items-center gap-1.5 w-max">
                   ⭐ Premium Plan (Export Excel Only)
@@ -1138,7 +1135,6 @@ export default function AdminDashboard() {
                   </div>
                 </div>
 
-                {/* LOGIKA TOMBOL EKSPOR PER PAKET */}
                 {subscriptionPlan === 'PREMIUM' && (
                   <div className="space-y-2">
                     <button
@@ -1260,7 +1256,7 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* TABEL DATA RESERVASI (WITH SMOOTH HORIZONTAL SCROLL FOR MOBILE) */}
+        {/* TABEL DATA RESERVASI */}
         <div className="bg-zinc-900/80 backdrop-blur-xl border border-zinc-800/80 rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden">
           {loading ? (
             <div className="p-12 text-center text-zinc-500 text-xs font-semibold">Memuat data reservasi...</div>
@@ -1300,7 +1296,6 @@ export default function AdminDashboard() {
                       </div>
                     </th>
 
-                    {/* KOLOM STAFF (Tampil di PREMIUM & PROFESIONAL) */}
                     {(subscriptionPlan === 'PREMIUM' || subscriptionPlan === 'PROFESIONAL') && (
                       <th onClick={() => handleSort('staff_name')} className={`p-3.5 sm:p-4.5 cursor-pointer transition ${
                         subscriptionPlan === 'PROFESIONAL' ? 'text-purple-300' : 'text-amber-400'
