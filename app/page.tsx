@@ -78,53 +78,74 @@ function BookingFormContent() {
   }
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const hostname = window.location.hostname
-      const searchParams = new URLSearchParams(window.location.search)
-      const tenantQuery = searchParams.get('tenant')
-      const currentSlug = tenantQuery || (hostname.split('.')[0] === 'localhost' ? 'fitrifeb' : hostname.split('.')[0])
+  if (typeof window !== 'undefined') {
+    const hostname = window.location.hostname
+    const searchParams = new URLSearchParams(window.location.search)
+    const tenantQuery = searchParams.get('tenant')
+    const currentSlug = tenantQuery || (hostname.split('.')[0] === 'localhost' ? 'mcut' : hostname.split('.')[0])
 
-      const fetchTenantAndData = async () => {
-        setFetchingServices(true)
-        const { data: tenantData } = await supabase.from('Tenants').select('*').eq('tenant_slug', currentSlug).single()
+    const fetchTenantAndData = async () => {
+      setFetchingServices(true)
+      
+      // 1. Ambil data tenant dari Supabase
+      const { data: tenantData } = await supabase
+        .from('Tenants')
+        .select('*')
+        .eq('tenant_slug', currentSlug)
+        .single()
 
-        let activeTenant = tenant
-        if (tenantData) {
-          activeTenant = {
-            clientCode: tenantData.client_code || 'FITRI',
-            tenantSlug: tenantData.tenant_slug || currentSlug,
-            name: tenantData.business_name || tenantData.name || 'Studio Booking',
-            adminWa: tenantData.admin_wa || '6285899997828',
-            subscriptionPlan: tenantData.subscription_plan || 'BASIC',
-            category: tenantData.category || 'eyelash',
-            staffLabel: tenantData.staff_label || 'Lash Artist'
-          }
-          setTenant(activeTenant)
-        }
+      // 2. Pastikan subscription_plan dari DB (uppercase) benar-benar terbaca
+      const dbPlan = (tenantData?.subscription_plan || 'BASIC').toUpperCase() as 'BASIC' | 'PREMIUM' | 'PROFESIONAL'
+      
+      const activeTenant: TenantData = {
+        clientCode: tenantData?.client_code || 'FITRI',
+        tenantSlug: tenantData?.tenant_slug || currentSlug,
+        name: tenantData?.business_name || tenantData?.name || 'Studio Booking',
+        adminWa: tenantData?.admin_wa || '6285899997828',
+        subscriptionPlan: dbPlan, // <-- Ambil langsung plan dari Database
+        category: tenantData?.category || 'eyelash',
+        staffLabel: tenantData?.staff_label || 'Capster'
+      }
 
-        const { data: serviceData } = await supabase.from('Services').select('*').eq('tenant_slug', activeTenant.tenantSlug)
-        if (serviceData && serviceData.length > 0) {
-          setServices(serviceData)
-          setFormData((prev) => ({ ...prev, selected_services: [serviceData[0].name] }))
-        }
+      // Update state Tenant
+      setTenant(activeTenant)
 
-        // FIX: Hanya ambil data staff jika BUKAN paket BASIC
-        if (activeTenant.subscriptionPlan !== 'BASIC') {
-          const { data: staffData } = await supabase.from('Staff').select('*').eq('tenant_slug', activeTenant.tenantSlug).eq('is_active', true)
-          if (staffData && staffData.length > 0) {
-            setStaffList(staffData)
-            setFormData((prev) => ({ ...prev, selected_staff: staffData[0].name }))
-          }
+      // 3. Fetch Services
+      const { data: serviceData } = await supabase
+        .from('Services')
+        .select('*')
+        .eq('tenant_slug', activeTenant.tenantSlug)
+
+      if (serviceData && serviceData.length > 0) {
+        setServices(serviceData)
+        setFormData((prev) => ({ ...prev, selected_services: [serviceData[0].name] }))
+      }
+
+      // 4. Fetch Staff jika paket BUKAN BASIC (PREMIUM / PROFESIONAL)
+      if (activeTenant.subscriptionPlan !== 'BASIC') {
+        const { data: staffData } = await supabase
+          .from('Staff')
+          .select('*')
+          .eq('tenant_slug', activeTenant.tenantSlug)
+          .eq('is_active', true)
+
+        if (staffData && staffData.length > 0) {
+          setStaffList(staffData)
+          setFormData((prev) => ({ ...prev, selected_staff: staffData[0].name }))
         } else {
           setStaffList([])
-          setFormData((prev) => ({ ...prev, selected_staff: '' }))
         }
-
-        setFetchingServices(false)
+      } else {
+        setStaffList([])
+        setFormData((prev) => ({ ...prev, selected_staff: '' }))
       }
-      fetchTenantAndData()
+
+      setFetchingServices(false)
     }
-  }, [])
+
+    fetchTenantAndData()
+  }
+}, [])
 
   const handleServiceSelect = (serviceName: string) => {
     // FIX: Jika BASIC, selalu override menjadi 1 item saja (tidak bisa multi-select / toggle kosong)
