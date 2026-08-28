@@ -594,7 +594,7 @@ function BookingFormContent() {
 
                   {/* OPTION ADD-ON (LEPAS EYELASH LAMA) */}
                   {tenant.showExtraAddon && (
-                    <label className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-all ${
+                    <label className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-all duration-300 ${
                       formData.need_extra_addon ? `${theme.accentBgLight} ${theme.accentBorder}` : 'bg-zinc-950 border-zinc-800'
                     }`}>
                       <div className="flex items-center space-x-2.5">
@@ -604,8 +604,18 @@ function BookingFormContent() {
                           checked={formData.need_extra_addon}
                           onChange={(e) => setFormData({ ...formData, need_extra_addon: e.target.checked })}
                         />
-                        <span className="text-xs text-zinc-200 font-medium">{tenant.addonLabel}</span>
+                        {/* Teks label tanpa angka Rp 30.000 bawaan */}
+                        <span className="text-xs text-zinc-200 font-medium">
+                          {tenant.addonLabel.replace(/\s*\(\+Rp\s*[\d.]+\)/gi, '')}
+                        </span>
                       </div>
+
+                      {/* Badge Harga Muncul dengan Animasi Saat Diceklist */}
+                      {formData.need_extra_addon && (
+                        <span className={`text-[11px] font-bold px-2 py-0.5 rounded-md ${theme.accentBg} text-zinc-950 transition-all animate-fadeIn`}>
+                          +Rp {tenant.addonPrice.toLocaleString('id-ID')}
+                        </span>
+                      )}
                     </label>
                   )}
 
