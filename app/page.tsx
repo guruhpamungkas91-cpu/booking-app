@@ -82,7 +82,12 @@ function BookingFormContent() {
     const hostname = window.location.hostname
     const searchParams = new URLSearchParams(window.location.search)
     const tenantQuery = searchParams.get('tenant')
-    const currentSlug = tenantQuery || (hostname.split('.')[0] === 'localhost' ? 'mcut' : hostname.split('.')[0])
+
+    // Parse subdomain secara lebih bersih (misal: 'mcut-barbershop' atau 'mcut' -> ekstrak kata utama 'mcut')
+    const rawSubdomain = hostname.split('.')[0]
+    const extractedSlug = rawSubdomain.replace('-barbershop', '') // otomatis bersihkan '-barbershop' jika ada
+
+    const currentSlug = tenantQuery || (rawSubdomain === 'localhost' ? 'mcut' : extractedSlug)
 
     const fetchTenantAndData = async () => {
       setFetchingServices(true)
@@ -94,16 +99,16 @@ function BookingFormContent() {
         .eq('tenant_slug', currentSlug)
         .single()
 
-      // 2. Pastikan subscription_plan dari DB (uppercase) benar-benar terbaca
+      // 2. Format Plan
       const dbPlan = (tenantData?.subscription_plan || 'BASIC').toUpperCase() as 'BASIC' | 'PREMIUM' | 'PROFESIONAL'
       
       const activeTenant: TenantData = {
-        clientCode: tenantData?.client_code || 'FITRI',
+        clientCode: tenantData?.client_code || 'MCUT',
         tenantSlug: tenantData?.tenant_slug || currentSlug,
-        name: tenantData?.business_name || tenantData?.name || 'Studio Booking',
+        name: tenantData?.business_name || tenantData?.name || 'MCUT Barber',
         adminWa: tenantData?.admin_wa || '6285899997828',
-        subscriptionPlan: dbPlan, // <-- Ambil langsung plan dari Database
-        category: tenantData?.category || 'eyelash',
+        subscriptionPlan: dbPlan,
+        category: tenantData?.category || 'barbershop', // <-- DIBUAT DEFAULT BARBERSHOP
         staffLabel: tenantData?.staff_label || 'Capster'
       }
 
@@ -121,7 +126,7 @@ function BookingFormContent() {
         setFormData((prev) => ({ ...prev, selected_services: [serviceData[0].name] }))
       }
 
-      // 4. Fetch Staff jika paket BUKAN BASIC (PREMIUM / PROFESIONAL)
+      // 4. Fetch Staff jika paket NON-BASIC
       if (activeTenant.subscriptionPlan !== 'BASIC') {
         const { data: staffData } = await supabase
           .from('Staff')
