@@ -28,10 +28,13 @@ interface TenantData {
   subscriptionPlan: 'BASIC' | 'PREMIUM' | 'PROFESIONAL'
   category: string
   staffLabel: string
-  // KOLOM DINAMIS BARU
   layoutType: 'BASIC_SINGLE_PAGE' | 'STEP_WIZARD'
   themeColor: 'rose' | 'amber' | 'teal' | 'indigo' | 'emerald' | string
   requireConsent: boolean
+  // KONFIGURASI ADD-ON DINAMIS
+  showExtraAddon: boolean
+  addonLabel: string
+  addonPrice: number
 }
 
 function BookingFormContent() {
@@ -47,7 +50,10 @@ function BookingFormContent() {
     staffLabel: 'Staff',
     layoutType: 'BASIC_SINGLE_PAGE',
     themeColor: 'amber',
-    requireConsent: false
+    requireConsent: false,
+    showExtraAddon: false,
+    addonLabel: 'Perlu lepas eyelash lama (+Rp 30.000)',
+    addonPrice: 30000
   })
 
   const [services, setServices] = useState<ServiceItem[]>([])
@@ -70,11 +76,9 @@ function BookingFormContent() {
   })
   const [loading, setLoading] = useState(false)
 
-  // LOGIKA DINAMIS BERDASARKAN DATABASE (TANPA HARDCODE KATEGORI)
   const isWizard = tenant.layoutType === 'STEP_WIZARD'
   const isBasic = tenant.subscriptionPlan === 'BASIC'
 
-  // Pemetaan Warna Dinamis
   const getThemeClasses = (color: string) => {
     switch (color) {
       case 'rose':
@@ -107,7 +111,7 @@ function BookingFormContent() {
           iconBg: 'bg-indigo-500/10 text-indigo-500 border-indigo-500/20',
           checkbox: 'accent-indigo-500'
         }
-      default: // Default 'amber' (Barber/General)
+      default:
         return {
           accentBg: 'bg-amber-500 hover:bg-amber-600',
           accentText: 'text-amber-500',
@@ -127,6 +131,7 @@ function BookingFormContent() {
     return numeric ? parseInt(numeric, 10) : 0
   }
 
+  // KALKULASI TOTAL BIAYA (TERMASUK LAYANAN & LEPAS EYELASH)
   const calculateTotal = () => {
     let serviceTotal = services
       .filter((s) => formData.selected_services.includes(s.name))
@@ -136,7 +141,7 @@ function BookingFormContent() {
       serviceTotal = serviceTotal * formData.person_count
     }
 
-    const extraFee = isWizard && formData.need_extra_addon ? 30000 : 0
+    const extraFee = isWizard && formData.need_extra_addon ? tenant.addonPrice : 0
     return serviceTotal + extraFee
   }
 
@@ -162,7 +167,6 @@ function BookingFormContent() {
       const fetchTenantAndData = async () => {
         setFetchingServices(true)
         
-        // 1. Fetch Tenant dari Supabase
         const { data: tenantData } = await supabase
           .from('Tenants')
           .select('*')
@@ -172,10 +176,10 @@ function BookingFormContent() {
         const dbPlan = ((tenantData?.subscription_plan || 'BASIC') as string).toUpperCase() as 'BASIC' | 'PREMIUM' | 'PROFESIONAL'
         const rawCategory = tenantData?.category || 'Layanan'
 
-        // Fallback otomatis jika kolom baru belum diisi di DB untuk tenant lama
         const defaultLayout = tenantData?.layout_type || (rawCategory.toLowerCase().includes('lash') ? 'STEP_WIZARD' : 'BASIC_SINGLE_PAGE')
         const defaultColor = tenantData?.theme_color || (rawCategory.toLowerCase().includes('lash') ? 'rose' : 'amber')
         const defaultConsent = tenantData?.require_consent ?? rawCategory.toLowerCase().includes('lash')
+        const defaultShowAddon = tenantData?.show_extra_addon ?? rawCategory.toLowerCase().includes('lash')
 
         const activeTenant: TenantData = {
           clientCode: tenantData?.client_code || currentSlug.toUpperCase(),
@@ -187,12 +191,14 @@ function BookingFormContent() {
           staffLabel: tenantData?.staff_label || 'Staff / Spesialis',
           layoutType: defaultLayout,
           themeColor: defaultColor,
-          requireConsent: defaultConsent
+          requireConsent: defaultConsent,
+          showExtraAddon: defaultShowAddon,
+          addonLabel: tenantData?.addon_label || 'Perlu lepas eyelash lama (+Rp 30.000)',
+          addonPrice: tenantData?.addon_price || 30000
         }
 
         setTenant(activeTenant)
 
-        // 2. Fetch Services
         const { data: serviceData } = await supabase
           .from('Services')
           .select('*')
@@ -205,7 +211,6 @@ function BookingFormContent() {
           setServices([])
         }
 
-        // 3. Fetch Staff jika bukan paket BASIC
         if (activeTenant.subscriptionPlan !== 'BASIC') {
           const { data: staffData } = await supabase
             .from('Staff')
@@ -313,6 +318,11 @@ function BookingFormContent() {
 
     if (isWizard && !isBasic) messageText += `👥 *Jumlah Orang/Pasien:* ${formData.person_count} Orang\n`
     messageText += `✨ *Layanan:* ${formattedServicesText}\n`
+    
+    if (formData.need_extra_addon) {
+      messageText += `✨ *Tambahan:* ${tenant.addonLabel}\n`
+    }
+
     if (!isBasic && formData.selected_staff) {
       messageText += `👤 *${tenant.staffLabel}:* ${formData.selected_staff}\n`
     }
@@ -368,7 +378,7 @@ function BookingFormContent() {
 
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
           
-          {/* LAYOUT 1: SINGLE PAGE (Untuk Barber, Carwash, General) */}
+          {/* LAYOUT 1: SINGLE PAGE */}
           {!isWizard && (
             <div className="space-y-4">
               <div>
@@ -530,7 +540,7 @@ function BookingFormContent() {
             </div>
           )}
 
-          {/* LAYOUT 2: STEP WIZARD (Untuk Eyelash, Klinik Gigi, Konsultasi, dll) */}
+          {/* LAYOUT 2: STEP WIZARD */}
           {isWizard && (
             <>
               {step === 1 && (
@@ -580,6 +590,23 @@ function BookingFormContent() {
                         ))}
                       </div>
                     </div>
+                  )}
+
+                  {/* OPTION ADD-ON (LEPAS EYELASH LAMA) */}
+                  {tenant.showExtraAddon && (
+                    <label className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-all ${
+                      formData.need_extra_addon ? `${theme.accentBgLight} ${theme.accentBorder}` : 'bg-zinc-950 border-zinc-800'
+                    }`}>
+                      <div className="flex items-center space-x-2.5">
+                        <input
+                          type="checkbox"
+                          className={`w-4 h-4 rounded ${theme.checkbox}`}
+                          checked={formData.need_extra_addon}
+                          onChange={(e) => setFormData({ ...formData, need_extra_addon: e.target.checked })}
+                        />
+                        <span className="text-xs text-zinc-200 font-medium">{tenant.addonLabel}</span>
+                      </div>
+                    </label>
                   )}
 
                   <div>
@@ -738,8 +765,15 @@ function BookingFormContent() {
                   <div className="p-3.5 bg-zinc-950 border border-zinc-800 rounded-xl space-y-2 text-xs">
                     <div className="flex justify-between text-zinc-400">
                       <span>Layanan {(!isBasic && formData.person_count > 1) ? `(${formData.person_count} Orang)` : ''}</span>
-                      <span>Rp {grandTotal.toLocaleString('id-ID')}</span>
+                      <span>Rp {(grandTotal - (formData.need_extra_addon ? tenant.addonPrice : 0)).toLocaleString('id-ID')}</span>
                     </div>
+
+                    {formData.need_extra_addon && (
+                      <div className="flex justify-between text-zinc-400">
+                        <span>{tenant.addonLabel}</span>
+                        <span>Rp {tenant.addonPrice.toLocaleString('id-ID')}</span>
+                      </div>
+                    )}
 
                     <div className="border-t border-zinc-800 pt-2 flex justify-between font-bold text-white">
                       <span>Total Biaya</span>
