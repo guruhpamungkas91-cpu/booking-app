@@ -741,33 +741,40 @@ export default function AdminDashboard() {
 
   // INITIALIZER UNTUK DETEKSI TENANT
   useEffect(() => {
-    const initTenantAndSession = async () => {
-      let brandHint = 'mcut'
+  const initTenantAndSession = async () => {
+    let brandHint = 'fitrifeb' // Fallback umum
 
-      if (typeof window !== 'undefined') {
-        const hostname = window.location.hostname.toLowerCase()
-        if (hostname.includes('sem')) {
-          brandHint = 'sem'
-        } else if (hostname.includes('mcut')) {
-          brandHint = 'mcut'
-        }
-      }
-
-      const { data } = await supabase.auth.getSession()
+    if (typeof window !== 'undefined') {
+      const hostname = window.location.hostname.toLowerCase()
       
-      if (data?.session) {
-        setIsAuthenticated(true)
-        const rawCode = data.session.user.app_metadata?.client_code || data.session.user.app_metadata?.tenant_slug || ''
-        const cleanCode = sanitizeClientCode(rawCode)
-        setTenantCode(cleanCode)
-        await fetchTenantDetail(cleanCode, brandHint)
-      } else {
-        await fetchTenantDetail('', brandHint)
+      // Deteksi jika domain adalah Eyelash / Fitri Feb
+      if (hostname.includes('fitrifeb') || hostname.includes('lashes') || hostname.includes('eyelash')) {
+        brandHint = 'fitrifeb' // Ganti sesuai slug di database Supabase kamu (misal: 'fitrifeb' atau 'eyelash')
+      } 
+      // Deteksi jika domain adalah Barber (MCUT / SEM)
+      else if (hostname.includes('mcut')) {
+        brandHint = 'mcut'
+      } else if (hostname.includes('sem')) {
+        brandHint = 'sem'
       }
     }
 
-    initTenantAndSession()
-  }, [fetchTenantDetail])
+    const { data } = await supabase.auth.getSession()
+    
+    if (data?.session) {
+      setIsAuthenticated(true)
+      const rawCode = data.session.user.app_metadata?.client_code || data.session.user.app_metadata?.tenant_slug || ''
+      const cleanCode = sanitizeClientCode(rawCode)
+      setTenantCode(cleanCode)
+      await fetchTenantDetail(cleanCode, brandHint)
+    } else {
+      // Jika BELUM LOGIN, ambil detail tenant berdasarkan brandHint dari domain!
+      await fetchTenantDetail('', brandHint)
+    }
+  }
+
+  initTenantAndSession()
+}, [fetchTenantDetail])
 
   useEffect(() => {
     if (isAuthenticated) fetchReservations()
