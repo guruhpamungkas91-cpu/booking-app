@@ -183,47 +183,57 @@ export default function AdminDashboard() {
   }
 
   // Fetch Reservations DENGAN ISOLASI TENANT (Mencegah Data Usaha Lain Muncul)
-  const fetchReservations = useCallback(async () => {
-    setLoading(true)
-    const { data: { user } } = await supabase.auth.getUser()
+const fetchReservations = useCallback(async () => {
+  setLoading(true)
+  const { data: { user } } = await supabase.auth.getUser()
 
-    const rawClientCode = user?.app_metadata?.client_code || user?.app_metadata?.tenant_slug || user?.email || tenantCode
-    const userClientCode = rawClientCode ? sanitizeClientCode(rawClientCode) : ''
-
-    await fetchTenantDetail(userClientCode)
-
-    // Mulai Query Supabase dengan filter tenant
-    let query = supabase.from('Reservations').select('*')
-
-    if (userClientCode) {
-      // Filter berdasarkan tenant_slug ATAU client_code akun yang sedang aktif
-      query = query.or(`tenant_slug.ilike.%${userClientCode}%,client_code.ilike.%${userClientCode}%`)
-    }
-
-    const { data, error } = await query.order('created_at', { ascending: false })
-
-    if (error) {
-      alert('Gagal mengambil data: ' + error.message)
-    } else {
-      setReservations(data || [])
-      setFilteredReservations(data || [])
-    }
+  if (!user) {
     setLoading(false)
-  }, [tenantCode, fetchTenantDetail])
-
-  // Update Status
-  const updateStatusInDB = async (id: number, newStatus: string) => {
-    const { error } = await supabase
-      .from('Reservations')
-      .update({ status: newStatus })
-      .eq('id', id)
-
-    if (error) {
-      alert('Gagal update status: ' + error.message)
-    } else {
-      fetchReservations()
-    }
+    return
   }
+
+  // 1. Ambil identitas Tenant resmi dari database berdasarkan Email / User Metadata / TenantCode
+  const { data: tenantData } = await supabase
+    .from('Tenants')
+    .select('client_code, tenant_slug')
+    .or(`admin_email.eq.${user.email},client_code.eq.${tenantCode},tenant_slug.eq.${tenantCode}`)
+    .maybeSingle()
+
+  // Fallback jika tidak ditemukan di database Tenants
+  const activeClientCode = tenantData?.client_code || user?.app_metadata?.client_code || 'FITRI'
+  const activeTenantSlug = tenantData?.tenant_slug || user?.app_metadata?.tenant_slug || 'fitrifeb'
+
+  await fetchTenantDetail(activeClientCode)
+
+  // 2. Query Supabase dengan match persis pada client_code ATAU tenant_slug
+  const { data, error } = await supabase
+    .from('Reservations')
+    .select('*')
+    .or(`client_code.eq.${activeClientCode},tenant_slug.eq.${activeTenantSlug},client_code.ilike.%${activeClientCode}%`)
+    .order('created_at', { ascending: false })
+
+  if (error) {
+    alert('Gagal mengambil data: ' + error.message)
+  } else {
+    setReservations(data || [])
+    setFilteredReservations(data || [])
+  }
+  setLoading(false)
+}, [tenantCode, fetchTenantDetail])
+
+// Update Status
+const updateStatusInDB = async (id: number, newStatus: string) => {
+  const { error } = await supabase
+    .from('Reservations')
+    .update({ status: newStatus })
+    .eq('id', id)
+
+  if (error) {
+    alert('Gagal update status: ' + error.message)
+  } else {
+    fetchReservations()
+  }
+}
 
   const handleStatusChange = (item: Reservation, newStatus: string) => {
     if (newStatus === 'cancelled') {

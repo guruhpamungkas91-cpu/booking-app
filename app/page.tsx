@@ -33,7 +33,6 @@ interface TenantData {
 function BookingFormContent() {
   const [step, setStep] = useState(1)
 
-  // FIX: Inisialisasi awal Kosong/Netral (Tidak ada default Barber/Eyelash)
   const [tenant, setTenant] = useState<TenantData>({
     clientCode: '',
     tenantSlug: '',
@@ -77,6 +76,30 @@ function BookingFormContent() {
     iconBg: isBeauty ? 'bg-rose-500/10 text-rose-500 border-rose-500/20' : 'bg-amber-500/10 text-amber-500 border-amber-500/20',
   }
 
+  // LOGIKA HITUNG HARGA
+  const parsePrice = (priceStr: string) => {
+    const numeric = priceStr.replace(/[^0-9]/g, '')
+    return numeric ? parseInt(numeric, 10) : 0
+  }
+
+  const calculateTotal = () => {
+    let serviceTotal = services
+      .filter((s) => formData.selected_services.includes(s.name))
+      .reduce((sum, item) => sum + parsePrice(item.price), 0)
+
+    if (isBeauty && !isBasic) {
+      serviceTotal = serviceTotal * formData.person_count
+    }
+
+    const removeLashFee = isBeauty && formData.need_remove_lash ? 30000 : 0
+    return serviceTotal + removeLashFee
+  }
+
+  const grandTotal = calculateTotal()
+  // FIX: DP diset tepat 50%
+  const dpAmount = Math.round(grandTotal * 0.5)
+  const payableAmount = formData.payment_type === 'DP' ? dpAmount : grandTotal
+
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const hostname = window.location.hostname
@@ -84,11 +107,7 @@ function BookingFormContent() {
       const tenantQuery = searchParams.get('tenant')
 
       const rawSubdomain = hostname.split('.')[0]
-      
-      const extractedSlug = rawSubdomain
-        .replace('-barbershop', '')
-        .replace('-lashes', '')
-
+      const extractedSlug = rawSubdomain.replace('-barbershop', '').replace('-lashes', '')
       const currentSlug = tenantQuery || (rawSubdomain === 'localhost' ? '' : extractedSlug)
 
       if (!currentSlug) {
@@ -99,14 +118,12 @@ function BookingFormContent() {
       const fetchTenantAndData = async () => {
         setFetchingServices(true)
         
-        // 1. Ambil data tenant dari Supabase berdasarkan URL/Slug persis
         const { data: tenantData } = await supabase
           .from('Tenants')
           .select('*')
           .eq('tenant_slug', currentSlug)
           .single()
 
-        // 2. Format Plan & Data murni dari DB tanpa hardcode default brand
         const dbPlan = (tenantData?.subscription_plan || 'BASIC').toUpperCase() as 'BASIC' | 'PREMIUM' | 'PROFESIONAL'
         const detectedCategory = tenantData?.category || (currentSlug.includes('lash') || currentSlug.includes('eyelash') ? 'eyelash' : 'barbershop')
 
@@ -120,10 +137,8 @@ function BookingFormContent() {
           staffLabel: tenantData?.staff_label || (detectedCategory.includes('eyelash') ? 'Lash Artist' : 'Capster')
         }
 
-        // Update state Tenant
         setTenant(activeTenant)
 
-        // 3. Fetch Services
         const { data: serviceData } = await supabase
           .from('Services')
           .select('*')
@@ -134,7 +149,6 @@ function BookingFormContent() {
           setFormData((prev) => ({ ...prev, selected_services: [serviceData[0].name] }))
         }
 
-        // 4. Fetch Staff jika paket NON-BASIC
         if (activeTenant.subscriptionPlan !== 'BASIC') {
           const { data: staffData } = await supabase
             .from('Staff')
@@ -206,6 +220,7 @@ function BookingFormContent() {
 
     const formattedServicesText = formData.selected_services.join(', ')
 
+    // FIX: Mengirim client_code dan tenant_slug sekaligus agar terbaca sempurna di dashboard
     const insertPayload: any = {
       customer_name: formData.customer_name,
       whatsapp_number: formData.whatsapp_number,
@@ -250,14 +265,14 @@ function BookingFormContent() {
     if (isBeauty) {
       messageText += `👁️ *Lepas Eyelash Lama:* ${formData.need_remove_lash ? 'Ya (+Rp 30.000)' : 'Tidak'}\n`
       if (formData.eye_shape_notes) messageText += `📝 *Catatan Model:* ${formData.eye_shape_notes}\n`
-      messageText += `💵 *Opsi Bayar:* ${formData.payment_type === 'DP' ? 'Down Payment (DP)' : 'Pelunasan Full'}\n`
+      messageText += `💵 *Opsi Bayar:* ${formData.payment_type === 'DP' ? 'Down Payment (DP 50%)' : 'Pelunasan Full'}\n`
+      messageText += `💰 *Total Bayar:* Rp ${payableAmount.toLocaleString('id-ID')} (${formData.payment_type})\n`
     }
     messageText += `💳 *Metode Bayar:* ${formData.payment_method}\n\nMohon diproses ya, terima kasih!`
 
     window.location.href = `https://wa.me/${tenant.adminWa}?text=${encodeURIComponent(messageText)}`
   }
 
-  // FIX: Loading Guard sebelum data tenant teridentifikasi penuh (Mencegah Flashing Tampilan Default)
   if (fetchingServices && !tenant.category) {
     return (
       <main className="min-h-screen bg-zinc-950 text-white flex items-center justify-center font-sans">
@@ -273,7 +288,6 @@ function BookingFormContent() {
     <main className="min-h-screen bg-zinc-950 text-zinc-100 flex items-center justify-center p-3 sm:p-6 font-sans">
       <div className="max-w-md w-full bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden backdrop-blur-md">
         
-        {/* BRANDING HEADER */}
         <div className="relative p-5 text-center bg-gradient-to-b from-zinc-800/80 to-zinc-900 border-b border-zinc-800">
           <div className={`inline-flex items-center justify-center w-10 h-10 rounded-full mb-2 border ${theme.iconBg}`}>
             {isBeauty ? (
@@ -307,11 +321,8 @@ function BookingFormContent() {
         </div>
 
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
-          
-          {/* ==================== TAMPILAN 1: BARBER (SINGLE PAGE UTUH) ==================== */}
           {!isBeauty && (
             <div className="space-y-4">
-              {/* DATA DIRI */}
               <div>
                 <label className="block text-xs font-medium text-zinc-300 mb-1">Nama Lengkap</label>
                 <input
@@ -336,7 +347,6 @@ function BookingFormContent() {
                 />
               </div>
 
-              {/* LAYANAN */}
               <div className="space-y-2">
                 <div className="flex justify-between items-center">
                   <label className="block text-xs font-medium text-zinc-300">Pilih Layanan</label>
@@ -386,7 +396,6 @@ function BookingFormContent() {
                 )}
               </div>
 
-              {/* STAFF (KHUSUS PAKET NON-BASIC) */}
               {!isBasic && staffList.length > 0 && (
                 <div>
                   <label className="block text-xs font-medium text-zinc-300 mb-1">Pilih {tenant.staffLabel}</label>
@@ -407,7 +416,6 @@ function BookingFormContent() {
                 </div>
               )}
 
-              {/* JADWAL */}
               <div className="grid grid-cols-2 gap-2.5">
                 <div>
                   <label className="block text-xs font-medium text-zinc-300 mb-1">Tanggal</label>
@@ -431,7 +439,6 @@ function BookingFormContent() {
                 </div>
               </div>
 
-              {/* METODE PEMBAYARAN */}
               <div className="grid grid-cols-3 gap-1.5 pt-2">
                 {[
                   { id: 'QRIS', label: 'QRIS' },
@@ -475,10 +482,8 @@ function BookingFormContent() {
             </div>
           )}
 
-          {/* ==================== TAMPILAN 2: EYELASH / BEAUTY (3-STEP WIZARD) ==================== */}
           {isBeauty && (
             <>
-              {/* STEP 1 */}
               {step === 1 && (
                 <div className="space-y-4 animate-fadeIn">
                   <h2 className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Langkah 1 dari 3: Data Diri</h2>
@@ -506,7 +511,6 @@ function BookingFormContent() {
                     />
                   </div>
 
-                  {/* OPSI JUMLAH ORANG HANYA UNTUK PAKET PREMIUM & PROFESIONAL */}
                   {!isBasic && (
                     <div>
                       <label className="block text-xs font-medium text-zinc-300 mb-1">Jumlah Orang</label>
@@ -540,7 +544,6 @@ function BookingFormContent() {
                     />
                   </div>
 
-                  {/* CHECKBOX LEPAS EYELASH LAMA DENGAN HARGA DYNAMIC */}
                   <label className="flex items-center justify-between p-3 bg-zinc-950 border border-zinc-800 rounded-xl cursor-pointer">
                     <div className="flex items-center space-x-2.5">
                       <input 
@@ -579,7 +582,6 @@ function BookingFormContent() {
                 </div>
               )}
 
-              {/* STEP 2 */}
               {step === 2 && (
                 <div className="space-y-4 animate-fadeIn">
                   <h2 className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Langkah 2 dari 3: Layanan & Jadwal</h2>
@@ -633,7 +635,6 @@ function BookingFormContent() {
                     )}
                   </div>
 
-                  {/* STAFF (KHUSUS PAKET NON-BASIC) */}
                   {!isBasic && staffList.length > 0 && (
                     <div>
                       <label className="block text-xs font-medium text-zinc-300 mb-1">Pilih {tenant.staffLabel}</label>
@@ -696,10 +697,28 @@ function BookingFormContent() {
                 </div>
               )}
 
-              {/* STEP 3 */}
               {step === 3 && (
                 <div className="space-y-4 animate-fadeIn">
                   <h2 className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Langkah 3 dari 3: Pembayaran</h2>
+
+                  <div className="p-3.5 bg-zinc-950 border border-zinc-800 rounded-xl space-y-2 text-xs">
+                    <div className="flex justify-between text-zinc-400">
+                      <span>Layanan {(!isBasic && formData.person_count > 1) ? `(${formData.person_count} Orang)` : ''}</span>
+                      <span>Rp {(grandTotal - (formData.need_remove_lash ? 30000 : 0)).toLocaleString('id-ID')}</span>
+                    </div>
+
+                    {formData.need_remove_lash && (
+                      <div className="flex justify-between text-rose-400">
+                        <span>Lepas Eyelash Lama</span>
+                        <span>+Rp 30.000</span>
+                      </div>
+                    )}
+
+                    <div className="border-t border-zinc-800 pt-2 flex justify-between font-bold text-white">
+                      <span>Total Biaya</span>
+                      <span>Rp {grandTotal.toLocaleString('id-ID')}</span>
+                    </div>
+                  </div>
 
                   <div className="grid grid-cols-2 gap-2">
                     {['DP', 'FULL'].map((t) => (
@@ -707,11 +726,14 @@ function BookingFormContent() {
                         type="button"
                         key={t}
                         onClick={() => setFormData({ ...formData, payment_type: t })}
-                        className={`py-2 text-xs font-semibold rounded-xl border transition-all ${
+                        className={`py-2 px-1 text-xs font-semibold rounded-xl border transition-all text-center ${
                           formData.payment_type === t ? `${theme.accentBg} text-zinc-950 border-white font-bold` : 'bg-zinc-950 border-zinc-800 text-zinc-400'
                         }`}
                       >
-                        {t === 'DP' ? 'DP (Uang Muka)' : 'Full Payment'}
+                        <div>{t === 'DP' ? 'DP (50%)' : 'Full Payment'}</div>
+                        <div className="text-[10px] opacity-80 mt-0.5">
+                          Rp {(t === 'DP' ? dpAmount : grandTotal).toLocaleString('id-ID')}
+                        </div>
                       </button>
                     ))}
                   </div>
@@ -737,7 +759,9 @@ function BookingFormContent() {
 
                   {formData.payment_method === 'QRIS' && (
                     <div className="p-3 bg-zinc-950 border border-zinc-800 rounded-xl text-center space-y-2">
-                      <p className={`text-xs font-semibold ${theme.accentText}`}>Scan QRIS Pembayaran</p>
+                      <p className={`text-xs font-semibold ${theme.accentText}`}>
+                        Scan QRIS (Rp {payableAmount.toLocaleString('id-ID')})
+                      </p>
                       <div className="p-2 bg-white rounded-xl inline-block shadow-md">
                         <img
                           src={`/${tenant.tenantSlug}.png`}
