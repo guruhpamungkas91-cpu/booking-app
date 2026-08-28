@@ -1622,8 +1622,18 @@ export default function AdminDashboard() {
       {/* MODAL REFUND */}
       {cancelModalItem && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 sm:p-7 max-w-md w-full space-y-4 sm:space-y-5 shadow-2xl animate-in fade-in zoom-in duration-200">
-            <div className="text-center space-y-2">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 sm:p-7 max-w-md w-full space-y-4 sm:space-y-5 shadow-2xl animate-in fade-in zoom-in duration-200 relative">
+            
+            {/* Tombol X Close Modal */}
+            <button
+              onClick={() => setCancelModalItem(null)}
+              className="absolute top-4 right-4 text-zinc-400 hover:text-white bg-zinc-800/60 hover:bg-zinc-800 w-8 h-8 rounded-full flex items-center justify-center transition-all text-sm font-bold border border-zinc-700/50"
+              title="Tutup Modal"
+            >
+              ✕
+            </button>
+
+            <div className="text-center space-y-2 pt-2 sm:pt-0">
               <span className="text-3xl sm:text-4xl inline-block mb-1">💸</span>
               <h3 className="text-base sm:text-lg font-black text-white">Konfirmasi Pembatalan & Refund</h3>
               <p className="text-xs text-zinc-400 leading-relaxed font-medium">
