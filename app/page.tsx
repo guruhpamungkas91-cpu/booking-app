@@ -70,6 +70,7 @@ function BookingFormContent() {
     person_count: 1,
     payment_type: 'DP',
     need_extra_addon: false,
+    addon_person_count: 1,
     has_consent: false,
     custom_notes: ''
   })
@@ -143,7 +144,9 @@ function BookingFormContent() {
       serviceTotal = serviceTotal * formData.person_count
     }
 
-    const extraFee = isWizard && formData.need_extra_addon ? tenant.addonPrice : 0
+    const extraFee = isWizard && formData.need_extra_addon 
+      ? tenant.addonPrice * formData.addon_person_count 
+      : 0
     return serviceTotal + extraFee
   }
 
@@ -301,6 +304,7 @@ function BookingFormContent() {
       insertPayload.person_count = formData.person_count
       insertPayload.payment_type = formData.payment_type
       insertPayload.need_remove_lash = formData.need_extra_addon
+      insertPayload.addon_person_count = formData.need_extra_addon ? formData.addon_person_count : 0
       insertPayload.has_eye_allergy_consent = formData.has_consent
       insertPayload.eye_shape_notes = formData.custom_notes
     }
@@ -322,7 +326,7 @@ function BookingFormContent() {
     messageText += `✨ *Layanan:* ${formattedServicesText}\n`
     
     if (formData.need_extra_addon) {
-      messageText += `✨ *Tambahan:* ${tenant.addonLabel}\n`
+      messageText += `✨ *Tambahan:* ${tenant.addonLabel.replace(/\s*\(\+Rp\s*[\d.]+\)/gi, '')} (${formData.addon_person_count} Orang)\n`
     }
 
     if (!isBasic && formData.selected_staff) {
@@ -359,7 +363,7 @@ function BookingFormContent() {
         <div className="relative p-6 text-center bg-gradient-to-b from-zinc-800/40 via-zinc-900/60 to-zinc-900 border-b border-zinc-800/60">
           <div className={`inline-flex items-center justify-center w-12 h-12 rounded-2xl mb-3 border ${theme.iconBg} backdrop-blur-md shadow-lg transform transition-transform hover:scale-105 duration-300`}>
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 00-2 2z" />
             </svg>
           </div>
           <h1 className="text-2xl font-black tracking-tight text-white uppercase drop-shadow-sm">{tenant.name}</h1>
@@ -592,7 +596,13 @@ function BookingFormContent() {
                           <button
                             type="button"
                             key={num}
-                            onClick={() => setFormData({ ...formData, person_count: num })}
+                            onClick={() => {
+                              setFormData((prev) => ({
+                                ...prev,
+                                person_count: num,
+                                addon_person_count: prev.addon_person_count > num ? num : prev.addon_person_count
+                              }))
+                            }}
                             className={`py-2.5 text-xs font-bold rounded-2xl border transition-all duration-300 ${
                               formData.person_count === num
                                 ? `${theme.accentBg} text-white border-transparent shadow-md scale-105`
@@ -607,27 +617,54 @@ function BookingFormContent() {
                   )}
 
                   {tenant.showExtraAddon && (
-                    <label className={`flex items-center justify-between p-3.5 rounded-2xl border cursor-pointer transition-all duration-300 ${
-                      formData.need_extra_addon ? `${theme.accentBgLight} ${theme.accentBorder}` : 'bg-zinc-950/60 border-zinc-800/80 hover:border-zinc-700'
-                    }`}>
-                      <div className="flex items-center space-x-3">
-                        <input
-                          type="checkbox"
-                          className={`w-4.5 h-4.5 rounded-md ${theme.checkbox}`}
-                          checked={formData.need_extra_addon}
-                          onChange={(e) => setFormData({ ...formData, need_extra_addon: e.target.checked })}
-                        />
-                        <span className="text-xs text-zinc-200 font-medium">
-                          {tenant.addonLabel.replace(/\s*\(\+Rp\s*[\d.]+\)/gi, '')}
-                        </span>
-                      </div>
+                    <div className="space-y-2">
+                      <label className={`flex items-center justify-between p-3.5 rounded-2xl border cursor-pointer transition-all duration-300 ${
+                        formData.need_extra_addon ? `${theme.accentBgLight} ${theme.accentBorder}` : 'bg-zinc-950/60 border-zinc-800/80 hover:border-zinc-700'
+                      }`}>
+                        <div className="flex items-center space-x-3">
+                          <input
+                            type="checkbox"
+                            className={`w-4.5 h-4.5 rounded-md ${theme.checkbox}`}
+                            checked={formData.need_extra_addon}
+                            onChange={(e) => setFormData({ ...formData, need_extra_addon: e.target.checked })}
+                          />
+                          <span className="text-xs text-zinc-200 font-medium">
+                            {tenant.addonLabel.replace(/\s*\(\+Rp\s*[\d.]+\)/gi, '')}
+                          </span>
+                        </div>
 
-                      {formData.need_extra_addon && (
-                        <span className={`text-[11px] font-bold px-2.5 py-1 rounded-xl ${theme.accentSolidBg} text-white shadow-sm transition-all animate-fadeIn`}>
-                          +Rp {tenant.addonPrice.toLocaleString('id-ID')}
-                        </span>
+                        {formData.need_extra_addon && (
+                          <span className={`text-[11px] font-bold px-2.5 py-1 rounded-xl ${theme.accentSolidBg} text-white shadow-sm transition-all animate-fadeIn`}>
+                            +Rp {(tenant.addonPrice * formData.addon_person_count).toLocaleString('id-ID')}
+                          </span>
+                        )}
+                      </label>
+
+                      {/* OPSI JUMLAH ORANG LEPAS EYELASH */}
+                      {formData.need_extra_addon && formData.person_count > 1 && (
+                        <div className="p-3 bg-zinc-950/90 border border-zinc-800/80 rounded-2xl space-y-2 animate-fadeIn">
+                          <label className="block text-[10px] font-semibold text-zinc-400 uppercase tracking-wider">
+                            Berapa orang yang perlu lepas eyelash?
+                          </label>
+                          <div className="flex space-x-2">
+                            {Array.from({ length: formData.person_count }, (_, i) => i + 1).map((cnt) => (
+                              <button
+                                type="button"
+                                key={cnt}
+                                onClick={() => setFormData({ ...formData, addon_person_count: cnt })}
+                                className={`flex-1 py-1.5 text-xs font-bold rounded-xl border transition-all duration-300 ${
+                                  formData.addon_person_count === cnt
+                                    ? `${theme.accentBg} text-white border-transparent shadow-sm`
+                                    : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-zinc-700'
+                                }`}
+                              >
+                                {cnt} Orang
+                              </button>
+                            ))}
+                          </div>
+                        </div>
                       )}
-                    </label>
+                    </div>
                   )}
 
                   <div>
@@ -792,13 +829,13 @@ function BookingFormContent() {
                   <div className="p-4 bg-zinc-950/80 border border-zinc-800/80 rounded-2xl space-y-2.5 text-xs shadow-inner">
                     <div className="flex justify-between text-zinc-400">
                       <span>Layanan {(!isBasic && formData.person_count > 1) ? `(${formData.person_count} Orang)` : ''}</span>
-                      <span className="font-semibold text-zinc-200">Rp {(grandTotal - (formData.need_extra_addon ? tenant.addonPrice : 0)).toLocaleString('id-ID')}</span>
+                      <span className="font-semibold text-zinc-200">Rp {(grandTotal - (formData.need_extra_addon ? tenant.addonPrice * formData.addon_person_count : 0)).toLocaleString('id-ID')}</span>
                     </div>
 
                     {formData.need_extra_addon && (
                       <div className="flex justify-between text-zinc-400">
-                        <span>{tenant.addonLabel}</span>
-                        <span className="font-semibold text-zinc-200">Rp {tenant.addonPrice.toLocaleString('id-ID')}</span>
+                        <span>{tenant.addonLabel.replace(/\s*\(\+Rp\s*[\d.]+\)/gi, '')} ({formData.addon_person_count} Orang)</span>
+                        <span className="font-semibold text-zinc-200">Rp {(tenant.addonPrice * formData.addon_person_count).toLocaleString('id-ID')}</span>
                       </div>
                     )}
 
