@@ -25,30 +25,30 @@ type SortOrder = 'asc' | 'desc'
 type SubscriptionPlanType = 'BASIC' | 'PREMIUM' | 'PROFESIONAL'
 type BusinessType = 'eyelash' | 'barber'
 
-// HELPER: Deteksi Brand & Tipe Bisnis Langsung dari Domain secara Instan (Synchronous)
+// HELPER: Deteksi Brand & Tipe Bisnis Synchronous langsung saat komponen dibuat
 const detectBrandFromHostname = (): { brand: string; type: BusinessType } => {
   if (typeof window !== 'undefined') {
     const host = window.location.hostname.toLowerCase()
+    if (host.includes('mcut')) return { brand: 'MCUT', type: 'barber' }
+    if (host.includes('sem')) return { brand: 'SEM BARBERSHOP', type: 'barber' }
     if (host.includes('fitrifeb') || host.includes('lashes') || host.includes('eyelash')) {
       return { brand: 'FITRIFEB', type: 'eyelash' }
     }
-    if (host.includes('mcut')) return { brand: 'MCUT', type: 'barber' }
-    if (host.includes('sem')) return { brand: 'SEM BARBERSHOP', type: 'barber' }
   }
   return { brand: 'FITRIFEB', type: 'eyelash' } // Default Fallback
 }
 
 export default function AdminDashboard() {
-  const initialInfo = useMemo(() => detectBrandFromHostname(), [])
+  // FIX DELAY/FLASH: Gunakan fungsi callback pada useState agar terdeteksi INSTAN sebelum render pertama
+  const [brandTitle, setBrandTitle] = useState<string>(() => detectBrandFromHostname().brand)
+  const [businessType, setBusinessType] = useState<BusinessType>(() => detectBrandFromHostname().type)
+  const [staffLabel, setStaffLabel] = useState<string>(() => 
+    detectBrandFromHostname().type === 'eyelash' ? 'Lash Artist' : 'Capster / Staff'
+  )
 
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [tenantCode, setTenantCode] = useState<string>('')
-  const [brandTitle, setBrandTitle] = useState<string>(initialInfo.brand)
-  const [businessType, setBusinessType] = useState<BusinessType>(initialInfo.type)
-
-  // STATE KONTROL PAKET LANGGANAN & STAFF LABEL
   const [subscriptionPlan, setSubscriptionPlan] = useState<SubscriptionPlanType>('BASIC')
-  const [staffLabel, setStaffLabel] = useState<string>(initialInfo.type === 'eyelash' ? 'Lash Artist' : 'Capster / Staff')
 
   // State Login Supabase
   const [emailInput, setEmailInput] = useState('')
@@ -771,14 +771,10 @@ export default function AdminDashboard() {
     }
   }
 
-  // INITIALIZER UNTUK DETEKSI TENANT
+  // INITIALIZER UNTUK CEK SESSION SUPABASE SAAT AWAL LOAD
   useEffect(() => {
-    const initTenantAndSession = async () => {
+    const initSession = async () => {
       const info = detectBrandFromHostname()
-      setBrandTitle(info.brand)
-      setBusinessType(info.type)
-      setStaffLabel(info.type === 'eyelash' ? 'Lash Artist' : 'Capster / Staff')
-
       const { data } = await supabase.auth.getSession()
       
       if (data?.session) {
@@ -797,7 +793,7 @@ export default function AdminDashboard() {
       }
     }
 
-    initTenantAndSession()
+    initSession()
   }, [fetchTenantDetail])
 
   useEffect(() => {
@@ -809,11 +805,11 @@ export default function AdminDashboard() {
     const isEyelash = businessType === 'eyelash'
 
     return (
-      <main className={`min-h-screen flex items-center justify-center p-4 font-sans text-zinc-100 relative overflow-hidden transition-colors duration-500 ${
+      <main className={`min-h-screen flex items-center justify-center p-4 font-sans text-zinc-100 relative overflow-hidden transition-colors duration-300 ${
         isEyelash ? 'bg-[#0f0914]' : 'bg-[#09090b]'
       }`}>
         {/* Glow ambient effect dinamis */}
-        <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-80 sm:w-96 h-80 sm:h-96 rounded-full blur-3xl pointer-events-none transition-all duration-700 ${
+        <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-80 sm:w-96 h-80 sm:h-96 rounded-full blur-3xl pointer-events-none transition-all duration-500 ${
           isEyelash ? 'bg-pink-500/15' : 'bg-amber-500/10'
         }`}></div>
 
@@ -885,7 +881,6 @@ export default function AdminDashboard() {
   // VARIAN KATEGORI BISNIS KHUSUS DASHBOARD (EYELASH vs BARBER)
   const isEyelash = businessType === 'eyelash'
   const primaryAccent = isEyelash ? 'text-pink-400' : 'text-amber-400'
-  const primaryBg = isEyelash ? 'bg-pink-500' : 'bg-amber-500'
 
   return (
     <div className={`min-h-screen p-3 sm:p-6 md:p-8 text-zinc-100 font-sans relative transition-colors duration-500 ${
