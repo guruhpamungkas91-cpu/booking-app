@@ -33,15 +33,15 @@ interface TenantData {
 function BookingFormContent() {
   const [step, setStep] = useState(1)
 
-  // FIX: Default diubah ke BASIC agar render awal langsung menyesuaikan paket BASIC
+  // FIX: Inisialisasi awal Kosong/Netral (Tidak ada default Barber/Eyelash)
   const [tenant, setTenant] = useState<TenantData>({
-    clientCode: 'MCUT',
-    tenantSlug: 'mcut',
-    name: 'MCUT',
-    adminWa: '6285899997828',
+    clientCode: '',
+    tenantSlug: '',
+    name: '',
+    adminWa: '',
     subscriptionPlan: 'BASIC',
-    category: 'barbershop',
-    staffLabel: 'Capster'
+    category: '',
+    staffLabel: 'Staff'
   })
 
   const [services, setServices] = useState<ServiceItem[]>([])
@@ -65,7 +65,7 @@ function BookingFormContent() {
   const [loading, setLoading] = useState(false)
 
   const categoryLower = tenant.category.toLowerCase()
-  const isBeauty = categoryLower.includes('eyelash') || categoryLower.includes('beauty') || categoryLower.includes('salon')
+  const isBeauty = categoryLower.includes('eyelash') || categoryLower.includes('beauty') || categoryLower.includes('salon') || categoryLower.includes('lashes')
   const isBasic = tenant.subscriptionPlan === 'BASIC'
 
   const theme = {
@@ -78,88 +78,89 @@ function BookingFormContent() {
   }
 
   useEffect(() => {
-  if (typeof window !== 'undefined') {
-    const hostname = window.location.hostname
-    const searchParams = new URLSearchParams(window.location.search)
-    const tenantQuery = searchParams.get('tenant')
+    if (typeof window !== 'undefined') {
+      const hostname = window.location.hostname
+      const searchParams = new URLSearchParams(window.location.search)
+      const tenantQuery = searchParams.get('tenant')
 
-    const rawSubdomain = hostname.split('.')[0]
-    
-    // Normalisasi slug: jika 'fitrifeb-lashes' atau 'mcut-barbershop', ambil kata utamanya 'fitrifeb' / 'mcut'
-    const extractedSlug = rawSubdomain
-      .replace('-barbershop', '')
-      .replace('-lashes', '')
-
-    const currentSlug = tenantQuery || (rawSubdomain === 'localhost' ? 'mcut' : extractedSlug)
-
-    const fetchTenantAndData = async () => {
-      setFetchingServices(true)
+      const rawSubdomain = hostname.split('.')[0]
       
-      // 1. Ambil data tenant dari Supabase
-      const { data: tenantData } = await supabase
-        .from('Tenants')
-        .select('*')
-        .eq('tenant_slug', currentSlug)
-        .single()
+      const extractedSlug = rawSubdomain
+        .replace('-barbershop', '')
+        .replace('-lashes', '')
 
-      // 2. Format Plan & Default Data
-      const dbPlan = (tenantData?.subscription_plan || 'BASIC').toUpperCase() as 'BASIC' | 'PREMIUM' | 'PROFESIONAL'
-      
-      // Cek apakah ini Eyelash berdasarkan slug atau category DB
-      const isEyelashSlug = currentSlug.includes('fitri')
-      
-      const activeTenant: TenantData = {
-        clientCode: tenantData?.client_code || (isEyelashSlug ? 'FITRI' : 'MCUT'),
-        tenantSlug: tenantData?.tenant_slug || currentSlug,
-        name: tenantData?.business_name || tenantData?.name || (isEyelashSlug ? 'Fitri Lash Studio' : 'MCUT Barber'),
-        adminWa: tenantData?.admin_wa || '6285899997828',
-        subscriptionPlan: dbPlan,
-        category: tenantData?.category || (isEyelashSlug ? 'eyelash' : 'barbershop'),
-        staffLabel: tenantData?.staff_label || (isEyelashSlug ? 'Lash Artist' : 'Capster')
+      const currentSlug = tenantQuery || (rawSubdomain === 'localhost' ? '' : extractedSlug)
+
+      if (!currentSlug) {
+        setFetchingServices(false)
+        return
       }
 
-      // Update state Tenant
-      setTenant(activeTenant)
+      const fetchTenantAndData = async () => {
+        setFetchingServices(true)
+        
+        // 1. Ambil data tenant dari Supabase berdasarkan URL/Slug persis
+        const { data: tenantData } = await supabase
+          .from('Tenants')
+          .select('*')
+          .eq('tenant_slug', currentSlug)
+          .single()
 
-      // 3. Fetch Services
-      const { data: serviceData } = await supabase
-        .from('Services')
-        .select('*')
-        .eq('tenant_slug', activeTenant.tenantSlug)
+        // 2. Format Plan & Data murni dari DB tanpa hardcode default brand
+        const dbPlan = (tenantData?.subscription_plan || 'BASIC').toUpperCase() as 'BASIC' | 'PREMIUM' | 'PROFESIONAL'
+        const detectedCategory = tenantData?.category || (currentSlug.includes('lash') || currentSlug.includes('eyelash') ? 'eyelash' : 'barbershop')
 
-      if (serviceData && serviceData.length > 0) {
-        setServices(serviceData)
-        setFormData((prev) => ({ ...prev, selected_services: [serviceData[0].name] }))
-      }
+        const activeTenant: TenantData = {
+          clientCode: tenantData?.client_code || currentSlug.toUpperCase(),
+          tenantSlug: tenantData?.tenant_slug || currentSlug,
+          name: tenantData?.business_name || tenantData?.name || currentSlug.toUpperCase(),
+          adminWa: tenantData?.admin_wa || '',
+          subscriptionPlan: dbPlan,
+          category: detectedCategory,
+          staffLabel: tenantData?.staff_label || (detectedCategory.includes('eyelash') ? 'Lash Artist' : 'Capster')
+        }
 
-      // 4. Fetch Staff jika paket NON-BASIC
-      if (activeTenant.subscriptionPlan !== 'BASIC') {
-        const { data: staffData } = await supabase
-          .from('Staff')
+        // Update state Tenant
+        setTenant(activeTenant)
+
+        // 3. Fetch Services
+        const { data: serviceData } = await supabase
+          .from('Services')
           .select('*')
           .eq('tenant_slug', activeTenant.tenantSlug)
-          .eq('is_active', true)
 
-        if (staffData && staffData.length > 0) {
-          setStaffList(staffData)
-          setFormData((prev) => ({ ...prev, selected_staff: staffData[0].name }))
+        if (serviceData && serviceData.length > 0) {
+          setServices(serviceData)
+          setFormData((prev) => ({ ...prev, selected_services: [serviceData[0].name] }))
+        }
+
+        // 4. Fetch Staff jika paket NON-BASIC
+        if (activeTenant.subscriptionPlan !== 'BASIC') {
+          const { data: staffData } = await supabase
+            .from('Staff')
+            .select('*')
+            .eq('tenant_slug', activeTenant.tenantSlug)
+            .eq('is_active', true)
+
+          if (staffData && staffData.length > 0) {
+            setStaffList(staffData)
+            setFormData((prev) => ({ ...prev, selected_staff: staffData[0].name }))
+          } else {
+            setStaffList([])
+          }
         } else {
           setStaffList([])
+          setFormData((prev) => ({ ...prev, selected_staff: '' }))
         }
-      } else {
-        setStaffList([])
-        setFormData((prev) => ({ ...prev, selected_staff: '' }))
+
+        setFetchingServices(false)
       }
 
-      setFetchingServices(false)
+      fetchTenantAndData()
     }
-
-    fetchTenantAndData()
-  }
-}, [])
+  }, [])
 
   const handleServiceSelect = (serviceName: string) => {
-    // FIX: Jika BASIC, selalu override menjadi 1 item saja (tidak bisa multi-select / toggle kosong)
     if (isBasic) {
       setFormData((prev) => ({ ...prev, selected_services: [serviceName] }))
     } else {
@@ -214,7 +215,8 @@ function BookingFormContent() {
       staff_name: !isBasic ? formData.selected_staff : null,
       payment_method: formData.payment_method,
       status: 'pending',
-      client_code: tenant.clientCode
+      client_code: tenant.clientCode,
+      tenant_slug: tenant.tenantSlug
     }
 
     if (isBeauty) {
@@ -253,6 +255,18 @@ function BookingFormContent() {
     messageText += `💳 *Metode Bayar:* ${formData.payment_method}\n\nMohon diproses ya, terima kasih!`
 
     window.location.href = `https://wa.me/${tenant.adminWa}?text=${encodeURIComponent(messageText)}`
+  }
+
+  // FIX: Loading Guard sebelum data tenant teridentifikasi penuh (Mencegah Flashing Tampilan Default)
+  if (fetchingServices && !tenant.category) {
+    return (
+      <main className="min-h-screen bg-zinc-950 text-white flex items-center justify-center font-sans">
+        <div className="flex flex-col items-center space-y-3">
+          <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+          <p className="text-xs text-zinc-400 font-medium">Memuat Halaman Reservasi...</p>
+        </div>
+      </main>
+    )
   }
 
   return (
@@ -443,7 +457,7 @@ function BookingFormContent() {
                   <div className="p-2 bg-white rounded-xl inline-block shadow-md">
                     <img
                       src={`/${tenant.tenantSlug}.png`}
-                      onError={(e) => { e.currentTarget.src = '/fitrifeb.png' }}
+                      onError={(e) => { e.currentTarget.style.display = 'none' }}
                       alt="QRIS Code"
                       className="w-44 h-44 object-contain mx-auto"
                     />
@@ -716,7 +730,7 @@ function BookingFormContent() {
                       <div className="p-2 bg-white rounded-xl inline-block shadow-md">
                         <img
                           src={`/${tenant.tenantSlug}.png`}
-                          onError={(e) => { e.currentTarget.src = '/fitrifeb.png' }}
+                          onError={(e) => { e.currentTarget.style.display = 'none' }}
                           alt="QRIS Code"
                           className="w-44 h-44 object-contain mx-auto"
                         />
