@@ -25,7 +25,7 @@ type SortOrder = 'asc' | 'desc'
 type SubscriptionPlanType = 'BASIC' | 'PREMIUM' | 'PROFESIONAL'
 type BusinessType = 'eyelash' | 'barber'
 
-// HELPER: Deteksi Brand & Tipe Bisnis Synchronous langsung saat komponen dibuat
+// HELPER: Deteksi Brand & Tipe Bisnis Synchronous langsung dari Hostname
 const detectBrandFromHostname = (): { brand: string; type: BusinessType } => {
   if (typeof window !== 'undefined') {
     const host = window.location.hostname.toLowerCase()
@@ -39,7 +39,9 @@ const detectBrandFromHostname = (): { brand: string; type: BusinessType } => {
 }
 
 export default function AdminDashboard() {
-  // FIX DELAY/FLASH: Gunakan fungsi callback pada useState agar terdeteksi INSTAN sebelum render pertama
+  // State indikator inisialisasi awal (Mencegah Delay Flash Tampilan)
+  const [isInitializing, setIsInitializing] = useState<boolean>(true)
+
   const [brandTitle, setBrandTitle] = useState<string>(() => detectBrandFromHostname().brand)
   const [businessType, setBusinessType] = useState<BusinessType>(() => detectBrandFromHostname().type)
   const [staffLabel, setStaffLabel] = useState<string>(() => 
@@ -180,7 +182,7 @@ export default function AdminDashboard() {
     setIsAuthenticated(false)
   }
 
-  // Fetch Reservations
+  // Fetch Reservations DENGAN ISOLASI TENANT (Mencegah Data Usaha Lain Muncul)
   const fetchReservations = useCallback(async () => {
     setLoading(true)
     const { data: { user } } = await supabase.auth.getUser()
@@ -190,10 +192,15 @@ export default function AdminDashboard() {
 
     await fetchTenantDetail(userClientCode)
 
-    const { data, error } = await supabase
-      .from('Reservations')
-      .select('*')
-      .order('created_at', { ascending: false })
+    // Mulai Query Supabase dengan filter tenant
+    let query = supabase.from('Reservations').select('*')
+
+    if (userClientCode) {
+      // Filter berdasarkan tenant_slug ATAU client_code akun yang sedang aktif
+      query = query.or(`tenant_slug.ilike.%${userClientCode}%,client_code.ilike.%${userClientCode}%`)
+    }
+
+    const { data, error } = await query.order('created_at', { ascending: false })
 
     if (error) {
       alert('Gagal mengambil data: ' + error.message)
@@ -775,6 +782,7 @@ export default function AdminDashboard() {
   // INITIALIZER UNTUK CEK SESSION SUPABASE SAAT AWAL LOAD
   useEffect(() => {
     const initSession = async () => {
+      setIsInitializing(true)
       const info = detectBrandFromHostname()
       const { data } = await supabase.auth.getSession()
       
@@ -792,6 +800,7 @@ export default function AdminDashboard() {
       } else {
         await fetchTenantDetail('', info.brand)
       }
+      setIsInitializing(false)
     }
 
     initSession()
@@ -800,6 +809,18 @@ export default function AdminDashboard() {
   useEffect(() => {
     if (isAuthenticated) fetchReservations()
   }, [isAuthenticated, fetchReservations])
+
+  // PRE-RENDER LOADER: Cegah Delay / Flashing tampilan default sebelum session siap
+  if (isInitializing) {
+    return (
+      <main className="min-h-screen bg-[#09090b] flex items-center justify-center font-sans text-zinc-400">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-2 border-zinc-700 border-t-zinc-200 rounded-full animate-spin"></div>
+          <span className="text-xs font-medium tracking-wide">Memuat Sistem Dashboard...</span>
+        </div>
+      </main>
+    )
+  }
 
   // RENDERING HALAMAN LOGIN DENGAN PERBEDAAAN THEME UI
   if (!isAuthenticated) {
