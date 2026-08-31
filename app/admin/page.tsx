@@ -1445,207 +1445,205 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* TABEL DATA RESERVASI DYNAMIC ACCENT - FIXED RESPONSIVE TABLE OVERFLOW */}
-        <div className={`backdrop-blur-2xl border rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden bg-zinc-950/80 ${themeStyles.borderAccent}`}>
+        {/* TABEL DATA RESERVASI - RESPONSIVE SCROLL FIXED (TIDAK KEPOTONG DI LAYAR KECIL DENGAN WRAPPER FLEXIBLE) */}
+        <div className={`backdrop-blur-2xl border rounded-2xl sm:rounded-3xl shadow-2xl bg-zinc-950/80 ${themeStyles.borderAccent}`}>
           {loading ? (
             <div className="p-12 text-center text-zinc-500 text-xs font-semibold">Memuat data reservasi...</div>
           ) : filteredReservations.length === 0 ? (
             <div className="p-12 text-center text-zinc-500 text-xs font-semibold">Belum ada reservasi masuk / sesuai filter.</div>
           ) : (
-            <div className="w-full overflow-x-auto">
-              <div className="min-w-full inline-block align-middle">
-                <table className="min-w-[1000px] w-full text-left border-collapse">
-                  <thead>
-                    <tr className="border-b border-zinc-800/80 bg-zinc-950/95 text-[10px] font-black uppercase tracking-widest text-zinc-400 select-none">
-                      
-                      <th onClick={() => handleSort('booking_date')} className={`p-3.5 sm:p-4.5 cursor-pointer transition hover:${themeStyles.textAccent}`}>
+            <div className="w-full overflow-x-auto rounded-2xl sm:rounded-3xl">
+              <table className="w-full text-left border-collapse min-w-[1200px]">
+                <thead>
+                  <tr className="border-b border-zinc-800/80 bg-zinc-950/95 text-[10px] font-black uppercase tracking-widest text-zinc-400 select-none">
+                    
+                    <th onClick={() => handleSort('booking_date')} className={`p-3.5 sm:p-4.5 cursor-pointer transition hover:${themeStyles.textAccent}`}>
+                      <div className="flex items-center gap-1.5 whitespace-nowrap">
+                        <span>Tanggal</span>
+                        {sortField === 'booking_date' && (sortOrder === 'asc' ? '▲' : '▼')}
+                      </div>
+                    </th>
+
+                    <th onClick={() => handleSort('booking_time')} className={`p-3.5 sm:p-4.5 cursor-pointer transition hover:${themeStyles.textAccent}`}>
+                      <div className="flex items-center gap-1.5 whitespace-nowrap">
+                        <span>Jam</span>
+                        {sortField === 'booking_time' && (sortOrder === 'asc' ? '▲' : '▼')}
+                      </div>
+                    </th>
+
+                    <th onClick={() => handleSort('customer_name')} className={`p-3.5 sm:p-4.5 cursor-pointer transition hover:${themeStyles.textAccent}`}>
+                      <div className="flex items-center gap-1.5 whitespace-nowrap">
+                        <span>Pelanggan</span>
+                        {sortField === 'customer_name' && (sortOrder === 'asc' ? '▲' : '▼')}
+                      </div>
+                    </th>
+
+                    <th onClick={() => handleSort('service_name')} className={`p-3.5 sm:p-4.5 cursor-pointer transition hover:${themeStyles.textAccent}`}>
+                      <div className="flex items-center gap-1.5 whitespace-nowrap">
+                        <span>Layanan</span>
+                        {sortField === 'service_name' && (sortOrder === 'asc' ? '▲' : '▼')}
+                      </div>
+                    </th>
+
+                    {(subscriptionPlan === 'PREMIUM' || isProfesional) && (
+                      <th onClick={() => handleSort('staff_name')} className={`p-3.5 sm:p-4.5 cursor-pointer transition ${themeStyles.textAccent}`}>
                         <div className="flex items-center gap-1.5 whitespace-nowrap">
-                          <span>Tanggal</span>
-                          {sortField === 'booking_date' && (sortOrder === 'asc' ? '▲' : '▼')}
+                          <span>{staffLabel}</span>
+                          {sortField === 'staff_name' && (sortOrder === 'asc' ? '▲' : '▼')}
                         </div>
                       </th>
+                    )}
 
-                      <th onClick={() => handleSort('booking_time')} className={`p-3.5 sm:p-4.5 cursor-pointer transition hover:${themeStyles.textAccent}`}>
-                        <div className="flex items-center gap-1.5 whitespace-nowrap">
-                          <span>Jam</span>
-                          {sortField === 'booking_time' && (sortOrder === 'asc' ? '▲' : '▼')}
-                        </div>
-                      </th>
+                    <th onClick={() => handleSort('price')} className={`p-3.5 sm:p-4.5 cursor-pointer transition text-emerald-400 hover:${themeStyles.textAccent}`}>
+                      <div className="flex items-center gap-1.5 whitespace-nowrap">
+                        <span>Harga</span>
+                        {sortField === 'price' && (sortOrder === 'asc' ? '▲' : '▼')}
+                      </div>
+                    </th>
 
-                      <th onClick={() => handleSort('customer_name')} className={`p-3.5 sm:p-4.5 cursor-pointer transition hover:${themeStyles.textAccent}`}>
-                        <div className="flex items-center gap-1.5 whitespace-nowrap">
-                          <span>Pelanggan</span>
-                          {sortField === 'customer_name' && (sortOrder === 'asc' ? '▲' : '▼')}
-                        </div>
-                      </th>
+                    <th onClick={() => handleSort('payment_method')} className={`p-3.5 sm:p-4.5 cursor-pointer transition hover:${themeStyles.textAccent}`}>
+                      <div className="flex items-center gap-1.5 whitespace-nowrap">
+                        <span>Metode</span>
+                        {sortField === 'payment_method' && (sortOrder === 'asc' ? '▲' : '▼')}
+                      </div>
+                    </th>
 
-                      <th onClick={() => handleSort('service_name')} className={`p-3.5 sm:p-4.5 cursor-pointer transition hover:${themeStyles.textAccent}`}>
-                        <div className="flex items-center gap-1.5 whitespace-nowrap">
-                          <span>Layanan</span>
-                          {sortField === 'service_name' && (sortOrder === 'asc' ? '▲' : '▼')}
-                        </div>
-                      </th>
+                    <th className="p-3.5 sm:p-4.5 whitespace-nowrap">WhatsApp</th>
 
-                      {(subscriptionPlan === 'PREMIUM' || isProfesional) && (
-                        <th onClick={() => handleSort('staff_name')} className={`p-3.5 sm:p-4.5 cursor-pointer transition ${themeStyles.textAccent}`}>
-                          <div className="flex items-center gap-1.5 whitespace-nowrap">
-                            <span>{staffLabel}</span>
-                            {sortField === 'staff_name' && (sortOrder === 'asc' ? '▲' : '▼')}
+                    <th onClick={() => handleSort('status')} className={`p-3.5 sm:p-4.5 cursor-pointer transition hover:${themeStyles.textAccent}`}>
+                      <div className="flex items-center gap-1.5 whitespace-nowrap">
+                        <span>Status</span>
+                        {sortField === 'status' && (sortOrder === 'asc' ? '▲' : '▼')}
+                      </div>
+                    </th>
+
+                    <th className="p-3.5 sm:p-4.5 text-center whitespace-nowrap">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-800/40 text-xs font-medium">
+                  {filteredReservations.map((item) => {
+                    const currentStatus = item.status || 'pending'
+                    const cleanPhone = item.whatsapp_number ? item.whatsapp_number.replace(/^0/, '62') : ''
+                    const displayBrand = brandTitle || tenantCode || (isEyelash ? 'FITRIFEB LASHES' : 'BARBERSHOP')
+                    
+                    const refundWaMsg = encodeURIComponent(
+                      `Halo Kak ${item.customer_name}, mohon maaf reservasi Kamu di ${displayBrand} pada tanggal ${formatDateID(item.booking_date)} jam ${item.booking_time} WIB kami batalkan.\n\n` +
+                      `Karena Kakak sudah melakukan pembayaran, mohon infokan Nomor Rekening / E-Wallet Kakak agar dana sebesar Rp ${getServicePrice(item.service_name).toLocaleString('id-ID')} bisa kami refund segera ya. Terima kasih!`
+                    )
+
+                    return (
+                      <tr key={item.id} className="hover:bg-zinc-800/30 transition-colors">
+                        <td className="p-3.5 sm:p-4.5 font-bold text-zinc-200 whitespace-nowrap">{item.booking_date}</td>
+                        <td className={`p-3.5 sm:p-4.5 font-mono font-bold whitespace-nowrap ${themeStyles.textAccent}`}>{item.booking_time} WIB</td>
+                        <td className="p-3.5 sm:p-4.5 font-black text-white whitespace-nowrap">
+                          {item.customer_name}
+                        </td>
+                        <td className="p-3.5 sm:p-4.5">
+                          <span className={`px-2.5 py-1 rounded-xl text-[11px] font-bold inline-block whitespace-nowrap border ${themeStyles.badgeBg}`}>
+                            {item.service_name}
+                          </span>
+                        </td>
+
+                        {(subscriptionPlan === 'PREMIUM' || isProfesional) && (
+                          <td className="p-3.5 sm:p-4.5 font-bold text-zinc-200">
+                            {item.staff_name ? (
+                              <span className="px-2.5 py-1 rounded-xl text-[11px] border border-zinc-700/80 bg-zinc-800/60 text-zinc-200 whitespace-nowrap">
+                                👤 {item.staff_name}
+                              </span>
+                            ) : (
+                              <span className="text-zinc-600 font-mono text-[10px]">-</span>
+                            )}
+                          </td>
+                        )}
+
+                        <td className="p-3.5 sm:p-4.5 font-mono font-bold text-emerald-400 whitespace-nowrap">
+                          Rp {getServicePrice(item.service_name).toLocaleString('id-ID')}
+                        </td>
+                        <td className="p-3.5 sm:p-4.5">
+                          <span className="bg-zinc-800/80 text-zinc-300 border border-zinc-700/80 px-2.5 py-1 rounded-xl text-[11px] font-bold whitespace-nowrap">
+                            {item.payment_method || 'QRIS'}
+                          </span>
+                        </td>
+                        <td className="p-3.5 sm:p-4.5">
+                          <a
+                            href={`https://wa.me/${cleanPhone}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-emerald-400 hover:text-emerald-300 font-bold inline-flex items-center gap-1.5 transition-colors whitespace-nowrap"
+                          >
+                            <span>{item.whatsapp_number}</span>
+                            <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
+                              <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981z"/>
+                            </svg>
+                          </a>
+                        </td>
+                        <td className="p-3.5 sm:p-4.5">
+                          <div className="space-y-1.5">
+                            <select
+                              value={
+                                currentStatus.startsWith('cancelled')
+                                  ? 'cancelled'
+                                  : currentStatus
+                              }
+                              onChange={(e) => handleStatusChange(item, e.target.value)}
+                              className={`px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-xl text-xs font-black border bg-zinc-950 focus:outline-none cursor-pointer transition-all ${
+                                currentStatus === 'confirmed'
+                                  ? 'text-blue-400 border-blue-500/40 bg-blue-500/10'
+                                  : currentStatus === 'completed'
+                                  ? 'text-emerald-400 border-emerald-500/40 bg-emerald-500/10'
+                                  : currentStatus.startsWith('cancelled')
+                                  ? 'text-rose-400 border-rose-500/40 bg-rose-500/10'
+                                  : 'text-amber-400 border-amber-500/40 bg-amber-500/10'
+                              }`}
+                            >
+                              <option value="pending">🟡 Pending</option>
+                              <option value="confirmed">🟢 Confirmed</option>
+                              <option value="completed">🔵 Completed</option>
+                              <option value="cancelled">🔴 Cancelled</option>
+                            </select>
+
+                            {currentStatus === 'cancelled_need_refund' && (
+                              <div className="flex flex-col gap-1.5 mt-1">
+                                <span className="bg-amber-500/10 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded-lg text-[10px] font-black flex items-center gap-1 w-max">
+                                  <span>⚠️</span> PERLU REFUND
+                                </span>
+                                <a
+                                  href={`https://wa.me/${cleanPhone}?text=${refundWaMsg}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 px-2.5 py-1 rounded-xl text-[10px] font-bold text-center block transition-all"
+                                >
+                                  💬 Minta Rekening (WA)
+                                </a>
+                                <button
+                                  onClick={() => handleCompleteRefund(item.id)}
+                                  className="bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 border border-blue-500/30 px-2.5 py-1 rounded-xl text-[10px] font-bold transition-all"
+                                >
+                                  ✅ Selesai Refund
+                                </button>
+                              </div>
+                            )}
+
+                            {currentStatus === 'cancelled_refunded' && (
+                              <span className="bg-zinc-800 text-zinc-400 border border-zinc-700 px-2.5 py-1 rounded-xl text-[10px] font-bold block w-max">
+                                ✓ Refund Selesai
+                              </span>
+                            )}
                           </div>
-                        </th>
-                      )}
-
-                      <th onClick={() => handleSort('price')} className={`p-3.5 sm:p-4.5 cursor-pointer transition text-emerald-400 hover:${themeStyles.textAccent}`}>
-                        <div className="flex items-center gap-1.5 whitespace-nowrap">
-                          <span>Harga</span>
-                          {sortField === 'price' && (sortOrder === 'asc' ? '▲' : '▼')}
-                        </div>
-                      </th>
-
-                      <th onClick={() => handleSort('payment_method')} className={`p-3.5 sm:p-4.5 cursor-pointer transition hover:${themeStyles.textAccent}`}>
-                        <div className="flex items-center gap-1.5 whitespace-nowrap">
-                          <span>Metode</span>
-                          {sortField === 'payment_method' && (sortOrder === 'asc' ? '▲' : '▼')}
-                        </div>
-                      </th>
-
-                      <th className="p-3.5 sm:p-4.5 whitespace-nowrap">WhatsApp</th>
-
-                      <th onClick={() => handleSort('status')} className={`p-3.5 sm:p-4.5 cursor-pointer transition hover:${themeStyles.textAccent}`}>
-                        <div className="flex items-center gap-1.5 whitespace-nowrap">
-                          <span>Status</span>
-                          {sortField === 'status' && (sortOrder === 'asc' ? '▲' : '▼')}
-                        </div>
-                      </th>
-
-                      <th className="p-3.5 sm:p-4.5 text-center whitespace-nowrap">Aksi</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-zinc-800/40 text-xs font-medium">
-                    {filteredReservations.map((item) => {
-                      const currentStatus = item.status || 'pending'
-                      const cleanPhone = item.whatsapp_number ? item.whatsapp_number.replace(/^0/, '62') : ''
-                      const displayBrand = brandTitle || tenantCode || (isEyelash ? 'FITRIFEB LASHES' : 'BARBERSHOP')
-                      
-                      const refundWaMsg = encodeURIComponent(
-                        `Halo Kak ${item.customer_name}, mohon maaf reservasi Kamu di ${displayBrand} pada tanggal ${formatDateID(item.booking_date)} jam ${item.booking_time} WIB kami batalkan.\n\n` +
-                        `Karena Kakak sudah melakukan pembayaran, mohon infokan Nomor Rekening / E-Wallet Kakak agar dana sebesar Rp ${getServicePrice(item.service_name).toLocaleString('id-ID')} bisa kami refund segera ya. Terima kasih!`
-                      )
-
-                      return (
-                        <tr key={item.id} className="hover:bg-zinc-800/30 transition-colors">
-                          <td className="p-3.5 sm:p-4.5 font-bold text-zinc-200 whitespace-nowrap">{item.booking_date}</td>
-                          <td className={`p-3.5 sm:p-4.5 font-mono font-bold whitespace-nowrap ${themeStyles.textAccent}`}>{item.booking_time} WIB</td>
-                          <td className="p-3.5 sm:p-4.5 font-black text-white whitespace-nowrap">
-                            {item.customer_name}
-                          </td>
-                          <td className="p-3.5 sm:p-4.5">
-                            <span className={`px-2.5 py-1 rounded-xl text-[11px] font-bold inline-block whitespace-nowrap border ${themeStyles.badgeBg}`}>
-                              {item.service_name}
-                            </span>
-                          </td>
-
-                          {(subscriptionPlan === 'PREMIUM' || isProfesional) && (
-                            <td className="p-3.5 sm:p-4.5 font-bold text-zinc-200">
-                              {item.staff_name ? (
-                                <span className="px-2.5 py-1 rounded-xl text-[11px] border border-zinc-700/80 bg-zinc-800/60 text-zinc-200 whitespace-nowrap">
-                                  👤 {item.staff_name}
-                                </span>
-                              ) : (
-                                <span className="text-zinc-600 font-mono text-[10px]">-</span>
-                              )}
-                            </td>
-                          )}
-
-                          <td className="p-3.5 sm:p-4.5 font-mono font-bold text-emerald-400 whitespace-nowrap">
-                            Rp {getServicePrice(item.service_name).toLocaleString('id-ID')}
-                          </td>
-                          <td className="p-3.5 sm:p-4.5">
-                            <span className="bg-zinc-800/80 text-zinc-300 border border-zinc-700/80 px-2.5 py-1 rounded-xl text-[11px] font-bold whitespace-nowrap">
-                              {item.payment_method || 'QRIS'}
-                            </span>
-                          </td>
-                          <td className="p-3.5 sm:p-4.5">
-                            <a
-                              href={`https://wa.me/${cleanPhone}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-emerald-400 hover:text-emerald-300 font-bold inline-flex items-center gap-1.5 transition-colors whitespace-nowrap"
-                            >
-                              <span>{item.whatsapp_number}</span>
-                              <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
-                                <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981z"/>
-                              </svg>
-                            </a>
-                          </td>
-                          <td className="p-3.5 sm:p-4.5">
-                            <div className="space-y-1.5">
-                              <select
-                                value={
-                                  currentStatus.startsWith('cancelled')
-                                    ? 'cancelled'
-                                    : currentStatus
-                                }
-                                onChange={(e) => handleStatusChange(item, e.target.value)}
-                                className={`px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-xl text-xs font-black border bg-zinc-950 focus:outline-none cursor-pointer transition-all ${
-                                  currentStatus === 'confirmed'
-                                    ? 'text-blue-400 border-blue-500/40 bg-blue-500/10'
-                                    : currentStatus === 'completed'
-                                    ? 'text-emerald-400 border-emerald-500/40 bg-emerald-500/10'
-                                    : currentStatus.startsWith('cancelled')
-                                    ? 'text-rose-400 border-rose-500/40 bg-rose-500/10'
-                                    : 'text-amber-400 border-amber-500/40 bg-amber-500/10'
-                                }`}
-                              >
-                                <option value="pending">🟡 Pending</option>
-                                <option value="confirmed">🟢 Confirmed</option>
-                                <option value="completed">🔵 Completed</option>
-                                <option value="cancelled">🔴 Cancelled</option>
-                              </select>
-
-                              {currentStatus === 'cancelled_need_refund' && (
-                                <div className="flex flex-col gap-1.5 mt-1">
-                                  <span className="bg-amber-500/10 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded-lg text-[10px] font-black flex items-center gap-1 w-max">
-                                    <span>⚠️</span> PERLU REFUND
-                                  </span>
-                                  <a
-                                    href={`https://wa.me/${cleanPhone}?text=${refundWaMsg}`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 px-2.5 py-1 rounded-xl text-[10px] font-bold text-center block transition-all"
-                                  >
-                                    💬 Minta Rekening (WA)
-                                  </a>
-                                  <button
-                                    onClick={() => handleCompleteRefund(item.id)}
-                                    className="bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 border border-blue-500/30 px-2.5 py-1 rounded-xl text-[10px] font-bold transition-all"
-                                  >
-                                    ✅ Selesai Refund
-                                  </button>
-                                </div>
-                              )}
-
-                              {currentStatus === 'cancelled_refunded' && (
-                                <span className="bg-zinc-800 text-zinc-400 border border-zinc-700 px-2.5 py-1 rounded-xl text-[10px] font-bold block w-max">
-                                  ✓ Refund Selesai
-                                </span>
-                              )}
-                            </div>
-                          </td>
-                          <td className="p-3.5 sm:p-4.5 text-center">
-                            <button
-                              onClick={() => handleDelete(item.id, item.customer_name)}
-                              className="bg-rose-500/10 hover:bg-rose-500 text-rose-400 hover:text-white px-2.5 sm:px-3 py-1.5 rounded-xl text-[11px] sm:text-xs font-bold border border-rose-500/30 transition-all active:scale-95 whitespace-nowrap"
-                            >
-                              🗑️ Hapus
-                            </button>
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
+                        </td>
+                        <td className="p-3.5 sm:p-4.5 text-center">
+                          <button
+                            onClick={() => handleDelete(item.id, item.customer_name)}
+                            className="bg-rose-500/10 hover:bg-rose-500 text-rose-400 hover:text-white px-2.5 sm:px-3 py-1.5 rounded-xl text-[11px] sm:text-xs font-bold border border-rose-500/30 transition-all active:scale-95 whitespace-nowrap"
+                          >
+                            🗑️ Hapus
+                          </button>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
             </div>
           )}
         </div>
