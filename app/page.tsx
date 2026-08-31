@@ -153,6 +153,7 @@ function BookingFormContent() {
   const grandTotal = calculateTotal()
   const dpAmount = Math.round(grandTotal * 0.5)
   const payableAmount = formData.payment_type === 'DP' ? dpAmount : grandTotal
+  const remainingAmount = grandTotal - payableAmount
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -309,7 +310,11 @@ function BookingFormContent() {
       insertPayload.eye_shape_notes = formData.custom_notes
     }
 
-    const { error } = await supabase.from('Reservations').insert([insertPayload])
+    const { data: insertedData, error } = await supabase
+      .from('Reservations')
+      .insert([insertPayload])
+      .select('id')
+      .single()
 
     if (error) {
       alert('Gagal membuat reservasi: ' + error.message)
@@ -317,29 +322,47 @@ function BookingFormContent() {
       return
     }
 
-    let messageText =
-      `Halo Admin *${tenant.name}*, saya mau konfirmasi reservasi:\n\n` +
-      `📌 *Nama:* ${formData.customer_name}\n` +
-      `📞 *WA:* ${formData.whatsapp_number}\n`
+    const bookingId = insertedData?.id ? `BK-${insertedData.id}` : 'BK-NEW'
 
-    if (isWizard && !isBasic) messageText += `👥 *Jumlah Orang/Pasien:* ${formData.person_count} Orang\n`
-    messageText += `✨ *Layanan:* ${formattedServicesText}\n`
-    
+    let messageText =
+      `Halo *${tenant.name}*, saya ingin mengonfirmasi reservasi:\n\n` +
+      `📌 *DETAIL RESERVASI*\n` +
+      `• Kode Booking: #${bookingId}\n` +
+      `• Nama: ${formData.customer_name}\n` +
+      `• No. HP: ${formData.whatsapp_number}\n` +
+      `• Tanggal & Jam: ${formData.booking_date} - ${formData.booking_time} WIB\n` +
+      `• Layanan: ${formattedServicesText}\n`
+
+    if (isWizard && !isBasic) {
+      messageText += `• Jumlah Orang: ${formData.person_count} Orang\n`
+    }
+
     if (formData.need_extra_addon) {
-      messageText += `✨ *Tambahan:* ${tenant.addonLabel.replace(/\s*\(\+Rp\s*[\d.]+\)/gi, '')} (${formData.addon_person_count} Orang)\n`
+      messageText += `• Tambahan: ${tenant.addonLabel.replace(/\s*\(\+Rp\s*[\d.]+\)/gi, '')} (${formData.addon_person_count} Orang)\n`
     }
 
     if (!isBasic && formData.selected_staff) {
-      messageText += `👤 *${tenant.staffLabel}:* ${formData.selected_staff}\n`
+      messageText += `• ${tenant.staffLabel}: ${formData.selected_staff}\n`
     }
-    messageText += `📅 *Tanggal:* ${formData.booking_date}\n⏰ *Jam:* ${formData.booking_time}\n`
+
+    if (isWizard && formData.custom_notes) {
+      messageText += `• Catatan Khusus: ${formData.custom_notes}\n`
+    }
+
+    messageText += `\n💳 *RINCIAN PEMBAYARAN*\n` +
+      `• Metode Bayar: ${formData.payment_method}\n` +
+      `• Total Biaya: Rp ${grandTotal.toLocaleString('id-ID')}\n`
 
     if (isWizard) {
-      if (formData.custom_notes) messageText += `📝 *Catatan Khusus:* ${formData.custom_notes}\n`
-      messageText += `💵 *Opsi Bayar:* ${formData.payment_type === 'DP' ? 'Down Payment (DP 50%)' : 'Pelunasan Full'}\n`
-      messageText += `💰 *Total Bayar:* Rp ${payableAmount.toLocaleString('id-ID')} (${formData.payment_type})\n`
+      messageText += `• Nominal Dibayar (${formData.payment_type}): Rp ${payableAmount.toLocaleString('id-ID')}\n`
+      if (formData.payment_type === 'DP') {
+        messageText += `• Sisa Pelunasan: Rp ${remainingAmount.toLocaleString('id-ID')} (Dibayar di Lokasi)\n`
+      }
+    } else {
+      messageText += `• Status Pembayaran: Menunggu Konfirmasi\n`
     }
-    messageText += `💳 *Metode Bayar:* ${formData.payment_method}\n\nMohon diproses ya, terima kasih 😊`
+
+    messageText += `\n----------------------------------\nBerikut saya lampirkan bukti transfernya. Mohon dikonfirmasi ya, terima kasih!`
 
     window.location.href = `https://wa.me/${tenant.adminWa}?text=${encodeURIComponent(messageText)}`
   }
@@ -640,7 +663,6 @@ function BookingFormContent() {
                         )}
                       </label>
 
-                      {/* OPSI JUMLAH ORANG LEPAS EYELASH */}
                       {formData.need_extra_addon && formData.person_count > 1 && (
                         <div className="p-3 bg-zinc-950/90 border border-zinc-800/80 rounded-2xl space-y-2 animate-fadeIn">
                           <label className="block text-[10px] font-semibold text-zinc-400 uppercase tracking-wider">
