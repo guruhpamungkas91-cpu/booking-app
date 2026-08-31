@@ -74,6 +74,9 @@ export default function AdminDashboard() {
   const [serviceFilter, setServiceFilter] = useState('all')
   const [paymentFilter, setPaymentFilter] = useState('all')
 
+  // State WA Reminder Otomatis
+  const [autoWaReminder, setAutoWaReminder] = useState<boolean>(true)
+
   // State Pagination & Limit Data
   const [limit, setLimit] = useState<number | 'all'>(10)
   const [currentPage, setCurrentPage] = useState<number>(1)
@@ -725,8 +728,21 @@ export default function AdminDashboard() {
   useEffect(() => {
     let result = [...reservations]
 
-    if (startDate) result = result.filter((item) => item.booking_date >= startDate)
-    if (endDate) result = result.filter((item) => item.booking_date <= endDate)
+    // Jika PAKET BASIC, batasi filter hanya untuk status, limit data, dan metode bayar
+    if (subscriptionPlan !== 'BASIC') {
+      if (startDate) result = result.filter((item) => item.booking_date >= startDate)
+      if (endDate) result = result.filter((item) => item.booking_date <= endDate)
+      if (serviceFilter !== 'all') result = result.filter((item) => item.service_name === serviceFilter)
+      if (searchTerm) {
+        const term = searchTerm.toLowerCase()
+        result = result.filter((item) =>
+          item.customer_name?.toLowerCase().includes(term) ||
+          item.whatsapp_number?.includes(term) ||
+          item.service_name?.toLowerCase().includes(term) ||
+          item.staff_name?.toLowerCase().includes(term)
+        )
+      }
+    }
 
     if (statusFilter !== 'all') {
       result = result.filter((item) => {
@@ -737,18 +753,7 @@ export default function AdminDashboard() {
       })
     }
 
-    if (serviceFilter !== 'all') result = result.filter((item) => item.service_name === serviceFilter)
     if (paymentFilter !== 'all') result = result.filter((item) => (item.payment_method || 'QRIS') === paymentFilter)
-
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase()
-      result = result.filter((item) =>
-        item.customer_name?.toLowerCase().includes(term) ||
-        item.whatsapp_number?.includes(term) ||
-        item.service_name?.toLowerCase().includes(term) ||
-        item.staff_name?.toLowerCase().includes(term)
-      )
-    }
 
     result.sort((a, b) => {
       let valA: any = ''
@@ -787,7 +792,7 @@ export default function AdminDashboard() {
 
     setFilteredReservations(result)
     setCurrentPage(1) // Reset ke halaman 1 setiap kali filter/search berubah
-  }, [startDate, endDate, statusFilter, serviceFilter, paymentFilter, searchTerm, sortField, sortOrder, reservations])
+  }, [startDate, endDate, statusFilter, serviceFilter, paymentFilter, searchTerm, sortField, sortOrder, reservations, subscriptionPlan])
 
   // KALKULASI PAGINASI & DATA PER HALAMAN
   const totalPages = useMemo(() => {
@@ -844,65 +849,101 @@ export default function AdminDashboard() {
 
   // DYNAMIC TEMA COLOR HELPER
   const themeStyles = useMemo(() => {
+    // Paket BASIC dipatok standar tanpa variasi mewah
+    if (subscriptionPlan === 'BASIC') {
+      return {
+        bgGlow: 'hidden',
+        textAccent: 'text-purple-300',
+        borderAccent: 'border-purple-500/20',
+        focusBorder: 'focus:border-purple-500',
+        badgeBg: 'bg-zinc-800 text-zinc-300 border-zinc-700',
+        buttonPrimary: 'bg-purple-600 hover:bg-purple-500 text-white',
+        btnActivePeriod: 'bg-purple-600 text-white',
+        headerGradient: 'bg-zinc-950 border-zinc-800',
+      }
+    }
+
+    const isPro = subscriptionPlan === 'PROFESIONAL'
+
     switch (selectedTheme) {
       case 'pink':
         return {
-          bgGlow: 'bg-pink-600/20',
+          bgGlow: isPro ? 'bg-pink-600/20' : 'hidden',
           textAccent: 'text-pink-400',
-          borderAccent: 'border-pink-500/40',
+          borderAccent: isPro ? 'border-pink-500/50 shadow-pink-950/40 ring-1 ring-pink-500/20' : 'border-pink-500/30',
           focusBorder: 'focus:border-pink-500',
           badgeBg: 'bg-pink-500/10 text-pink-300 border-pink-500/30',
-          buttonPrimary: 'bg-gradient-to-r from-pink-500 to-rose-600 hover:from-pink-400 hover:to-rose-500 text-white shadow-pink-500/20',
+          buttonPrimary: isPro 
+            ? 'bg-gradient-to-r from-pink-500 via-rose-500 to-pink-600 hover:from-pink-400 hover:to-rose-500 text-white shadow-lg shadow-pink-500/30' 
+            : 'bg-pink-600 hover:bg-pink-500 text-white',
           btnActivePeriod: 'bg-pink-600 text-white shadow-lg shadow-pink-600/30',
-          headerGradient: 'bg-gradient-to-r from-pink-950/60 via-zinc-950/90 to-rose-950/40 border-pink-500/40 shadow-pink-950/30',
+          headerGradient: isPro 
+            ? 'bg-gradient-to-r from-pink-950/80 via-zinc-950/90 to-rose-950/60 border-pink-500/50 shadow-pink-950/50' 
+            : 'bg-gradient-to-r from-pink-950/40 via-zinc-950/90 to-rose-950/20 border-pink-500/30',
         }
       case 'amber':
         return {
-          bgGlow: 'bg-amber-600/20',
+          bgGlow: isPro ? 'bg-amber-600/20' : 'hidden',
           textAccent: 'text-amber-400',
-          borderAccent: 'border-amber-500/40',
+          borderAccent: isPro ? 'border-amber-500/50 shadow-amber-950/40 ring-1 ring-amber-500/20' : 'border-amber-500/30',
           focusBorder: 'focus:border-amber-500',
           badgeBg: 'bg-amber-500/10 text-amber-300 border-amber-500/30',
-          buttonPrimary: 'bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-zinc-950 shadow-amber-500/20',
+          buttonPrimary: isPro 
+            ? 'bg-gradient-to-r from-amber-500 via-yellow-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-zinc-950 font-black shadow-lg shadow-amber-500/30' 
+            : 'bg-amber-500 hover:bg-amber-400 text-zinc-950',
           btnActivePeriod: 'bg-amber-500 text-zinc-950 shadow-lg shadow-amber-500/30',
-          headerGradient: 'bg-gradient-to-r from-amber-950/60 via-zinc-950/90 to-amber-950/40 border-amber-500/40 shadow-amber-950/30',
+          headerGradient: isPro 
+            ? 'bg-gradient-to-r from-amber-950/80 via-zinc-950/90 to-amber-950/60 border-amber-500/50 shadow-amber-950/50' 
+            : 'bg-gradient-to-r from-amber-950/40 via-zinc-950/90 to-amber-950/20 border-amber-500/30',
         }
       case 'emerald':
         return {
-          bgGlow: 'bg-emerald-600/20',
+          bgGlow: isPro ? 'bg-emerald-600/20' : 'hidden',
           textAccent: 'text-emerald-400',
-          borderAccent: 'border-emerald-500/40',
+          borderAccent: isPro ? 'border-emerald-500/50 shadow-emerald-950/40 ring-1 ring-emerald-500/20' : 'border-emerald-500/30',
           focusBorder: 'focus:border-emerald-500',
           badgeBg: 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30',
-          buttonPrimary: 'bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white shadow-emerald-500/20',
+          buttonPrimary: isPro 
+            ? 'bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 hover:from-emerald-400 hover:to-teal-500 text-white shadow-lg shadow-emerald-500/30' 
+            : 'bg-emerald-600 hover:bg-emerald-500 text-white',
           btnActivePeriod: 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/30',
-          headerGradient: 'bg-gradient-to-r from-emerald-950/60 via-zinc-950/90 to-teal-950/40 border-emerald-500/40 shadow-emerald-950/30',
+          headerGradient: isPro 
+            ? 'bg-gradient-to-r from-emerald-950/80 via-zinc-950/90 to-teal-950/60 border-emerald-500/50 shadow-emerald-950/50' 
+            : 'bg-gradient-to-r from-emerald-950/40 via-zinc-950/90 to-teal-950/20 border-emerald-500/30',
         }
       case 'blue':
         return {
-          bgGlow: 'bg-blue-600/20',
+          bgGlow: isPro ? 'bg-blue-600/20' : 'hidden',
           textAccent: 'text-blue-400',
-          borderAccent: 'border-blue-500/40',
+          borderAccent: isPro ? 'border-blue-500/50 shadow-blue-950/40 ring-1 ring-blue-500/20' : 'border-blue-500/30',
           focusBorder: 'focus:border-blue-500',
           badgeBg: 'bg-blue-500/10 text-blue-300 border-blue-500/30',
-          buttonPrimary: 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-blue-600/20',
+          buttonPrimary: isPro 
+            ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-500 hover:to-indigo-500 text-white shadow-lg shadow-blue-600/30' 
+            : 'bg-blue-600 hover:bg-blue-500 text-white',
           btnActivePeriod: 'bg-blue-600 text-white shadow-lg shadow-blue-600/30',
-          headerGradient: 'bg-gradient-to-r from-blue-950/60 via-zinc-950/90 to-indigo-950/40 border-blue-500/40 shadow-blue-950/30',
+          headerGradient: isPro 
+            ? 'bg-gradient-to-r from-blue-950/80 via-zinc-950/90 to-indigo-950/60 border-blue-500/50 shadow-blue-950/50' 
+            : 'bg-gradient-to-r from-blue-950/40 via-zinc-950/90 to-indigo-950/20 border-blue-500/30',
         }
       case 'purple':
       default:
         return {
-          bgGlow: 'bg-purple-600/20',
+          bgGlow: isPro ? 'bg-purple-600/20' : 'hidden',
           textAccent: 'text-purple-300',
-          borderAccent: 'border-purple-500/40',
+          borderAccent: isPro ? 'border-purple-500/50 shadow-purple-950/40 ring-1 ring-purple-500/20' : 'border-purple-500/30',
           focusBorder: 'focus:border-purple-500',
           badgeBg: 'bg-purple-500/20 text-purple-200 border-purple-400/50',
-          buttonPrimary: 'bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-700 hover:from-purple-500 hover:to-indigo-500 text-white shadow-purple-600/30',
+          buttonPrimary: isPro 
+            ? 'bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-700 hover:from-purple-500 hover:to-indigo-500 text-white shadow-lg shadow-purple-600/40' 
+            : 'bg-purple-600 hover:bg-purple-500 text-white',
           btnActivePeriod: 'bg-purple-600 text-white shadow-lg shadow-purple-600/30',
-          headerGradient: 'bg-gradient-to-r from-purple-950/70 via-zinc-950/90 to-indigo-950/50 border-purple-500/40 shadow-purple-950/40',
+          headerGradient: isPro 
+            ? 'bg-gradient-to-r from-purple-950/80 via-zinc-950/90 to-indigo-950/60 border-purple-500/50 shadow-purple-950/50' 
+            : 'bg-gradient-to-r from-purple-950/40 via-zinc-950/90 to-indigo-950/20 border-purple-500/30',
         }
     }
-  }, [selectedTheme])
+  }, [selectedTheme, subscriptionPlan])
 
   // PRE-RENDER LOADER
   if (isInitializing) {
@@ -910,7 +951,7 @@ export default function AdminDashboard() {
       <main className="min-h-screen bg-[#06040A] flex items-center justify-center font-sans text-zinc-400">
         <div className="flex flex-col items-center gap-3">
           <div className="w-8 h-8 border-2 border-purple-500/30 border-t-purple-400 rounded-full animate-spin"></div>
-          <span className="text-xs font-medium tracking-wider text-purple-200/80">Memuat Sistem Dashboard Premium...</span>
+          <span className="text-xs font-medium tracking-wider text-purple-200/80">Memuat Sistem Dashboard Admin...</span>
         </div>
       </main>
     )
@@ -999,8 +1040,10 @@ export default function AdminDashboard() {
 
   return (
     <div className="min-h-screen p-3 sm:p-6 md:p-8 text-zinc-100 font-sans relative transition-colors duration-500 bg-[#06040a]">
-      {/* Glow Ambient Dynamic Background */}
-      <div className={`fixed top-0 left-1/4 w-[350px] sm:w-[650px] h-[350px] sm:h-[650px] rounded-full blur-[120px] sm:blur-[160px] pointer-events-none transition-all duration-700 ${themeStyles.bgGlow}`}></div>
+      {/* Glow Ambient Dynamic Background (AKSI GLOW HANYA PADA PAKET PROFESIONAL) */}
+      {isProfesional && (
+        <div className={`fixed top-0 left-1/4 w-[350px] sm:w-[650px] h-[350px] sm:h-[650px] rounded-full blur-[120px] sm:blur-[160px] pointer-events-none transition-all duration-700 ${themeStyles.bgGlow}`}></div>
+      )}
 
       <div className="w-full max-w-[1400px] mx-auto space-y-4 sm:space-y-6 relative z-10">
 
@@ -1032,35 +1075,37 @@ export default function AdminDashboard() {
           </div>
 
           <div className="flex flex-wrap items-center justify-between md:justify-end gap-3 w-full md:w-auto">
-            {/* OPTION PEMILIH TEMA WARNA DASHBOARD */}
-            <div className="flex items-center gap-1 bg-zinc-950/80 border border-zinc-800 p-1.5 rounded-2xl shadow-inner">
-              <span className="text-[10px] font-bold text-zinc-400 px-1.5 hidden sm:inline">Tema:</span>
-              <button
-                onClick={() => setSelectedTheme('purple')}
-                className={`w-5 h-5 rounded-full bg-purple-600 border ${selectedTheme === 'purple' ? 'border-white scale-110 shadow-md shadow-purple-500' : 'border-transparent opacity-60 hover:opacity-100'}`}
-                title="Tema Ungu"
-              />
-              <button
-                onClick={() => setSelectedTheme('pink')}
-                className={`w-5 h-5 rounded-full bg-pink-500 border ${selectedTheme === 'pink' ? 'border-white scale-110 shadow-md shadow-pink-500' : 'border-transparent opacity-60 hover:opacity-100'}`}
-                title="Tema Pink"
-              />
-              <button
-                onClick={() => setSelectedTheme('amber')}
-                className={`w-5 h-5 rounded-full bg-amber-500 border ${selectedTheme === 'amber' ? 'border-white scale-110 shadow-md shadow-amber-500' : 'border-transparent opacity-60 hover:opacity-100'}`}
-                title="Tema Amber/Gold"
-              />
-              <button
-                onClick={() => setSelectedTheme('emerald')}
-                className={`w-5 h-5 rounded-full bg-emerald-500 border ${selectedTheme === 'emerald' ? 'border-white scale-110 shadow-md shadow-emerald-500' : 'border-transparent opacity-60 hover:opacity-100'}`}
-                title="Tema Hijau Emerald"
-              />
-              <button
-                onClick={() => setSelectedTheme('blue')}
-                className={`w-5 h-5 rounded-full bg-blue-500 border ${selectedTheme === 'blue' ? 'border-white scale-110 shadow-md shadow-blue-500' : 'border-transparent opacity-60 hover:opacity-100'}`}
-                title="Tema Biru"
-              />
-            </div>
+            {/* OPTION PEMILIH TEMA WARNA DASHBOARD (TIDAK DITAMPILKAN PADA PAKET BASIC) */}
+            {subscriptionPlan !== 'BASIC' && (
+              <div className="flex items-center gap-1 bg-zinc-950/80 border border-zinc-800 p-1.5 rounded-2xl shadow-inner">
+                <span className="text-[10px] font-bold text-zinc-400 px-1.5 hidden sm:inline">Tema:</span>
+                <button
+                  onClick={() => setSelectedTheme('purple')}
+                  className={`w-5 h-5 rounded-full bg-purple-600 border ${selectedTheme === 'purple' ? 'border-white scale-110 shadow-md shadow-purple-500' : 'border-transparent opacity-60 hover:opacity-100'}`}
+                  title="Tema Ungu"
+                />
+                <button
+                  onClick={() => setSelectedTheme('pink')}
+                  className={`w-5 h-5 rounded-full bg-pink-500 border ${selectedTheme === 'pink' ? 'border-white scale-110 shadow-md shadow-pink-500' : 'border-transparent opacity-60 hover:opacity-100'}`}
+                  title="Tema Pink"
+                />
+                <button
+                  onClick={() => setSelectedTheme('amber')}
+                  className={`w-5 h-5 rounded-full bg-amber-500 border ${selectedTheme === 'amber' ? 'border-white scale-110 shadow-md shadow-amber-500' : 'border-transparent opacity-60 hover:opacity-100'}`}
+                  title="Tema Amber/Gold"
+                />
+                <button
+                  onClick={() => setSelectedTheme('emerald')}
+                  className={`w-5 h-5 rounded-full bg-emerald-500 border ${selectedTheme === 'emerald' ? 'border-white scale-110 shadow-md shadow-emerald-500' : 'border-transparent opacity-60 hover:opacity-100'}`}
+                  title="Tema Hijau Emerald"
+                />
+                <button
+                  onClick={() => setSelectedTheme('blue')}
+                  className={`w-5 h-5 rounded-full bg-blue-500 border ${selectedTheme === 'blue' ? 'border-white scale-110 shadow-md shadow-blue-500' : 'border-transparent opacity-60 hover:opacity-100'}`}
+                  title="Tema Biru"
+                />
+              </div>
+            )}
 
             <div className="flex items-center space-x-2">
               <button
@@ -1081,6 +1126,29 @@ export default function AdminDashboard() {
             </div>
           </div>
         </div>
+
+        {/* SETTINGAN WA AUTOMATIC REMINDER (KHUSUS PAKET PROFESIONAL) */}
+        {isProfesional && (
+          <div className="p-4 rounded-2xl border border-purple-500/30 bg-purple-950/20 backdrop-blur-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-lg">
+            <div className="flex items-center gap-3">
+              <span className="text-xl">💬</span>
+              <div>
+                <h4 className="text-xs font-black text-purple-200 uppercase tracking-wide">Pengaturan WhatsApp Reminder Otomatis</h4>
+                <p className="text-[11px] text-zinc-400 font-medium">Kirim pengingat otomatis ke WhatsApp pelanggan sebelum jadwal reservasi.</p>
+              </div>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer shrink-0">
+              <input 
+                type="checkbox" 
+                checked={autoWaReminder} 
+                onChange={(e) => setAutoWaReminder(e.target.checked)} 
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 bg-zinc-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
+              <span className="ml-2 text-xs font-bold text-zinc-300">{autoWaReminder ? 'Aktif' : 'Nonaktif'}</span>
+            </label>
+          </div>
+        )}
 
         {/* STATS CARDS GRID DYNAMIC THEME */}
         <div className={`grid grid-cols-2 sm:grid-cols-3 ${
@@ -1345,54 +1413,62 @@ export default function AdminDashboard() {
 
         {/* SEARCH & FILTER TABEL DATA */}
         <div className={`backdrop-blur-2xl border p-4 sm:p-5 rounded-2xl sm:rounded-3xl shadow-xl bg-zinc-950/70 ${themeStyles.borderAccent}`}>
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3 sm:gap-4 items-end w-full">
+          <div className={`grid grid-cols-1 sm:grid-cols-2 ${
+            subscriptionPlan === 'BASIC' ? 'md:grid-cols-3 lg:grid-cols-3' : 'md:grid-cols-3 lg:grid-cols-7'
+          } gap-3 sm:gap-4 items-end w-full`}>
             
-            {/* 1. Input Pencarian */}
-            <div className="w-full lg:col-span-1">
-              <label className="block text-xs font-bold text-zinc-400 mb-1.5">Pencarian Data:</label>
-              <div className="relative">
-                <input
-                  type="text"
-                  placeholder="Cari nama, WA, atau layanan..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className={`w-full pl-3.5 pr-8 py-2 sm:py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-xl sm:rounded-2xl text-xs text-zinc-200 placeholder-zinc-600 focus:outline-none transition-all shadow-inner ${themeStyles.focusBorder}`}
-                />
-                {searchTerm && (
-                  <button
-                    onClick={() => setSearchTerm('')}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white text-xs font-bold w-5 h-5 flex items-center justify-center rounded-full hover:bg-zinc-800 transition-all"
-                    title="Clear Search"
-                  >
-                    ✕
-                  </button>
-                )}
+            {/* 1. Input Pencarian (Disembunyikan pada PAKET BASIC) */}
+            {subscriptionPlan !== 'BASIC' && (
+              <div className="w-full lg:col-span-1">
+                <label className="block text-xs font-bold text-zinc-400 mb-1.5">Pencarian Data:</label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    placeholder="Cari nama, WA, atau layanan..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className={`w-full pl-3.5 pr-8 py-2 sm:py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-xl sm:rounded-2xl text-xs text-zinc-200 placeholder-zinc-600 focus:outline-none transition-all shadow-inner ${themeStyles.focusBorder}`}
+                  />
+                  {searchTerm && (
+                    <button
+                      onClick={() => setSearchTerm('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white text-xs font-bold w-5 h-5 flex items-center justify-center rounded-full hover:bg-zinc-800 transition-all"
+                      title="Clear Search"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
               </div>
-            </div>
+            )}
 
-            {/* 2. Dari Tanggal */}
-            <div className="w-full">
-              <label className="block text-xs font-bold text-zinc-400 mb-1.5">Dari Tanggal:</label>
-              <input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className={`w-full px-3 py-2 sm:py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-xl sm:rounded-2xl text-xs text-zinc-200 focus:outline-none shadow-inner ${themeStyles.focusBorder}`}
-              />
-            </div>
+            {/* 2. Dari Tanggal (Disembunyikan pada PAKET BASIC) */}
+            {subscriptionPlan !== 'BASIC' && (
+              <div className="w-full">
+                <label className="block text-xs font-bold text-zinc-400 mb-1.5">Dari Tanggal:</label>
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className={`w-full px-3 py-2 sm:py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-xl sm:rounded-2xl text-xs text-zinc-200 focus:outline-none shadow-inner ${themeStyles.focusBorder}`}
+                />
+              </div>
+            )}
 
-            {/* 3. Sampai Tanggal */}
-            <div className="w-full">
-              <label className="block text-xs font-bold text-zinc-400 mb-1.5">Sampai Tanggal:</label>
-              <input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className={`w-full px-3 py-2 sm:py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-xl sm:rounded-2xl text-xs text-zinc-200 focus:outline-none shadow-inner ${themeStyles.focusBorder}`}
-              />
-            </div>
+            {/* 3. Sampai Tanggal (Disembunyikan pada PAKET BASIC) */}
+            {subscriptionPlan !== 'BASIC' && (
+              <div className="w-full">
+                <label className="block text-xs font-bold text-zinc-400 mb-1.5">Sampai Tanggal:</label>
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  className={`w-full px-3 py-2 sm:py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-xl sm:rounded-2xl text-xs text-zinc-200 focus:outline-none shadow-inner ${themeStyles.focusBorder}`}
+                />
+              </div>
+            )}
 
-            {/* 4. Status */}
+            {/* 4. Status (AKTIF DI SEMUA PAKET) */}
             <div className="w-full">
               <label className="block text-xs font-bold text-zinc-400 mb-1.5">Status:</label>
               <select
@@ -1409,24 +1485,26 @@ export default function AdminDashboard() {
               </select>
             </div>
 
-            {/* 5. Layanan */}
-            <div className="w-full">
-              <label className="block text-xs font-bold text-zinc-400 mb-1.5">Layanan:</label>
-              <select
-                value={serviceFilter}
-                onChange={(e) => setServiceFilter(e.target.value)}
-                className={`w-full px-3 py-2 sm:py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-xl sm:rounded-2xl text-xs text-zinc-200 focus:outline-none font-semibold cursor-pointer shadow-inner ${themeStyles.focusBorder}`}
-              >
-                <option value="all">Semua Layanan</option>
-                {uniqueServices.map((svc) => (
-                  <option key={svc} value={svc}>
-                    {isEyelash ? '💅' : '✂️'} {svc}
-                  </option>
-                ))}
-              </select>
-            </div>
+            {/* 5. Layanan (Disembunyikan pada PAKET BASIC) */}
+            {subscriptionPlan !== 'BASIC' && (
+              <div className="w-full">
+                <label className="block text-xs font-bold text-zinc-400 mb-1.5">Layanan:</label>
+                <select
+                  value={serviceFilter}
+                  onChange={(e) => setServiceFilter(e.target.value)}
+                  className={`w-full px-3 py-2 sm:py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-xl sm:rounded-2xl text-xs text-zinc-200 focus:outline-none font-semibold cursor-pointer shadow-inner ${themeStyles.focusBorder}`}
+                >
+                  <option value="all">Semua Layanan</option>
+                  {uniqueServices.map((svc) => (
+                    <option key={svc} value={svc}>
+                      {isEyelash ? '💅' : '✂️'} {svc}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
-            {/* 6. Limit Baris Data */}
+            {/* 6. Limit Baris Data (AKTIF DI SEMUA PAKET) */}
             <div className="w-full">
               <label className="block text-xs font-bold text-zinc-400 mb-1.5">Limit Data:</label>
               <select
@@ -1445,7 +1523,7 @@ export default function AdminDashboard() {
               </select>
             </div>
 
-            {/* 7. Metode Bayar & Reset */}
+            {/* 7. Metode Bayar & Reset (METODE BAYAR AKTIF DI SEMUA PAKET) */}
             <div className="w-full flex gap-2 items-end">
               <div className="w-full">
                 <label className="block text-xs font-bold text-zinc-400 mb-1.5">Metode Bayar:</label>
