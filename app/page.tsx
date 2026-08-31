@@ -409,16 +409,17 @@ function BookingFormContent() {
       messageText += `• Status Pembayaran: Menunggu Konfirmasi\n`
     }
 
+    // 1. LINK INVOICE WEB: Hanya disisipkan pada Paket Profesional
     if (isPro) {
       messageText += `\n🧾 *LINK INVOICE & REKAP:* \n${invoiceUrl}\n`
     }
 
     messageText += `\n----------------------------------\nBerikut saya lampirkan bukti transfernya. Mohon dikonfirmasi ya, terima kasih!`
 
-    // PENYESUAIAN KHUSUS FONNTE (PAKET PROFESIONAL)
+    // 2. OTOMATISASI FONNTE: Hanya berjalan pada Paket Profesional
     if (isPro && tenant.waGatewayUrl) {
       try {
-        // Formating nomor WA ke standar 628xx Fonnte
+        // Formatting nomor WA ke standar 628xx Fonnte
         let formattedPhone = formData.whatsapp_number.replace(/[^0-9]/g, '')
         if (formattedPhone.startsWith('0')) {
           formattedPhone = '62' + formattedPhone.slice(1)
@@ -440,7 +441,10 @@ function BookingFormContent() {
       }
     }
 
-    window.location.href = `https://wa.me/${tenant.adminWa}?text=${encodeURIComponent(messageText)}`
+    // 3. REDIRECT WA.ME (PAKET PREMIUM & BASIC): 
+    // Format nomor admin dibersihkan dari simbol agar redirect wa.me tidak error
+    const cleanAdminWa = tenant.adminWa ? tenant.adminWa.replace(/[^0-9]/g, '') : ''
+    window.location.href = `https://wa.me/${cleanAdminWa}?text=${encodeURIComponent(messageText)}`
   }
 
   if (fetchingServices && !tenant.category) {
