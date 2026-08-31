@@ -1327,11 +1327,11 @@ export default function AdminDashboard() {
         )}
 
         {/* SEARCH & FILTER TABEL DATA */}
-        <div className={`backdrop-blur-2xl border p-4 sm:p-5 rounded-2xl sm:rounded-3xl shadow-xl flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-4 items-end justify-between bg-zinc-950/70 ${themeStyles.borderAccent}`}>
-          <div className="grid grid-cols-1 sm:flex sm:flex-wrap gap-3 items-end w-full">
+        <div className={`backdrop-blur-2xl border p-4 sm:p-5 rounded-2xl sm:rounded-3xl shadow-xl bg-zinc-950/70 ${themeStyles.borderAccent}`}>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4 items-end w-full">
             
-            {/* Input Pencarian dengan Tombol Clear (X) */}
-            <div className="w-full sm:w-60">
+            {/* 1. Input Pencarian */}
+            <div className="w-full">
               <label className="block text-xs font-bold text-zinc-400 mb-1.5">Pencarian Data:</label>
               <div className="relative">
                 <input
@@ -1353,69 +1353,70 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            {/* Filter Rentang Tanggal (Dari & Sampai) */}
-            <div className="grid grid-cols-2 gap-2 sm:gap-3 w-full sm:w-auto">
-              <div>
-                <label className="block text-[11px] sm:text-xs font-bold text-zinc-400 mb-1.5">Dari Tanggal:</label>
-                <input
-                  type="date"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  className={`w-full sm:w-auto px-3 py-2 sm:py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-xl sm:rounded-2xl text-xs text-zinc-200 focus:outline-none shadow-inner ${themeStyles.focusBorder}`}
-                />
-              </div>
-              <div>
-                <label className="block text-[11px] sm:text-xs font-bold text-zinc-400 mb-1.5">Sampai Tanggal:</label>
-                <input
-                  type="date"
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  className={`w-full sm:w-auto px-3 py-2 sm:py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-xl sm:rounded-2xl text-xs text-zinc-200 focus:outline-none shadow-inner ${themeStyles.focusBorder}`}
-                />
-              </div>
+            {/* 2. Dari Tanggal */}
+            <div className="w-full">
+              <label className="block text-xs font-bold text-zinc-400 mb-1.5">Dari Tanggal:</label>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className={`w-full px-3 py-2 sm:py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-xl sm:rounded-2xl text-xs text-zinc-200 focus:outline-none shadow-inner ${themeStyles.focusBorder}`}
+              />
             </div>
 
-            <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 sm:gap-3 w-full sm:w-auto">
-              <div>
-                <label className="block text-[11px] sm:text-xs font-bold text-zinc-400 mb-1.5">Status:</label>
-                <select
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
-                  className={`w-full sm:w-auto px-3 py-2 sm:py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-xl sm:rounded-2xl text-xs text-zinc-200 focus:outline-none font-semibold cursor-pointer shadow-inner ${themeStyles.focusBorder}`}
-                >
-                  <option value="all">Semua Status</option>
-                  <option value="pending">🟡 Pending</option>
-                  <option value="confirmed">🟢 Confirmed</option>
-                  <option value="completed">🔵 Completed</option>
-                  <option value="cancelled">🔴 Cancelled</option>
-                  <option value="cancelled_need_refund">⚠️ Need Refund</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-[11px] sm:text-xs font-bold text-zinc-400 mb-1.5">Layanan:</label>
-                <select
-                  value={serviceFilter}
-                  onChange={(e) => setServiceFilter(e.target.value)}
-                  className={`w-full sm:w-auto px-3 py-2 sm:py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-xl sm:rounded-2xl text-xs text-zinc-200 focus:outline-none font-semibold cursor-pointer shadow-inner ${themeStyles.focusBorder}`}
-                >
-                  <option value="all">Semua Layanan</option>
-                  {uniqueServices.map((svc) => (
-                    <option key={svc} value={svc}>
-                      {isEyelash ? '💅' : '✂️'} {svc}
-                    </option>
-                  ))}
-                </select>
-              </div>
+            {/* 3. Sampai Tanggal */}
+            <div className="w-full">
+              <label className="block text-xs font-bold text-zinc-400 mb-1.5">Sampai Tanggal:</label>
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className={`w-full px-3 py-2 sm:py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-xl sm:rounded-2xl text-xs text-zinc-200 focus:outline-none shadow-inner ${themeStyles.focusBorder}`}
+              />
             </div>
 
-            <div className="flex items-center gap-2 w-full sm:w-auto">
-              <div className="w-full sm:w-auto">
-                <label className="block text-[11px] sm:text-xs font-bold text-zinc-400 mb-1.5">Metode Bayar:</label>
+            {/* 4. Status */}
+            <div className="w-full">
+              <label className="block text-xs font-bold text-zinc-400 mb-1.5">Status:</label>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className={`w-full px-3 py-2 sm:py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-xl sm:rounded-2xl text-xs text-zinc-200 focus:outline-none font-semibold cursor-pointer shadow-inner ${themeStyles.focusBorder}`}
+              >
+                <option value="all">Semua Status</option>
+                <option value="pending">🟡 Pending</option>
+                <option value="confirmed">🟢 Confirmed</option>
+                <option value="completed">🔵 Completed</option>
+                <option value="cancelled">🔴 Cancelled</option>
+                <option value="cancelled_need_refund">⚠️ Need Refund</option>
+              </select>
+            </div>
+
+            {/* 5. Layanan */}
+            <div className="w-full">
+              <label className="block text-xs font-bold text-zinc-400 mb-1.5">Layanan:</label>
+              <select
+                value={serviceFilter}
+                onChange={(e) => setServiceFilter(e.target.value)}
+                className={`w-full px-3 py-2 sm:py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-xl sm:rounded-2xl text-xs text-zinc-200 focus:outline-none font-semibold cursor-pointer shadow-inner ${themeStyles.focusBorder}`}
+              >
+                <option value="all">Semua Layanan</option>
+                {uniqueServices.map((svc) => (
+                  <option key={svc} value={svc}>
+                    {isEyelash ? '💅' : '✂️'} {svc}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* 6. Metode Bayar & Reset */}
+            <div className="w-full flex gap-2 items-end">
+              <div className="w-full">
+                <label className="block text-xs font-bold text-zinc-400 mb-1.5">Metode Bayar:</label>
                 <select
                   value={paymentFilter}
                   onChange={(e) => setPaymentFilter(e.target.value)}
-                  className={`w-full sm:w-auto px-3 py-2 sm:py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-xl sm:rounded-2xl text-xs text-zinc-200 focus:outline-none font-semibold cursor-pointer shadow-inner ${themeStyles.focusBorder}`}
+                  className={`w-full px-3 py-2 sm:py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-xl sm:rounded-2xl text-xs text-zinc-200 focus:outline-none font-semibold cursor-pointer shadow-inner ${themeStyles.focusBorder}`}
                 >
                   <option value="all">Semua Metode</option>
                   {uniquePayments.map((pay) => (
@@ -1436,16 +1437,17 @@ export default function AdminDashboard() {
                     setPaymentFilter('all')
                     setSearchTerm('')
                   }}
-                  className="mt-auto bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700/80 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl text-xs font-bold transition-all whitespace-nowrap"
+                  className="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700/80 px-3 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl text-xs font-bold transition-all whitespace-nowrap h-[38px] sm:h-[42px]"
                 >
-                  Reset All
+                  Reset
                 </button>
               )}
             </div>
+
           </div>
         </div>
 
-        {/* TABEL DATA RESERVASI - WRAPPER DENGAN PADDING KANAN KHUSUS UNTUK MEMASTIKAN AKSI TIDAK TERPOTONG */}
+        {/* TABEL DATA RESERVASI */}
         <div className={`backdrop-blur-2xl border rounded-2xl sm:rounded-3xl shadow-2xl bg-zinc-950/80 overflow-hidden ${themeStyles.borderAccent}`}>
           {loading ? (
             <div className="p-12 text-center text-zinc-500 text-xs font-semibold">Memuat data reservasi...</div>
@@ -1453,7 +1455,7 @@ export default function AdminDashboard() {
             <div className="p-12 text-center text-zinc-500 text-xs font-semibold">Belum ada reservasi masuk / sesuai filter.</div>
           ) : (
             <div className="w-full overflow-x-auto">
-              <table className="w-full text-left border-collapse min-w-[1350px]">
+              <table className="w-full text-left border-collapse min-w-[1250px]">
                 <thead>
                   <tr className="border-b border-zinc-800/80 bg-zinc-950/95 text-[10px] font-black uppercase tracking-widest text-zinc-400 select-none">
                     
@@ -1517,7 +1519,7 @@ export default function AdminDashboard() {
                       </div>
                     </th>
 
-                    <th className="p-3.5 sm:p-4.5 text-center whitespace-nowrap pr-6 min-w-[120px]">Aksi</th>
+                    <th className="p-3.5 sm:p-4.5 text-center whitespace-nowrap pr-8 min-w-[100px]">Aksi</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-800/40 text-xs font-medium">
@@ -1631,7 +1633,7 @@ export default function AdminDashboard() {
                             )}
                           </div>
                         </td>
-                        <td className="p-3.5 sm:p-4.5 text-center pr-6">
+                        <td className="p-3.5 sm:p-4.5 text-center pr-8">
                           <button
                             onClick={() => handleDelete(item.id, item.customer_name)}
                             className="bg-rose-500/10 hover:bg-rose-500 text-rose-400 hover:text-white px-3 sm:px-3.5 py-1.5 rounded-xl text-[11px] sm:text-xs font-bold border border-rose-500/30 transition-all active:scale-95 whitespace-nowrap"
