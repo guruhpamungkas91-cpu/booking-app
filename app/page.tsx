@@ -34,6 +34,12 @@ interface TenantData {
   showExtraAddon: boolean
   addonLabel: string
   addonPrice: number
+  // Pengaturan Khusus Paket Premium
+  dpType: 'FIXED' | 'PERCENTAGE'
+  dpValue: number
+  // Pengaturan Khusus Paket Profesional
+  waGatewayUrl?: string
+  waApiKey?: string
 }
 
 function BookingFormContent() {
@@ -52,7 +58,11 @@ function BookingFormContent() {
     requireConsent: false,
     showExtraAddon: false,
     addonLabel: 'Perlu lepas eyelash lama (+Rp 30.000)',
-    addonPrice: 30000
+    addonPrice: 30000,
+    dpType: 'PERCENTAGE',
+    dpValue: 50,
+    waGatewayUrl: '',
+    waApiKey: ''
   })
 
   const [services, setServices] = useState<ServiceItem[]>([])
@@ -78,6 +88,7 @@ function BookingFormContent() {
 
   const isWizard = tenant.layoutType === 'STEP_WIZARD'
   const isBasic = tenant.subscriptionPlan === 'BASIC'
+  const isPro = tenant.subscriptionPlan === 'PROFESIONAL'
 
   const getThemeClasses = (color: string) => {
     switch (color) {
@@ -151,7 +162,17 @@ function BookingFormContent() {
   }
 
   const grandTotal = calculateTotal()
-  const dpAmount = Math.round(grandTotal * 0.5)
+
+  // PERHITUNGAN DP KHUSUS PAKET PREMIUM & PROFESIONAL
+  const calculateDP = () => {
+    if (isBasic) return grandTotal
+    if (tenant.dpType === 'FIXED') {
+      return tenant.dpValue > grandTotal ? grandTotal : tenant.dpValue
+    }
+    return Math.round(grandTotal * (tenant.dpValue / 100))
+  }
+
+  const dpAmount = calculateDP()
   const payableAmount = (!isBasic && formData.payment_type === 'DP') ? dpAmount : grandTotal
   const remainingAmount = grandTotal - payableAmount
 
@@ -212,7 +233,11 @@ function BookingFormContent() {
           requireConsent: defaultConsent,
           showExtraAddon: defaultShowAddon,
           addonLabel: tenantData?.addon_label || 'Perlu lepas eyelash lama (+Rp 30.000)',
-          addonPrice: tenantData?.addon_price || 30000
+          addonPrice: tenantData?.addon_price || 30000,
+          dpType: tenantData?.dp_type || 'PERCENTAGE',
+          dpValue: tenantData?.dp_value ?? 50,
+          waGatewayUrl: tenantData?.wa_gateway_url || '',
+          waApiKey: tenantData?.wa_api_key || ''
         }
 
         setTenant(activeTenant)
@@ -335,6 +360,7 @@ function BookingFormContent() {
     }
 
     const bookingId = insertedData?.id ? `BK-${insertedData.id}` : 'BK-NEW'
+    const invoiceUrl = `https://${window.location.host}/invoice/${bookingId}`
 
     let messageText =
       `Halo *${tenant.name}*, saya ingin mengonfirmasi reservasi:\n\n` +
@@ -365,7 +391,7 @@ function BookingFormContent() {
       `• Metode Bayar: ${formData.payment_method}\n` +
       `• Total Biaya: Rp ${grandTotal.toLocaleString('id-ID')}\n`
 
-    if (isWizard && !isBasic) {
+    if (!isBasic) {
       messageText += `• Nominal Dibayar (${formData.payment_type}): Rp ${payableAmount.toLocaleString('id-ID')}\n`
       if (formData.payment_type === 'DP') {
         messageText += `• Sisa Pelunasan: Rp ${remainingAmount.toLocaleString('id-ID')} (Dibayar di Lokasi)\n`
@@ -374,7 +400,32 @@ function BookingFormContent() {
       messageText += `• Status Pembayaran: Menunggu Konfirmasi\n`
     }
 
+    // PAKET PROFESIONAL: MENAMBAHKAN LINK INVOICE / REKAP
+    if (isPro) {
+      messageText += `\n🧾 *LINK INVOICE & REKAP:* \n${invoiceUrl}\n`
+    }
+
     messageText += `\n----------------------------------\nBerikut saya lampirkan bukti transfernya. Mohon dikonfirmasi ya, terima kasih!`
+
+    // PAKET PROFESIONAL: VERIFIKASI / EMBEDDING WA GATEWAY AUTOMATION
+    if (isPro && tenant.waGatewayUrl) {
+      try {
+        await fetch(tenant.waGatewayUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': tenant.waApiKey || ''
+          },
+          body: JSON.stringify({
+            phone: formData.whatsapp_number,
+            message: messageText,
+            booking_id: bookingId
+          })
+        })
+      } catch (err) {
+        console.error('Gagal memicu WA Gateway:', err)
+      }
+    }
 
     window.location.href = `https://wa.me/${tenant.adminWa}?text=${encodeURIComponent(messageText)}`
   }
@@ -876,7 +927,7 @@ function BookingFormContent() {
                     </div>
                   </div>
 
-                  {/* TENTUKAN TIPE PEMBAYARAN: DP CUMA UNTUK NON-BASIC */}
+                  {/* TENTUKAN TIPE PEMBAYARAN: DP FLEXIBLE UNTUK PREMIUM & PRO */}
                   {!isBasic && (
                     <div className="grid grid-cols-2 gap-2.5">
                       {['DP', 'FULL'].map((t) => (
@@ -890,7 +941,11 @@ function BookingFormContent() {
                               : 'bg-zinc-950/60 border-zinc-800/80 text-zinc-400 hover:border-zinc-700'
                           }`}
                         >
-                          <div className="font-bold">{t === 'DP' ? 'DP (50%)' : 'Full Payment'}</div>
+                          <div className="font-bold">
+                            {t === 'DP' 
+                              ? `DP (${tenant.dpType === 'PERCENTAGE' ? `${tenant.dpValue}%` : 'Tetap'})` 
+                              : 'Full Payment'}
+                          </div>
                           <div className="text-[10px] opacity-90 mt-0.5 font-medium">
                             Rp {(t === 'DP' ? dpAmount : grandTotal).toLocaleString('id-ID')}
                           </div>
