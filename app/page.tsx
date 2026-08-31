@@ -176,6 +176,38 @@ function BookingFormContent() {
   const payableAmount = (!isBasic && formData.payment_type === 'DP') ? dpAmount : grandTotal
   const remainingAmount = grandTotal - payableAmount
 
+  {/* PILIHAN DP / FULL PAYMENT UNTUK SINGLE PAGE (BARBERSHOP) */}
+  {!isBasic && (
+  <div className="space-y-1.5">
+    <label className="block text-[11px] font-semibold text-zinc-300 uppercase tracking-wider">
+      Tipe Pembayaran
+    </label>
+    <div className="grid grid-cols-2 gap-2.5">
+      {['DP', 'FULL'].map((t) => (
+        <button
+          type="button"
+          key={t}
+          onClick={() => setFormData({ ...formData, payment_type: t })}
+          className={`py-2.5 px-2 text-xs rounded-2xl border transition-all duration-300 text-center ${
+            formData.payment_type === t 
+              ? `${theme.accentBg} text-white border-transparent font-bold shadow-md scale-[1.02]` 
+              : 'bg-zinc-950/60 border-zinc-800/80 text-zinc-400 hover:border-zinc-700'
+          }`}
+        >
+          <div className="font-bold">
+            {t === 'DP' 
+              ? `DP (${tenant.dpType === 'PERCENTAGE' ? `${tenant.dpValue}%` : 'Tetap'})` 
+              : 'Full Payment'}
+          </div>
+          <div className="text-[10px] opacity-90 mt-0.5 font-medium">
+            Rp {(t === 'DP' ? dpAmount : grandTotal).toLocaleString('id-ID')}
+          </div>
+        </button>
+      ))}
+    </div>
+  </div>
+)}
+
   // Daftar Metode Pembayaran Berdasarkan Paket
   const availablePaymentMethods = isBasic 
     ? [
