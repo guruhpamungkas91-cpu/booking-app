@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 // Mundur 3 kali: wa-automation -> cron -> api -> root -> lib
-import { supabase } from '../../../lib/supabase'
-import { sendWhatsAppMessage } from '../../../lib/whatsapp'
+import { supabase } from '@/lib/supabase'
+import { sendWhatsAppMessage } from '@/lib/whatsapp'
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
