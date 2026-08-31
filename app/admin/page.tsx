@@ -3,7 +3,7 @@
 export const dynamic = 'force-dynamic'
 
 import { useEffect, useState, useMemo, useCallback } from 'react'
-import { supabase } from '../lib/supabase'
+import { supabase } from '@/lib/supabase'
 
 interface Reservation {
   id: number
