@@ -68,7 +68,7 @@ function BookingFormContent() {
     selected_staff: '',
     payment_method: 'QRIS',
     person_count: 1,
-    payment_type: 'DP',
+    payment_type: 'FULL',
     need_extra_addon: false,
     addon_person_count: 1,
     has_consent: false,
@@ -152,8 +152,20 @@ function BookingFormContent() {
 
   const grandTotal = calculateTotal()
   const dpAmount = Math.round(grandTotal * 0.5)
-  const payableAmount = formData.payment_type === 'DP' ? dpAmount : grandTotal
+  const payableAmount = (!isBasic && formData.payment_type === 'DP') ? dpAmount : grandTotal
   const remainingAmount = grandTotal - payableAmount
+
+  // Daftar Metode Pembayaran Berdasarkan Paket
+  const availablePaymentMethods = isBasic 
+    ? [
+        { id: 'QRIS', label: 'QRIS' },
+        { id: 'Bayar di Tempat', label: 'Cash' },
+      ]
+    : [
+        { id: 'QRIS', label: 'QRIS' },
+        { id: 'Transfer BCA', label: 'BCA' },
+        { id: 'Bayar di Tempat', label: 'Cash' },
+      ]
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -303,7 +315,7 @@ function BookingFormContent() {
 
     if (isWizard) {
       insertPayload.person_count = formData.person_count
-      insertPayload.payment_type = formData.payment_type
+      insertPayload.payment_type = isBasic ? 'FULL' : formData.payment_type
       insertPayload.need_remove_lash = formData.need_extra_addon
       insertPayload.addon_person_count = formData.need_extra_addon ? formData.addon_person_count : 0
       insertPayload.has_eye_allergy_consent = formData.has_consent
@@ -353,7 +365,7 @@ function BookingFormContent() {
       `• Metode Bayar: ${formData.payment_method}\n` +
       `• Total Biaya: Rp ${grandTotal.toLocaleString('id-ID')}\n`
 
-    if (isWizard) {
+    if (isWizard && !isBasic) {
       messageText += `• Nominal Dibayar (${formData.payment_type}): Rp ${payableAmount.toLocaleString('id-ID')}\n`
       if (formData.payment_type === 'DP') {
         messageText += `• Sisa Pelunasan: Rp ${remainingAmount.toLocaleString('id-ID')} (Dibayar di Lokasi)\n`
@@ -533,12 +545,9 @@ function BookingFormContent() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-2 pt-1">
-                {[
-                  { id: 'QRIS', label: 'QRIS' },
-                  { id: 'Transfer BCA', label: 'BCA' },
-                  { id: 'Bayar di Tempat', label: 'Cash' },
-                ].map((m) => (
+              {/* OPSI METODE PEMBAYARAN */}
+              <div className={`grid ${isBasic ? 'grid-cols-2' : 'grid-cols-3'} gap-2 pt-1`}>
+                {availablePaymentMethods.map((m) => (
                   <button
                     type="button"
                     key={m.id}
@@ -867,32 +876,32 @@ function BookingFormContent() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2.5">
-                    {['DP', 'FULL'].map((t) => (
-                      <button
-                        type="button"
-                        key={t}
-                        onClick={() => setFormData({ ...formData, payment_type: t })}
-                        className={`py-2.5 px-2 text-xs rounded-2xl border transition-all duration-300 text-center ${
-                          formData.payment_type === t 
-                            ? `${theme.accentBg} text-white border-transparent font-bold shadow-md scale-[1.02]` 
-                            : 'bg-zinc-950/60 border-zinc-800/80 text-zinc-400 hover:border-zinc-700'
-                        }`}
-                      >
-                        <div className="font-bold">{t === 'DP' ? 'DP (50%)' : 'Full Payment'}</div>
-                        <div className="text-[10px] opacity-90 mt-0.5 font-medium">
-                          Rp {(t === 'DP' ? dpAmount : grandTotal).toLocaleString('id-ID')}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
+                  {/* TENTUKAN TIPE PEMBAYARAN: DP CUMA UNTUK NON-BASIC */}
+                  {!isBasic && (
+                    <div className="grid grid-cols-2 gap-2.5">
+                      {['DP', 'FULL'].map((t) => (
+                        <button
+                          type="button"
+                          key={t}
+                          onClick={() => setFormData({ ...formData, payment_type: t })}
+                          className={`py-2.5 px-2 text-xs rounded-2xl border transition-all duration-300 text-center ${
+                            formData.payment_type === t 
+                              ? `${theme.accentBg} text-white border-transparent font-bold shadow-md scale-[1.02]` 
+                              : 'bg-zinc-950/60 border-zinc-800/80 text-zinc-400 hover:border-zinc-700'
+                          }`}
+                        >
+                          <div className="font-bold">{t === 'DP' ? 'DP (50%)' : 'Full Payment'}</div>
+                          <div className="text-[10px] opacity-90 mt-0.5 font-medium">
+                            Rp {(t === 'DP' ? dpAmount : grandTotal).toLocaleString('id-ID')}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
 
-                  <div className="grid grid-cols-3 gap-2">
-                    {[
-                      { id: 'QRIS', label: 'QRIS' },
-                      { id: 'Transfer BCA', label: 'BCA' },
-                      { id: 'Bayar di Tempat', label: 'Cash' },
-                    ].map((m) => (
+                  {/* OPSI METODE PEMBAYARAN */}
+                  <div className={`grid ${isBasic ? 'grid-cols-2' : 'grid-cols-3'} gap-2`}>
+                    {availablePaymentMethods.map((m) => (
                       <button
                         type="button"
                         key={m.id}
