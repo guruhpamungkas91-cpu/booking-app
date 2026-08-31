@@ -273,21 +273,42 @@ export default function AdminDashboard() {
     }
   }
 
-  // MAPPING HARGA LAYANAN BARBER & EYELASH
+  // MAPPING HARGA LAYANAN DILENGKAPI DENGAN SEMUA KATALOG BARU
   const SERVICE_PRICES: Record<string, number> = {
     // Barber Services
     'Potong Rambut': 50000,
+    'Haircut Basic': 50000,
+    'Gentlemen Haircut': 65000,
+    'Haircut + Wash': 70000,
     'Coloring': 120000,
+    'Hair Color Basic': 120000,
+    'Bleaching + Color': 220000,
     'Creambath': 75000,
+    'Hair Spa Treatment': 95000,
     'Shaving': 35000,
+    'Beard Trim & Beard Shave': 35000,
+
     // Eyelash Services
     'Natural Eyelash': 120000,
     'Single Lash Extension': 135000,
+    'Natural Single Lash': 135000,
     'Russian Volume': 180000,
+    'Russian Volume Lash': 180000,
     'Cat Eye Style': 160000,
+    'Anime / Wispy Lash': 175000,
     'Lash Lift & Tint': 100000,
     'Retouch Eyelash': 75000,
     'Remove Eyelash': 40000,
+
+    // Nail Care
+    'Express Manicure': 60000,
+    'Gel Polish Hand': 85000,
+    'Nail Art / Finger': 15000,
+    'Pedicure SPA': 110000,
+
+    // Facial & SPA
+    'Basic Facial Glow': 125000,
+    'Acne Care Treatment': 150000,
   }
 
   const getServicePrice = (serviceName?: string): number => {
