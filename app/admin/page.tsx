@@ -74,6 +74,10 @@ export default function AdminDashboard() {
   const [serviceFilter, setServiceFilter] = useState('all')
   const [paymentFilter, setPaymentFilter] = useState('all')
 
+  // State Pagination & Limit Data
+  const [limit, setLimit] = useState<number | 'all'>(10)
+  const [currentPage, setCurrentPage] = useState<number>(1)
+
   // State Sorting Tabel
   const [sortField, setSortField] = useState<SortField>('booking_date')
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc')
@@ -782,7 +786,20 @@ export default function AdminDashboard() {
     })
 
     setFilteredReservations(result)
+    setCurrentPage(1) // Reset ke halaman 1 setiap kali filter/search berubah
   }, [startDate, endDate, statusFilter, serviceFilter, paymentFilter, searchTerm, sortField, sortOrder, reservations])
+
+  // KALKULASI PAGINASI & DATA PER HALAMAN
+  const totalPages = useMemo(() => {
+    if (limit === 'all') return 1
+    return Math.ceil(filteredReservations.length / limit) || 1
+  }, [filteredReservations.length, limit])
+
+  const displayedReservations = useMemo(() => {
+    if (limit === 'all') return filteredReservations
+    const startIndex = (currentPage - 1) * limit
+    return filteredReservations.slice(startIndex, startIndex + limit)
+  }, [filteredReservations, currentPage, limit])
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -1328,10 +1345,10 @@ export default function AdminDashboard() {
 
         {/* SEARCH & FILTER TABEL DATA */}
         <div className={`backdrop-blur-2xl border p-4 sm:p-5 rounded-2xl sm:rounded-3xl shadow-xl bg-zinc-950/70 ${themeStyles.borderAccent}`}>
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4 items-end w-full">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3 sm:gap-4 items-end w-full">
             
             {/* 1. Input Pencarian */}
-            <div className="w-full">
+            <div className="w-full lg:col-span-1">
               <label className="block text-xs font-bold text-zinc-400 mb-1.5">Pencarian Data:</label>
               <div className="relative">
                 <input
@@ -1409,7 +1426,26 @@ export default function AdminDashboard() {
               </select>
             </div>
 
-            {/* 6. Metode Bayar & Reset */}
+            {/* 6. Limit Baris Data */}
+            <div className="w-full">
+              <label className="block text-xs font-bold text-zinc-400 mb-1.5">Limit Data:</label>
+              <select
+                value={limit}
+                onChange={(e) => {
+                  const val = e.target.value
+                  setLimit(val === 'all' ? 'all' : Number(val))
+                  setCurrentPage(1)
+                }}
+                className={`w-full px-3 py-2 sm:py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-xl sm:rounded-2xl text-xs text-zinc-200 focus:outline-none font-semibold cursor-pointer shadow-inner ${themeStyles.focusBorder}`}
+              >
+                <option value={10}>10 Baris</option>
+                <option value={25}>25 Baris</option>
+                <option value={50}>50 Baris</option>
+                <option value="all">Semua Data</option>
+              </select>
+            </div>
+
+            {/* 7. Metode Bayar & Reset */}
             <div className="w-full flex gap-2 items-end">
               <div className="w-full">
                 <label className="block text-xs font-bold text-zinc-400 mb-1.5">Metode Bayar:</label>
@@ -1427,7 +1463,7 @@ export default function AdminDashboard() {
                 </select>
               </div>
 
-              {(startDate || endDate || statusFilter !== 'all' || serviceFilter !== 'all' || paymentFilter !== 'all' || searchTerm) && (
+              {(startDate || endDate || statusFilter !== 'all' || serviceFilter !== 'all' || paymentFilter !== 'all' || searchTerm || limit !== 10) && (
                 <button
                   onClick={() => {
                     setStartDate('')
@@ -1436,6 +1472,7 @@ export default function AdminDashboard() {
                     setServiceFilter('all')
                     setPaymentFilter('all')
                     setSearchTerm('')
+                    setLimit(10)
                   }}
                   className="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700/80 px-3 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl text-xs font-bold transition-all whitespace-nowrap h-[38px] sm:h-[42px]"
                 >
@@ -1454,203 +1491,248 @@ export default function AdminDashboard() {
           ) : filteredReservations.length === 0 ? (
             <div className="p-12 text-center text-zinc-500 text-xs font-semibold">Belum ada reservasi masuk / sesuai filter.</div>
           ) : (
-            <div className="w-full overflow-x-auto">
-              {/* min-w diturunkan ke 100% / min-w-full agar pas di layar tanpa melar */}
-              <table className="w-full text-left border-collapse min-w-full">
-                <thead>
-                  <tr className="border-b border-zinc-800/80 bg-zinc-950/95 text-[10px] font-black uppercase tracking-widest text-zinc-400 select-none">
-                    
-                    <th onClick={() => handleSort('booking_date')} className={`py-3 px-2 cursor-pointer transition hover:${themeStyles.textAccent}`}>
-                      <div className="flex items-center gap-1 whitespace-nowrap">
-                        <span>Tanggal</span>
-                        {sortField === 'booking_date' && (sortOrder === 'asc' ? '▲' : '▼')}
-                      </div>
-                    </th>
-
-                    <th onClick={() => handleSort('booking_time')} className={`py-3 px-2 cursor-pointer transition hover:${themeStyles.textAccent}`}>
-                      <div className="flex items-center gap-1 whitespace-nowrap">
-                        <span>Jam</span>
-                        {sortField === 'booking_time' && (sortOrder === 'asc' ? '▲' : '▼')}
-                      </div>
-                    </th>
-
-                    <th onClick={() => handleSort('customer_name')} className={`py-3 px-2 cursor-pointer transition hover:${themeStyles.textAccent}`}>
-                      <div className="flex items-center gap-1 whitespace-nowrap">
-                        <span>Pelanggan</span>
-                        {sortField === 'customer_name' && (sortOrder === 'asc' ? '▲' : '▼')}
-                      </div>
-                    </th>
-
-                    <th onClick={() => handleSort('service_name')} className={`py-3 px-2 cursor-pointer transition hover:${themeStyles.textAccent}`}>
-                      <div className="flex items-center gap-1 whitespace-nowrap">
-                        <span>Layanan</span>
-                        {sortField === 'service_name' && (sortOrder === 'asc' ? '▲' : '▼')}
-                      </div>
-                    </th>
-
-                    {(subscriptionPlan === 'PREMIUM' || isProfesional) && (
-                      <th onClick={() => handleSort('staff_name')} className={`py-3 px-2 cursor-pointer transition ${themeStyles.textAccent}`}>
+            <>
+              <div className="w-full overflow-x-auto">
+                <table className="w-full text-left border-collapse min-w-full">
+                  <thead>
+                    <tr className="border-b border-zinc-800/80 bg-zinc-950/95 text-[10px] font-black uppercase tracking-widest text-zinc-400 select-none">
+                      
+                      <th onClick={() => handleSort('booking_date')} className={`py-3 px-2 cursor-pointer transition hover:${themeStyles.textAccent}`}>
                         <div className="flex items-center gap-1 whitespace-nowrap">
-                          <span>{staffLabel}</span>
-                          {sortField === 'staff_name' && (sortOrder === 'asc' ? '▲' : '▼')}
+                          <span>Tanggal</span>
+                          {sortField === 'booking_date' && (sortOrder === 'asc' ? '▲' : '▼')}
                         </div>
                       </th>
-                    )}
 
-                    <th onClick={() => handleSort('price')} className={`py-3 px-2 cursor-pointer transition text-emerald-400 hover:${themeStyles.textAccent}`}>
-                      <div className="flex items-center gap-1 whitespace-nowrap">
-                        <span>Harga</span>
-                        {sortField === 'price' && (sortOrder === 'asc' ? '▲' : '▼')}
-                      </div>
-                    </th>
+                      <th onClick={() => handleSort('booking_time')} className={`py-3 px-2 cursor-pointer transition hover:${themeStyles.textAccent}`}>
+                        <div className="flex items-center gap-1 whitespace-nowrap">
+                          <span>Jam</span>
+                          {sortField === 'booking_time' && (sortOrder === 'asc' ? '▲' : '▼')}
+                        </div>
+                      </th>
 
-                    <th onClick={() => handleSort('payment_method')} className={`py-3 px-2 cursor-pointer transition hover:${themeStyles.textAccent}`}>
-                      <div className="flex items-center gap-1 whitespace-nowrap">
-                        <span>Metode</span>
-                        {sortField === 'payment_method' && (sortOrder === 'asc' ? '▲' : '▼')}
-                      </div>
-                    </th>
+                      <th onClick={() => handleSort('customer_name')} className={`py-3 px-2 cursor-pointer transition hover:${themeStyles.textAccent}`}>
+                        <div className="flex items-center gap-1 whitespace-nowrap">
+                          <span>Pelanggan</span>
+                          {sortField === 'customer_name' && (sortOrder === 'asc' ? '▲' : '▼')}
+                        </div>
+                      </th>
 
-                    <th className="py-3 px-2 whitespace-nowrap">WhatsApp</th>
+                      <th onClick={() => handleSort('service_name')} className={`py-3 px-2 cursor-pointer transition hover:${themeStyles.textAccent}`}>
+                        <div className="flex items-center gap-1 whitespace-nowrap">
+                          <span>Layanan</span>
+                          {sortField === 'service_name' && (sortOrder === 'asc' ? '▲' : '▼')}
+                        </div>
+                      </th>
 
-                    <th onClick={() => handleSort('status')} className={`py-3 px-2 cursor-pointer transition hover:${themeStyles.textAccent}`}>
-                      <div className="flex items-center gap-1 whitespace-nowrap">
-                        <span>Status</span>
-                        {sortField === 'status' && (sortOrder === 'asc' ? '▲' : '▼')}
-                      </div>
-                    </th>
-
-                    <th className="py-3 px-2 pr-3 text-center whitespace-nowrap">Aksi</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-zinc-800/40 text-[11px] font-medium">
-                  {filteredReservations.map((item) => {
-                    const currentStatus = item.status || 'pending'
-                    const cleanPhone = item.whatsapp_number ? item.whatsapp_number.replace(/^0/, '62') : ''
-                    const displayBrand = brandTitle || tenantCode || (isEyelash ? 'FITRIFEB LASHES' : 'BARBERSHOP')
-                    
-                    const refundWaMsg = encodeURIComponent(
-                      `Halo Kak ${item.customer_name}, mohon maaf reservasi Kamu di ${displayBrand} pada tanggal ${formatDateID(item.booking_date)} jam ${item.booking_time} WIB kami batalkan.\n\n` +
-                      `Karena Kakak sudah melakukan pembayaran, mohon infokan Nomor Rekening / E-Wallet Kakak agar dana sebesar Rp ${getServicePrice(item.service_name).toLocaleString('id-ID')} bisa kami refund segera ya. Terima kasih!`
-                    )
-
-                    return (
-                      <tr key={item.id} className="hover:bg-zinc-800/30 transition-colors">
-                        <td className="py-2.5 px-2 font-bold text-zinc-200 whitespace-nowrap">{item.booking_date}</td>
-                        <td className={`py-2.5 px-2 font-mono font-bold whitespace-nowrap ${themeStyles.textAccent}`}>{item.booking_time} WIB</td>
-                        <td className="py-2.5 px-2 font-black text-white whitespace-nowrap">
-                          {item.customer_name}
-                        </td>
-                        <td className="py-2.5 px-2">
-                          <span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold inline-block whitespace-nowrap border ${themeStyles.badgeBg}`}>
-                            {item.service_name}
-                          </span>
-                        </td>
-
-                        {(subscriptionPlan === 'PREMIUM' || isProfesional) && (
-                          <td className="py-2.5 px-2 font-bold text-zinc-200">
-                            {item.staff_name ? (
-                              <span className="px-2 py-0.5 rounded-lg text-[10px] border border-zinc-700/80 bg-zinc-800/60 text-zinc-200 whitespace-nowrap">
-                                👤 {item.staff_name}
-                              </span>
-                            ) : (
-                              <span className="text-zinc-600 font-mono text-[10px]">-</span>
-                            )}
-                          </td>
-                        )}
-
-                        <td className="py-2.5 px-2 font-mono font-bold text-emerald-400 whitespace-nowrap">
-                          Rp {getServicePrice(item.service_name).toLocaleString('id-ID')}
-                        </td>
-                        <td className="py-2.5 px-2">
-                          <span className="bg-zinc-800/80 text-zinc-300 border border-zinc-700/80 px-2 py-0.5 rounded-lg text-[10px] font-bold whitespace-nowrap">
-                            {item.payment_method || 'QRIS'}
-                          </span>
-                        </td>
-                        <td className="py-2.5 px-2">
-                          <a
-                            href={`https://wa.me/${cleanPhone}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-emerald-400 hover:text-emerald-300 font-bold inline-flex items-center gap-1 transition-colors whitespace-nowrap text-[11px]"
-                          >
-                            <span>{item.whatsapp_number}</span>
-                            <svg className="w-3 h-3 fill-current" viewBox="0 0 24 24">
-                              <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981z"/>
-                            </svg>
-                          </a>
-                        </td>
-                        <td className="py-2.5 px-2">
-                          <div className="space-y-1">
-                            <select
-                              value={
-                                currentStatus.startsWith('cancelled')
-                                  ? 'cancelled'
-                                  : currentStatus
-                              }
-                              onChange={(e) => handleStatusChange(item, e.target.value)}
-                              className={`px-2 py-0.5 rounded-lg text-[11px] font-black border bg-zinc-950 focus:outline-none cursor-pointer transition-all ${
-                                currentStatus === 'confirmed'
-                                  ? 'text-blue-400 border-blue-500/40 bg-blue-500/10'
-                                  : currentStatus === 'completed'
-                                  ? 'text-emerald-400 border-emerald-500/40 bg-emerald-500/10'
-                                  : currentStatus.startsWith('cancelled')
-                                  ? 'text-rose-400 border-rose-500/40 bg-rose-500/10'
-                                  : 'text-amber-400 border-amber-500/40 bg-amber-500/10'
-                              }`}
-                            >
-                              <option value="pending">🟡 Pending</option>
-                              <option value="confirmed">🟢 Confirmed</option>
-                              <option value="completed">🔵 Completed</option>
-                              <option value="cancelled">🔴 Cancelled</option>
-                            </select>
-
-                            {currentStatus === 'cancelled_need_refund' && (
-                              <div className="flex flex-col gap-1 mt-1">
-                                <span className="bg-amber-500/10 text-amber-400 border border-amber-500/30 px-1.5 py-0.5 rounded text-[9px] font-black flex items-center gap-1 w-max">
-                                  <span>⚠️</span> REFUND
-                                </span>
-                                <a
-                                  href={`https://wa.me/${cleanPhone}?text=${refundWaMsg}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-lg text-[9px] font-bold text-center block transition-all"
-                                >
-                                  💬 Rekening (WA)
-                                </a>
-                                <button
-                                  onClick={() => handleCompleteRefund(item.id)}
-                                  className="bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 border border-blue-500/30 px-2 py-0.5 rounded-lg text-[9px] font-bold transition-all"
-                                >
-                                  ✅ Selesai
-                                </button>
-                              </div>
-                            )}
-
-                            {currentStatus === 'cancelled_refunded' && (
-                              <span className="bg-zinc-800 text-zinc-400 border border-zinc-700 px-2 py-0.5 rounded-lg text-[9px] font-bold block w-max">
-                                ✓ Refund Selesai
-                              </span>
-                            )}
+                      {(subscriptionPlan === 'PREMIUM' || isProfesional) && (
+                        <th onClick={() => handleSort('staff_name')} className={`py-3 px-2 cursor-pointer transition ${themeStyles.textAccent}`}>
+                          <div className="flex items-center gap-1 whitespace-nowrap">
+                            <span>{staffLabel}</span>
+                            {sortField === 'staff_name' && (sortOrder === 'asc' ? '▲' : '▼')}
                           </div>
-                        </td>
+                        </th>
+                      )}
 
-                        {/* Kolom Aksi Ringkas */}
-                        <td className="py-2.5 px-2 pr-3 text-center">
-                          <button
-                            onClick={() => handleDelete(item.id, item.customer_name)}
-                            className="bg-rose-500/10 hover:bg-rose-500 text-rose-400 hover:text-white px-2.5 py-1 rounded-lg text-[11px] font-bold border border-rose-500/30 transition-all active:scale-95 whitespace-nowrap"
-                            title="Hapus Data"
-                          >
-                            🗑️
-                          </button>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
+                      <th onClick={() => handleSort('price')} className={`py-3 px-2 cursor-pointer transition text-emerald-400 hover:${themeStyles.textAccent}`}>
+                        <div className="flex items-center gap-1 whitespace-nowrap">
+                          <span>Harga</span>
+                          {sortField === 'price' && (sortOrder === 'asc' ? '▲' : '▼')}
+                        </div>
+                      </th>
+
+                      <th onClick={() => handleSort('payment_method')} className={`py-3 px-2 cursor-pointer transition hover:${themeStyles.textAccent}`}>
+                        <div className="flex items-center gap-1 whitespace-nowrap">
+                          <span>Metode</span>
+                          {sortField === 'payment_method' && (sortOrder === 'asc' ? '▲' : '▼')}
+                        </div>
+                      </th>
+
+                      <th className="py-3 px-2 whitespace-nowrap">WhatsApp</th>
+
+                      <th onClick={() => handleSort('status')} className={`py-3 px-2 cursor-pointer transition hover:${themeStyles.textAccent}`}>
+                        <div className="flex items-center gap-1 whitespace-nowrap">
+                          <span>Status</span>
+                          {sortField === 'status' && (sortOrder === 'asc' ? '▲' : '▼')}
+                        </div>
+                      </th>
+
+                      <th className="py-3 px-2 pr-3 text-center whitespace-nowrap">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-800/40 text-[11px] font-medium">
+                    {displayedReservations.map((item) => {
+                      const currentStatus = item.status || 'pending'
+                      const cleanPhone = item.whatsapp_number ? item.whatsapp_number.replace(/^0/, '62') : ''
+                      const displayBrand = brandTitle || tenantCode || (isEyelash ? 'FITRIFEB LASHES' : 'BARBERSHOP')
+                      
+                      const refundWaMsg = encodeURIComponent(
+                        `Halo Kak ${item.customer_name}, mohon maaf reservasi Kamu di ${displayBrand} pada tanggal ${formatDateID(item.booking_date)} jam ${item.booking_time} WIB kami batalkan.\n\n` +
+                        `Karena Kakak sudah melakukan pembayaran, mohon infokan Nomor Rekening / E-Wallet Kakak agar dana sebesar Rp ${getServicePrice(item.service_name).toLocaleString('id-ID')} bisa kami refund segera ya. Terima kasih!`
+                      )
+
+                      return (
+                        <tr key={item.id} className="hover:bg-zinc-800/30 transition-colors">
+                          <td className="py-2.5 px-2 font-bold text-zinc-200 whitespace-nowrap">{item.booking_date}</td>
+                          <td className={`py-2.5 px-2 font-mono font-bold whitespace-nowrap ${themeStyles.textAccent}`}>{item.booking_time} WIB</td>
+                          <td className="py-2.5 px-2 font-black text-white whitespace-nowrap">
+                            {item.customer_name}
+                          </td>
+                          <td className="py-2.5 px-2">
+                            <span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold inline-block whitespace-nowrap border ${themeStyles.badgeBg}`}>
+                              {item.service_name}
+                            </span>
+                          </td>
+
+                          {(subscriptionPlan === 'PREMIUM' || isProfesional) && (
+                            <td className="py-2.5 px-2 font-bold text-zinc-200">
+                              {item.staff_name ? (
+                                <span className="px-2 py-0.5 rounded-lg text-[10px] border border-zinc-700/80 bg-zinc-800/60 text-zinc-200 whitespace-nowrap">
+                                  👤 {item.staff_name}
+                                </span>
+                              ) : (
+                                <span className="text-zinc-600 font-mono text-[10px]">-</span>
+                              )}
+                            </td>
+                          )}
+
+                          <td className="py-2.5 px-2 font-mono font-bold text-emerald-400 whitespace-nowrap">
+                            Rp {getServicePrice(item.service_name).toLocaleString('id-ID')}
+                          </td>
+                          <td className="py-2.5 px-2">
+                            <span className="bg-zinc-800/80 text-zinc-300 border border-zinc-700/80 px-2 py-0.5 rounded-lg text-[10px] font-bold whitespace-nowrap">
+                              {item.payment_method || 'QRIS'}
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-2">
+                            <a
+                              href={`https://wa.me/${cleanPhone}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-emerald-400 hover:text-emerald-300 font-bold inline-flex items-center gap-1 transition-colors whitespace-nowrap text-[11px]"
+                            >
+                              <span>{item.whatsapp_number}</span>
+                              <svg className="w-3 h-3 fill-current" viewBox="0 0 24 24">
+                                <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981z"/>
+                              </svg>
+                            </a>
+                          </td>
+                          <td className="py-2.5 px-2">
+                            <div className="space-y-1">
+                              <select
+                                value={
+                                  currentStatus.startsWith('cancelled')
+                                    ? 'cancelled'
+                                    : currentStatus
+                                }
+                                onChange={(e) => handleStatusChange(item, e.target.value)}
+                                className={`px-2 py-0.5 rounded-lg text-[11px] font-black border bg-zinc-950 focus:outline-none cursor-pointer transition-all ${
+                                  currentStatus === 'confirmed'
+                                    ? 'text-blue-400 border-blue-500/40 bg-blue-500/10'
+                                    : currentStatus === 'completed'
+                                    ? 'text-emerald-400 border-emerald-500/40 bg-emerald-500/10'
+                                    : currentStatus.startsWith('cancelled')
+                                    ? 'text-rose-400 border-rose-500/40 bg-rose-500/10'
+                                    : 'text-amber-400 border-amber-500/40 bg-amber-500/10'
+                                }`}
+                              >
+                                <option value="pending">🟡 Pending</option>
+                                <option value="confirmed">🟢 Confirmed</option>
+                                <option value="completed">🔵 Completed</option>
+                                <option value="cancelled">🔴 Cancelled</option>
+                              </select>
+
+                              {currentStatus === 'cancelled_need_refund' && (
+                                <div className="flex flex-col gap-1 mt-1">
+                                  <span className="bg-amber-500/10 text-amber-400 border border-amber-500/30 px-1.5 py-0.5 rounded text-[9px] font-black flex items-center gap-1 w-max">
+                                    <span>⚠️</span> REFUND
+                                  </span>
+                                  <a
+                                    href={`https://wa.me/${cleanPhone}?text=${refundWaMsg}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-lg text-[9px] font-bold text-center block transition-all"
+                                  >
+                                    💬 Rekening (WA)
+                                  </a>
+                                  <button
+                                    onClick={() => handleCompleteRefund(item.id)}
+                                    className="bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 border border-blue-500/30 px-2 py-0.5 rounded-lg text-[9px] font-bold transition-all"
+                                  >
+                                    ✅ Selesai
+                                  </button>
+                                </div>
+                              )}
+
+                              {currentStatus === 'cancelled_refunded' && (
+                                <span className="bg-zinc-800 text-zinc-400 border border-zinc-700 px-2 py-0.5 rounded-lg text-[9px] font-bold block w-max">
+                                  ✓ Refund Selesai
+                                </span>
+                              )}
+                            </div>
+                          </td>
+
+                          {/* Kolom Aksi Ringkas */}
+                          <td className="py-2.5 px-2 pr-3 text-center">
+                            <button
+                              onClick={() => handleDelete(item.id, item.customer_name)}
+                              className="bg-rose-500/10 hover:bg-rose-500 text-rose-400 hover:text-white px-2.5 py-1 rounded-lg text-[11px] font-bold border border-rose-500/30 transition-all active:scale-95 whitespace-nowrap"
+                              title="Hapus Data"
+                            >
+                              🗑️
+                            </button>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* BARIS PAGINASI & INFO KETERANGAN DATA */}
+              <div className="flex flex-col sm:flex-row items-center justify-between p-4 border-t border-zinc-800/80 bg-zinc-950/90 text-xs text-zinc-400 gap-3">
+                <div>
+                  Menampilkan <b className="text-white">{displayedReservations.length}</b> dari <b className="text-white">{filteredReservations.length}</b> data
+                  {limit !== 'all' && (
+                    <span> (Halaman <b className="text-white">{currentPage}</b> dari <b className="text-white">{totalPages}</b>)</span>
+                  )}
+                </div>
+
+                {limit !== 'all' && totalPages > 1 && (
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      disabled={currentPage === 1}
+                      onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+                      className="px-3 py-1.5 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-800 disabled:opacity-40 disabled:hover:bg-zinc-900 disabled:hover:text-zinc-300 transition-all text-xs font-bold active:scale-95"
+                    >
+                      ◀ Prev
+                    </button>
+                    
+                    {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
+                      <button
+                        key={pageNum}
+                        onClick={() => setCurrentPage(pageNum)}
+                        className={`w-7 h-7 rounded-xl font-bold text-xs transition-all ${
+                          currentPage === pageNum
+                            ? themeStyles.btnActivePeriod
+                            : 'bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-800'
+                        }`}
+                      >
+                        {pageNum}
+                      </button>
+                    ))}
+
+                    <button
+                      disabled={currentPage === totalPages}
+                      onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
+                      className="px-3 py-1.5 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-800 disabled:opacity-40 disabled:hover:bg-zinc-900 disabled:hover:text-zinc-300 transition-all text-xs font-bold active:scale-95"
+                    >
+                      Next ▶
+                    </button>
+                  </div>
+                )}
+              </div>
+            </>
           )}
         </div>
 
