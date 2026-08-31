@@ -985,7 +985,7 @@ export default function AdminDashboard() {
       {/* Glow Ambient Dynamic Background */}
       <div className={`fixed top-0 left-1/4 w-[350px] sm:w-[650px] h-[350px] sm:h-[650px] rounded-full blur-[120px] sm:blur-[160px] pointer-events-none transition-all duration-700 ${themeStyles.bgGlow}`}></div>
 
-      <div className="max-w-7xl mx-auto space-y-4 sm:space-y-6 relative z-10">
+      <div className="w-full max-w-[1400px] mx-auto space-y-4 sm:space-y-6 relative z-10">
 
         {/* Header Dashboard Dynamic UI */}
         <div className={`flex flex-col md:flex-row justify-between items-start md:items-center p-4 sm:p-6 md:p-7 rounded-2xl sm:rounded-3xl backdrop-blur-2xl border shadow-2xl transition-all duration-300 gap-4 ${themeStyles.headerGradient}`}>
@@ -1015,7 +1015,7 @@ export default function AdminDashboard() {
           </div>
 
           <div className="flex flex-wrap items-center justify-between md:justify-end gap-3 w-full md:w-auto">
-            {/* OPTION PEMILIH TEMA WARNA DAFBOARD */}
+            {/* OPTION PEMILIH TEMA WARNA DASHBOARD */}
             <div className="flex items-center gap-1 bg-zinc-950/80 border border-zinc-800 p-1.5 rounded-2xl shadow-inner">
               <span className="text-[10px] font-bold text-zinc-400 px-1.5 hidden sm:inline">Tema:</span>
               <button
@@ -1445,40 +1445,40 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* TABEL DATA RESERVASI - RESPONSIVE SCROLL FIXED (TIDAK KEPOTONG DI LAYAR KECIL DENGAN WRAPPER FLEXIBLE) */}
-        <div className={`backdrop-blur-2xl border rounded-2xl sm:rounded-3xl shadow-2xl bg-zinc-950/80 ${themeStyles.borderAccent}`}>
+        {/* TABEL DATA RESERVASI - WRAPPER DENGAN PADDING KANAN KHUSUS UNTUK MEMASTIKAN AKSI TIDAK TERPOTONG */}
+        <div className={`backdrop-blur-2xl border rounded-2xl sm:rounded-3xl shadow-2xl bg-zinc-950/80 overflow-hidden ${themeStyles.borderAccent}`}>
           {loading ? (
             <div className="p-12 text-center text-zinc-500 text-xs font-semibold">Memuat data reservasi...</div>
           ) : filteredReservations.length === 0 ? (
             <div className="p-12 text-center text-zinc-500 text-xs font-semibold">Belum ada reservasi masuk / sesuai filter.</div>
           ) : (
-            <div className="w-full overflow-x-auto rounded-2xl sm:rounded-3xl">
-              <table className="w-full text-left border-collapse min-w-[1200px]">
+            <div className="w-full overflow-x-auto">
+              <table className="w-full text-left border-collapse min-w-[1350px]">
                 <thead>
                   <tr className="border-b border-zinc-800/80 bg-zinc-950/95 text-[10px] font-black uppercase tracking-widest text-zinc-400 select-none">
                     
-                    <th onClick={() => handleSort('booking_date')} className={`p-3.5 sm:p-4.5 cursor-pointer transition hover:${themeStyles.textAccent}`}>
+                    <th onClick={() => handleSort('booking_date')} className={`p-3.5 sm:p-4.5 cursor-pointer transition hover:${themeStyles.textAccent} min-w-[110px]`}>
                       <div className="flex items-center gap-1.5 whitespace-nowrap">
                         <span>Tanggal</span>
                         {sortField === 'booking_date' && (sortOrder === 'asc' ? '▲' : '▼')}
                       </div>
                     </th>
 
-                    <th onClick={() => handleSort('booking_time')} className={`p-3.5 sm:p-4.5 cursor-pointer transition hover:${themeStyles.textAccent}`}>
+                    <th onClick={() => handleSort('booking_time')} className={`p-3.5 sm:p-4.5 cursor-pointer transition hover:${themeStyles.textAccent} min-w-[90px]`}>
                       <div className="flex items-center gap-1.5 whitespace-nowrap">
                         <span>Jam</span>
                         {sortField === 'booking_time' && (sortOrder === 'asc' ? '▲' : '▼')}
                       </div>
                     </th>
 
-                    <th onClick={() => handleSort('customer_name')} className={`p-3.5 sm:p-4.5 cursor-pointer transition hover:${themeStyles.textAccent}`}>
+                    <th onClick={() => handleSort('customer_name')} className={`p-3.5 sm:p-4.5 cursor-pointer transition hover:${themeStyles.textAccent} min-w-[120px]`}>
                       <div className="flex items-center gap-1.5 whitespace-nowrap">
                         <span>Pelanggan</span>
                         {sortField === 'customer_name' && (sortOrder === 'asc' ? '▲' : '▼')}
                       </div>
                     </th>
 
-                    <th onClick={() => handleSort('service_name')} className={`p-3.5 sm:p-4.5 cursor-pointer transition hover:${themeStyles.textAccent}`}>
+                    <th onClick={() => handleSort('service_name')} className={`p-3.5 sm:p-4.5 cursor-pointer transition hover:${themeStyles.textAccent} min-w-[160px]`}>
                       <div className="flex items-center gap-1.5 whitespace-nowrap">
                         <span>Layanan</span>
                         {sortField === 'service_name' && (sortOrder === 'asc' ? '▲' : '▼')}
@@ -1486,7 +1486,7 @@ export default function AdminDashboard() {
                     </th>
 
                     {(subscriptionPlan === 'PREMIUM' || isProfesional) && (
-                      <th onClick={() => handleSort('staff_name')} className={`p-3.5 sm:p-4.5 cursor-pointer transition ${themeStyles.textAccent}`}>
+                      <th onClick={() => handleSort('staff_name')} className={`p-3.5 sm:p-4.5 cursor-pointer transition ${themeStyles.textAccent} min-w-[130px]`}>
                         <div className="flex items-center gap-1.5 whitespace-nowrap">
                           <span>{staffLabel}</span>
                           {sortField === 'staff_name' && (sortOrder === 'asc' ? '▲' : '▼')}
@@ -1494,30 +1494,30 @@ export default function AdminDashboard() {
                       </th>
                     )}
 
-                    <th onClick={() => handleSort('price')} className={`p-3.5 sm:p-4.5 cursor-pointer transition text-emerald-400 hover:${themeStyles.textAccent}`}>
+                    <th onClick={() => handleSort('price')} className={`p-3.5 sm:p-4.5 cursor-pointer transition text-emerald-400 hover:${themeStyles.textAccent} min-w-[110px]`}>
                       <div className="flex items-center gap-1.5 whitespace-nowrap">
                         <span>Harga</span>
                         {sortField === 'price' && (sortOrder === 'asc' ? '▲' : '▼')}
                       </div>
                     </th>
 
-                    <th onClick={() => handleSort('payment_method')} className={`p-3.5 sm:p-4.5 cursor-pointer transition hover:${themeStyles.textAccent}`}>
+                    <th onClick={() => handleSort('payment_method')} className={`p-3.5 sm:p-4.5 cursor-pointer transition hover:${themeStyles.textAccent} min-w-[120px]`}>
                       <div className="flex items-center gap-1.5 whitespace-nowrap">
                         <span>Metode</span>
                         {sortField === 'payment_method' && (sortOrder === 'asc' ? '▲' : '▼')}
                       </div>
                     </th>
 
-                    <th className="p-3.5 sm:p-4.5 whitespace-nowrap">WhatsApp</th>
+                    <th className="p-3.5 sm:p-4.5 whitespace-nowrap min-w-[140px]">WhatsApp</th>
 
-                    <th onClick={() => handleSort('status')} className={`p-3.5 sm:p-4.5 cursor-pointer transition hover:${themeStyles.textAccent}`}>
+                    <th onClick={() => handleSort('status')} className={`p-3.5 sm:p-4.5 cursor-pointer transition hover:${themeStyles.textAccent} min-w-[150px]`}>
                       <div className="flex items-center gap-1.5 whitespace-nowrap">
                         <span>Status</span>
                         {sortField === 'status' && (sortOrder === 'asc' ? '▲' : '▼')}
                       </div>
                     </th>
 
-                    <th className="p-3.5 sm:p-4.5 text-center whitespace-nowrap">Aksi</th>
+                    <th className="p-3.5 sm:p-4.5 text-center whitespace-nowrap pr-6 min-w-[120px]">Aksi</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-800/40 text-xs font-medium">
@@ -1631,10 +1631,10 @@ export default function AdminDashboard() {
                             )}
                           </div>
                         </td>
-                        <td className="p-3.5 sm:p-4.5 text-center">
+                        <td className="p-3.5 sm:p-4.5 text-center pr-6">
                           <button
                             onClick={() => handleDelete(item.id, item.customer_name)}
-                            className="bg-rose-500/10 hover:bg-rose-500 text-rose-400 hover:text-white px-2.5 sm:px-3 py-1.5 rounded-xl text-[11px] sm:text-xs font-bold border border-rose-500/30 transition-all active:scale-95 whitespace-nowrap"
+                            className="bg-rose-500/10 hover:bg-rose-500 text-rose-400 hover:text-white px-3 sm:px-3.5 py-1.5 rounded-xl text-[11px] sm:text-xs font-bold border border-rose-500/30 transition-all active:scale-95 whitespace-nowrap"
                           >
                             🗑️ Hapus
                           </button>
