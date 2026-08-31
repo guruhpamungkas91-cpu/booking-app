@@ -3,7 +3,7 @@
 export const dynamic = 'force-dynamic'
 
 import { useState, useEffect, Suspense } from 'react'
-import { supabase } from './lib/supabase'
+import { supabase } from '@/lib/supabase'
 
 interface ServiceItem {
   id: number
@@ -368,7 +368,8 @@ function BookingFormContent() {
     }
 
     const bookingId = insertedData?.id ? `BK-${insertedData.id}` : 'BK-NEW'
-    const invoiceUrl = `https://${window.location.host}/invoice/${bookingId}`
+    const origin = typeof window !== 'undefined' ? window.location.origin : ''
+    const invoiceUrl = `${origin}/invoice/${bookingId}`
 
     let messageText =
       `Halo *${tenant.name}*, saya ingin mengonfirmasi reservasi:\n\n` +
@@ -414,22 +415,28 @@ function BookingFormContent() {
 
     messageText += `\n----------------------------------\nBerikut saya lampirkan bukti transfernya. Mohon dikonfirmasi ya, terima kasih!`
 
+    // PENYESUAIAN KHUSUS FONNTE (PAKET PROFESIONAL)
     if (isPro && tenant.waGatewayUrl) {
       try {
+        // Formating nomor WA ke standar 628xx Fonnte
+        let formattedPhone = formData.whatsapp_number.replace(/[^0-9]/g, '')
+        if (formattedPhone.startsWith('0')) {
+          formattedPhone = '62' + formattedPhone.slice(1)
+        }
+
+        const formDataBody = new FormData()
+        formDataBody.append('target', formattedPhone)
+        formDataBody.append('message', messageText)
+
         await fetch(tenant.waGatewayUrl, {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json',
             'Authorization': tenant.waApiKey || ''
           },
-          body: JSON.stringify({
-            phone: formData.whatsapp_number,
-            message: messageText,
-            booking_id: bookingId
-          })
+          body: formDataBody
         })
       } catch (err) {
-        console.error('Gagal memicu WA Gateway:', err)
+        console.error('Gagal memicu WA Gateway Fonnte:', err)
       }
     }
 
