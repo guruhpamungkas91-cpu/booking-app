@@ -205,15 +205,17 @@ function BookingFormContent() {
       const searchParams = new URLSearchParams(window.location.search)
       const tenantQuery = searchParams.get('tenant')
 
-      // 1. Ambil subdomain murni (misal: 'glow-clinic', 'fitrifeb-lashes', 'barber-bro')
+      // 1. Ekstraksi subdomain murni
       const rawSubdomain = hostname.split('.')[0].toLowerCase()
-      
-      // Ambil slug dari query URL jika ada, jika tidak otomatis pakai subdomain Vercel
+
+      // 2. Tentukan targetSlug secara fleksibel (Cek URL query dulu, baru subdomain)
       let targetSlug = tenantQuery
+
       if (!targetSlug) {
-        if (rawSubdomain !== 'localhost' && rawSubdomain !== '127') {
+        if (rawSubdomain !== 'localhost' && rawSubdomain !== '127' && !rawSubdomain.includes('vercel')) {
           targetSlug = rawSubdomain
         } else {
+          // Fallback default jika tanpa query di localhost/vercel
           targetSlug = 'fitrifeb-lashes'
         }
       }
@@ -224,11 +226,11 @@ function BookingFormContent() {
         setFetchingServices(true)
 
         try {
-          // 2. Fetch Tenant Data (Mendukung slug maupun client code KAPITAL/kecil)
+          // 3. Fetch Tenant Data (Gunakan .ilike agar case-insensitive)
           const { data: tenantData } = await supabase
             .from('Tenants')
             .select('*')
-            .or(`tenant_slug.eq.${targetSlug},client_code.eq.${targetSlug},client_code.eq.${targetSlug.toUpperCase()}`)
+            .or(`tenant_slug.ilike.${targetSlug},client_code.ilike.${targetSlug}`)
             .maybeSingle()
 
           if (tenantData) {
@@ -243,7 +245,7 @@ function BookingFormContent() {
               subscriptionPlan: dbPlan,
               category: rawCategory,
               staffLabel: tenantData.staff_label || 'Staff',
-              layoutType: tenantData.layout_type || 'STEP_WIZARD',
+              layoutType: tenantData.layout_type || 'BASIC_SINGLE_PAGE',
               themeColor: tenantData.theme_color || 'rose',
               requireConsent: tenantData.require_consent ?? true,
               showExtraAddon: tenantData.show_extra_addon ?? true,
@@ -257,11 +259,11 @@ function BookingFormContent() {
             })
           }
 
-          // 3. Fetch Services Data
+          // 4. Fetch Services Data (Gunakan .ilike)
           const { data: serviceData } = await supabase
             .from('Services')
             .select('*')
-            .or(`tenant_slug.eq.${targetSlug},client_code.eq.${targetSlug},client_code.eq.${targetSlug.toUpperCase()}`)
+            .or(`tenant_slug.ilike.${targetSlug},client_code.ilike.${targetSlug}`)
 
           if (serviceData && serviceData.length > 0) {
             setServices(serviceData)
@@ -273,11 +275,11 @@ function BookingFormContent() {
             setServices([])
           }
 
-          // 4. Fetch Staff Data
+          // 5. Fetch Staff Data (Gunakan .ilike)
           const { data: staffData } = await supabase
             .from('Staff')
             .select('*')
-            .or(`tenant_slug.eq.${targetSlug},client_code.eq.${targetSlug},client_code.eq.${targetSlug.toUpperCase()}`)
+            .or(`tenant_slug.ilike.${targetSlug},client_code.ilike.${targetSlug}`)
             .eq('is_active', true)
 
           if (staffData && staffData.length > 0) {
@@ -287,11 +289,11 @@ function BookingFormContent() {
             setStaffList([])
           }
 
-          // 5. Fetch Blocked Slots (Titik B)
+          // 6. Fetch Blocked Slots (Gunakan .ilike)
           const { data: blockedData } = await supabase
             .from('blocked_slots')
             .select('date, start_time')
-            .or(`tenant_id.eq.${targetSlug},tenant_id.eq.${targetSlug.toUpperCase()}`)
+            .or(`tenant_id.ilike.${targetSlug}`)
 
           if (blockedData) {
             const formattedData = blockedData.map((item) => ({
@@ -450,7 +452,6 @@ function BookingFormContent() {
 
     const result = await response.json()
 
-    // 3. Jika slot terblokir atau ada error dari server, hentikan proses
     if (!response.ok) {
       alert(result.error || 'Gagal membuat reservasi!')
       setLoading(false)
@@ -459,7 +460,7 @@ function BookingFormContent() {
 
     const insertedData = result.data
 
-    // 4. Lanjut ke proses redirect WhatsApp
+    // 3. Lanjut ke proses redirect WhatsApp
     const bookingId = insertedData?.id ? `BK-${insertedData.id}` : 'BK-NEW'
     const origin = typeof window !== 'undefined' ? window.location.origin : ''
     const invoiceUrl = `${origin}/invoice/${bookingId}`
@@ -612,7 +613,7 @@ function BookingFormContent() {
 
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
           
-          {/* LAYOUT 1: SINGLE PAGE (BARBERSHOP) */}
+          {/* LAYOUT 1: SINGLE PAGE (BARBERSHOP / GENERAL) */}
           {!isWizard && (
             <div className="space-y-4">
               <div>
@@ -827,7 +828,7 @@ function BookingFormContent() {
             </div>
           )}
 
-          {/* LAYOUT 2: STEP WIZARD (LASH / SALON) */}
+          {/* LAYOUT 2: STEP WIZARD (CLINIC / LASH / SALON) */}
           {isWizard && (
             <>
               {step === 1 && (
@@ -915,7 +916,7 @@ function BookingFormContent() {
                       {formData.need_extra_addon && formData.person_count > 1 && (
                         <div className="p-3 bg-zinc-950/90 border border-zinc-800/80 rounded-2xl space-y-2 animate-fadeIn">
                           <label className="block text-[10px] font-semibold text-zinc-400 uppercase tracking-wider">
-                            Berapa orang yang perlu lepas eyelash?
+                            Berapa orang yang memerlukan tambahan ini?
                           </label>
                           <div className="flex space-x-2">
                             {Array.from({ length: formData.person_count }, (_, i) => i + 1).map((cnt) => (
