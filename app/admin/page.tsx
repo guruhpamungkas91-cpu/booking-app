@@ -53,7 +53,7 @@ export default function AdminDashboard() {
 
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [tenantCode, setTenantCode] = useState<string>('')
-  const [subscriptionPlan, setSubscriptionPlan] = useState<SubscriptionPlanType>('PROFESIONAL') // Fallback default untuk testing/view
+  const [subscriptionPlan, setSubscriptionPlan] = useState<SubscriptionPlanType>('PROFESIONAL')
 
   const [emailInput, setEmailInput] = useState('')
   const [passwordInput, setPasswordInput] = useState('')
@@ -818,7 +818,6 @@ export default function AdminDashboard() {
     if (isAuthenticated) fetchReservations()
   }, [isAuthenticated, fetchReservations])
 
-  // DYNAMIC THEME ENGINE V2 (PROFESIONAL LUXURY EDITION)
   const themeStyles = useMemo(() => {
     if (subscriptionPlan === 'BASIC') {
       return {
@@ -1035,7 +1034,6 @@ export default function AdminDashboard() {
 
   return (
     <div className={`min-h-screen p-3 sm:p-6 md:p-8 text-zinc-100 font-sans relative transition-colors duration-700 ${themeStyles.mainBg}`}>
-      {/* GLOWING AMBIENT MESH (EXCLUSIVELY FOR PROFESIONAL PLAN) */}
       {isProfesional && (
         <>
           <div className={`fixed -top-40 left-1/4 w-[450px] sm:w-[750px] h-[450px] sm:h-[750px] rounded-full blur-[140px] sm:blur-[180px] pointer-events-none transition-all duration-1000 animate-pulse ${themeStyles.bgGlow}`}></div>
@@ -1045,7 +1043,6 @@ export default function AdminDashboard() {
 
       <div className="w-full max-w-[1400px] mx-auto space-y-4 sm:space-y-6 relative z-10">
 
-        {/* HEADER DASHBOARD */}
         <div className={`flex flex-col md:flex-row justify-between items-start md:items-center p-4 sm:p-6 md:p-7 rounded-2xl sm:rounded-3xl transition-all duration-300 gap-4 ${themeStyles.headerGradient}`}>
           <div>
             <div className="flex items-center space-x-3 flex-wrap gap-y-2">
@@ -1072,7 +1069,6 @@ export default function AdminDashboard() {
           </div>
 
           <div className="flex flex-wrap items-center justify-between md:justify-end gap-3 w-full md:w-auto">
-            {/* THEME SELECTOR HUB (PILIHAN TEMA TERAKSI) */}
             {subscriptionPlan !== 'BASIC' && (
               <div className="flex items-center gap-2 bg-zinc-950/80 border border-zinc-700/80 p-1.5 px-3 rounded-2xl shadow-inner backdrop-blur-xl">
                 <span className="text-[10px] font-black text-zinc-300 uppercase tracking-wider hidden sm:inline">Theme:</span>
@@ -1126,7 +1122,6 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* WA AUTOMATIC REMINDER (PROFESIONAL ONLY) */}
         {isProfesional && (
           <div className={`p-4 rounded-2xl border transition-all flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xl ${themeStyles.cardBg}`}>
             <div className="flex items-center gap-3">
@@ -1149,12 +1144,10 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* STATS CARDS GRID */}
         <div className={`grid grid-cols-2 sm:grid-cols-3 ${
           subscriptionPlan === 'BASIC' ? 'lg:grid-cols-4' : 'lg:grid-cols-5'
         } gap-3 sm:gap-4`}>
           
-          {/* Total Omzet */}
           {(subscriptionPlan === 'PREMIUM' || isProfesional) && (
             <div className={`col-span-2 sm:col-span-1 border p-4 sm:p-6 rounded-2xl sm:rounded-3xl transition-all relative overflow-hidden group ${themeStyles.cardBg}`}>
               <div className="absolute top-0 right-0 p-3 opacity-20 group-hover:opacity-40 transition-opacity">
@@ -1173,7 +1166,6 @@ export default function AdminDashboard() {
             </div>
           )}
 
-          {/* Total Booking */}
           <div className={`border p-4 sm:p-6 rounded-2xl sm:rounded-3xl transition-all ${themeStyles.cardBg}`}>
             <p className="text-[10px] sm:text-xs font-bold text-zinc-300 uppercase tracking-wider">Total Booking</p>
             <div className="flex flex-col sm:flex-row sm:items-baseline justify-between mt-2 sm:mt-3 gap-1">
@@ -1182,7 +1174,6 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          {/* Menunggu */}
           <div className={`border p-4 sm:p-6 rounded-2xl sm:rounded-3xl transition-all ${themeStyles.cardBg}`}>
             <p className="text-[10px] sm:text-xs font-bold text-amber-400 uppercase tracking-wider">Menunggu</p>
             <div className="flex flex-col sm:flex-row sm:items-baseline justify-between mt-2 sm:mt-3 gap-1">
@@ -1191,7 +1182,6 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          {/* Selesai */}
           <div className={`border p-4 sm:p-6 rounded-2xl sm:rounded-3xl transition-all ${themeStyles.cardBg}`}>
             <p className="text-[10px] sm:text-xs font-bold text-emerald-400 uppercase tracking-wider">Selesai</p>
             <div className="flex flex-col sm:flex-row sm:items-baseline justify-between mt-2 sm:mt-3 gap-1">
@@ -1202,7 +1192,6 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          {/* Pembatalan */}
           <div className={`border p-4 sm:p-6 rounded-2xl sm:rounded-3xl transition-all ${themeStyles.cardBg}`}>
             <p className="text-[10px] sm:text-xs font-bold text-rose-400 uppercase tracking-wider">Pembatalan</p>
             <div className="flex flex-col sm:flex-row sm:items-baseline justify-between mt-2 sm:mt-3 gap-1">
@@ -1221,7 +1210,6 @@ export default function AdminDashboard() {
 
         </div>
 
-        {/* TOP STAFF HIGHLIGHT (PROFESIONAL ONLY) */}
         {isProfesional && (
           <div className={`border p-4 sm:p-5 rounded-2xl sm:rounded-3xl transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 relative overflow-hidden ${themeStyles.cardBg}`}>
             <div className="flex items-center space-x-3 sm:space-x-4">
@@ -1246,7 +1234,6 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* PROMOTION BANNER (BASIC ONLY) */}
         {subscriptionPlan === 'BASIC' && (
           <div className={`p-4 sm:p-6 rounded-2xl sm:rounded-3xl border shadow-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4 bg-zinc-950/80 ${themeStyles.borderAccent}`}>
             <div className="space-y-1">
@@ -1260,7 +1247,6 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* FINANCIAL REPORT SECTION */}
         {subscriptionPlan !== 'BASIC' && (
           <div className={`p-4 sm:p-6 md:p-7 rounded-2xl sm:rounded-3xl shadow-2xl space-y-4 sm:space-y-5 border transition-all ${themeStyles.cardBg}`}>
             <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-zinc-800/80 pb-4 gap-2">
@@ -1407,7 +1393,6 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* SEARCH & FILTER BAR */}
         <div className={`border p-4 sm:p-5 rounded-2xl sm:rounded-3xl shadow-xl transition-all ${themeStyles.cardBg}`}>
           <div className={`grid grid-cols-1 sm:grid-cols-2 ${
             subscriptionPlan === 'BASIC' ? 'md:grid-cols-3 lg:grid-cols-3' : 'md:grid-cols-3 lg:grid-cols-7'
@@ -1551,7 +1536,6 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* RESERVATION TABLE */}
         <div className={`border rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden transition-all ${themeStyles.cardBg}`}>
           {loading ? (
             <div className="p-12 text-center text-zinc-400 text-xs font-semibold">Memuat data reservasi...</div>
@@ -1754,7 +1738,6 @@ export default function AdminDashboard() {
                 </table>
               </div>
 
-              {/* PAGINATION */}
               <div className="flex flex-col sm:flex-row items-center justify-between p-4 border-t border-zinc-800/80 bg-zinc-950/90 text-xs text-zinc-400 gap-3">
                 <div>
                   Menampilkan <b className="text-white">{displayedReservations.length}</b> dari <b className="text-white">{filteredReservations.length}</b> data
@@ -1803,7 +1786,6 @@ export default function AdminDashboard() {
 
       </div>
 
-      {/* REFUND MODAL */}
       {cancelModalItem && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
           <div className={`bg-zinc-900 border rounded-3xl p-5 sm:p-7 max-w-md w-full space-y-4 sm:space-y-5 shadow-2xl animate-in fade-in zoom-in duration-200 relative ${themeStyles.borderAccent}`}>
