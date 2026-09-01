@@ -34,12 +34,11 @@ interface TenantData {
   showExtraAddon: boolean
   addonLabel: string
   addonPrice: number
-  // Pengaturan Khusus Paket Premium
   dpType: 'FIXED' | 'PERCENTAGE'
   dpValue: number
-  // Pengaturan Khusus Paket Profesional
   waGatewayUrl?: string
   waApiKey?: string
+  qrisImageUrl?: string
 }
 
 function BookingFormContent() {
@@ -62,12 +61,17 @@ function BookingFormContent() {
     dpType: 'PERCENTAGE',
     dpValue: 50,
     waGatewayUrl: '',
-    waApiKey: ''
+    waApiKey: '',
+    qrisImageUrl: ''
   })
 
   const [services, setServices] = useState<ServiceItem[]>([])
   const [staffList, setStaffList] = useState<StaffItem[]>([])
   const [fetchingServices, setFetchingServices] = useState(true)
+
+  // State Tambahan untuk QRIS Dinamis
+  const [qrisData, setQrisData] = useState<{ qrUrl?: string; qrString?: string; snapToken?: string } | null>(null)
+  const [loadingQris, setLoadingQris] = useState(false)
 
   const [formData, setFormData] = useState({
     customer_name: '',
@@ -163,7 +167,6 @@ function BookingFormContent() {
 
   const grandTotal = calculateTotal()
 
-  // PERHITUNGAN DP KHUSUS PAKET PREMIUM & PROFESIONAL
   const calculateDP = () => {
     if (isBasic) return grandTotal
     if (tenant.dpType === 'FIXED') {
@@ -176,7 +179,6 @@ function BookingFormContent() {
   const payableAmount = (!isBasic && formData.payment_type === 'DP') ? dpAmount : grandTotal
   const remainingAmount = grandTotal - payableAmount
 
-  // Daftar Metode Pembayaran Berdasarkan Paket
   const availablePaymentMethods = isBasic 
     ? [
         { id: 'QRIS', label: 'QRIS' },
@@ -237,7 +239,8 @@ function BookingFormContent() {
           dpType: tenantData?.dp_type || 'PERCENTAGE',
           dpValue: tenantData?.dp_value ?? 50,
           waGatewayUrl: tenantData?.wa_gateway_url || '',
-          waApiKey: tenantData?.wa_api_key || ''
+          waApiKey: tenantData?.wa_api_key || '',
+          qrisImageUrl: tenantData?.qris_image_url || ''
         }
 
         setTenant(activeTenant)
@@ -278,6 +281,42 @@ function BookingFormContent() {
       fetchTenantAndData()
     }
   }, [])
+
+  // Efek untuk generate QRIS Dinamis otomatis saat nominal / metode bayar berubah
+  useEffect(() => {
+    if (formData.payment_method === 'QRIS' && payableAmount > 0) {
+      generateDynamicQris()
+    }
+  }, [formData.payment_method, payableAmount, formData.payment_type])
+
+  const generateDynamicQris = async () => {
+    setLoadingQris(true)
+    try {
+      // Opsi 1: Panggil API Backend / Gateway Midtrans kamu di sini
+      const response = await fetch('/api/qris/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount: payableAmount,
+          tenantSlug: tenant.tenantSlug,
+          customerName: formData.customer_name || 'Pelanggan'
+        })
+      })
+
+      if (response.ok) {
+        const resData = await response.json()
+        setQrisData({ qrUrl: resData.qrUrl })
+      } else {
+        // Fallback jika API dinamis belum dipasang
+        setQrisData(null)
+      }
+    } catch (err) {
+      console.log('Menggunakan QRIS Statis dari database/file lokal.')
+      setQrisData(null)
+    } finally {
+      setLoadingQris(false)
+    }
+  }
 
   const handleServiceSelect = (serviceName: string) => {
     if (isBasic) {
@@ -409,17 +448,14 @@ function BookingFormContent() {
       messageText += `• Status Pembayaran: Menunggu Konfirmasi\n`
     }
 
-    // 1. LINK INVOICE WEB: Hanya disisipkan pada Paket Profesional
     if (isPro) {
       messageText += `\n🧾 *LINK INVOICE & REKAP:* \n${invoiceUrl}\n`
     }
 
     messageText += `\n----------------------------------\nBerikut saya lampirkan bukti transfernya. Mohon dikonfirmasi ya, terima kasih!`
 
-    // 2. OTOMATISASI FONNTE: Hanya berjalan pada Paket Profesional
     if (isPro && tenant.waGatewayUrl) {
       try {
-        // Formatting nomor WA ke standar 628xx Fonnte
         let formattedPhone = formData.whatsapp_number.replace(/[^0-9]/g, '')
         if (formattedPhone.startsWith('0')) {
           formattedPhone = '62' + formattedPhone.slice(1)
@@ -441,11 +477,38 @@ function BookingFormContent() {
       }
     }
 
-    // 3. REDIRECT WA.ME (PAKET PREMIUM & BASIC): 
-    // Format nomor admin dibersihkan dari simbol agar redirect wa.me tidak error
     const cleanAdminWa = tenant.adminWa ? tenant.adminWa.replace(/[^0-9]/g, '') : ''
     window.location.href = `https://wa.me/${cleanAdminWa}?text=${encodeURIComponent(messageText)}`
   }
+
+  // Sub-Komponen Render QRIS reusable agar rapi di kedua Layout
+  const renderQrisSection = () => (
+    <div className="p-4 bg-zinc-950/80 border border-zinc-800/80 rounded-2xl text-center space-y-3 shadow-inner">
+      <p className={`text-xs font-bold ${theme.accentText} tracking-wide`}>
+        Scan QRIS Pembayaran (Rp {payableAmount.toLocaleString('id-ID')})
+      </p>
+
+      {loadingQris ? (
+        <div className="py-10 flex flex-col items-center justify-center space-y-2">
+          <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+          <span className="text-[10px] text-zinc-500">Memuat Kode QRIS...</span>
+        </div>
+      ) : (
+        <div className="p-3 bg-white rounded-2xl inline-block shadow-xl border border-zinc-200">
+          <img
+            src={qrisData?.qrUrl || tenant.qrisImageUrl || `/${tenant.tenantSlug}.png`}
+            onError={(e) => { 
+              // Fallback jika file png khusus slug tidak ada
+              e.currentTarget.src = `/${tenant.tenantSlug}mcut.png`
+            }}
+            alt="QRIS Code"
+            className="w-44 h-44 object-contain mx-auto"
+          />
+        </div>
+      )}
+      <p className="text-[10px] text-zinc-500">Dapat di-scan menggunakan BCA, GoPay, OVO, Dana, LinkAja, dll.</p>
+    </div>
+  )
 
   if (fetchingServices && !tenant.category) {
     return (
@@ -613,7 +676,6 @@ function BookingFormContent() {
                 </div>
               </div>
 
-              {/* PERHITUNGAN TOTAL DAN PILIHAN DP KHUSUS PREMIUM/PRO DI SINGLE PAGE */}
               {!isBasic && (
                 <div className="p-4 bg-zinc-950/80 border border-zinc-800/80 rounded-2xl space-y-3 shadow-inner">
                   <div className="flex justify-between items-center text-xs">
@@ -650,7 +712,6 @@ function BookingFormContent() {
                 </div>
               )}
 
-              {/* OPSI METODE PEMBAYARAN */}
               <div className="space-y-1.5">
                 <label className="block text-[11px] font-semibold text-zinc-300 uppercase tracking-wider">Metode Pembayaran</label>
                 <div className={`grid ${isBasic ? 'grid-cols-2' : 'grid-cols-3'} gap-2`}>
@@ -671,21 +732,8 @@ function BookingFormContent() {
                 </div>
               </div>
 
-              {formData.payment_method === 'QRIS' && (
-                <div className="p-4 bg-zinc-950/80 border border-zinc-800/80 rounded-2xl text-center space-y-3 shadow-inner">
-                  <p className={`text-xs font-bold ${theme.accentText} tracking-wide`}>
-                    Scan QRIS Pembayaran {!isBasic ? `(Rp ${payableAmount.toLocaleString('id-ID')})` : ''}
-                  </p>
-                  <div className="p-3 bg-white rounded-2xl inline-block shadow-xl border border-zinc-200">
-                    <img
-                      src={`/${tenant.tenantSlug}mcut.png`}
-                      onError={(e) => { e.currentTarget.style.display = 'none' }}
-                      alt="QRIS Code"
-                      className="w-44 h-44 object-contain mx-auto"
-                    />
-                  </div>
-                </div>
-              )}
+              {/* Tampilan QRIS pada Single Page Layout */}
+              {formData.payment_method === 'QRIS' && renderQrisSection()}
 
               <button
                 type="submit"
@@ -1029,21 +1077,8 @@ function BookingFormContent() {
                     ))}
                   </div>
 
-                  {formData.payment_method === 'QRIS' && (
-                    <div className="p-4 bg-zinc-950/80 border border-zinc-800/80 rounded-2xl text-center space-y-3 shadow-inner">
-                      <p className={`text-xs font-bold ${theme.accentText} tracking-wide`}>
-                        Scan QRIS (Rp {payableAmount.toLocaleString('id-ID')})
-                      </p>
-                      <div className="p-3 bg-white rounded-2xl inline-block shadow-xl border border-zinc-200">
-                        <img
-                          src={`/${tenant.tenantSlug}.png`}
-                          onError={(e) => { e.currentTarget.style.display = 'none' }}
-                          alt="QRIS Code"
-                          className="w-44 h-44 object-contain mx-auto"
-                        />
-                      </div>
-                    </div>
-                  )}
+                  {/* Tampilan QRIS pada Step Wizard Layout */}
+                  {formData.payment_method === 'QRIS' && renderQrisSection()}
 
                   <div className="flex space-x-2.5 pt-2">
                     <button
