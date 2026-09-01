@@ -481,34 +481,45 @@ function BookingFormContent() {
     window.location.href = `https://wa.me/${cleanAdminWa}?text=${encodeURIComponent(messageText)}`
   }
 
-  // Sub-Komponen Render QRIS reusable agar rapi di kedua Layout
-  const renderQrisSection = () => (
-    <div className="p-4 bg-zinc-950/80 border border-zinc-800/80 rounded-2xl text-center space-y-3 shadow-inner">
-      <p className={`text-xs font-bold ${theme.accentText} tracking-wide`}>
-        Scan QRIS Pembayaran (Rp {payableAmount.toLocaleString('id-ID')})
-      </p>
+  // Sub-Komponen Render QRIS reusable
+  const renderQrisSection = () => {
+    // Tentukan image fallback default (bisa isi URL QRIS umum atau file default di /public/qris-default.png)
+    const defaultQris = '/qris-default.png' 
 
-      {loadingQris ? (
-        <div className="py-10 flex flex-col items-center justify-center space-y-2">
-          <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
-          <span className="text-[10px] text-zinc-500">Memuat Kode QRIS...</span>
-        </div>
-      ) : (
-        <div className="p-3 bg-white rounded-2xl inline-block shadow-xl border border-zinc-200">
-          <img
-            src={qrisData?.qrUrl || tenant.qrisImageUrl || `/${tenant.tenantSlug}.png`}
-            onError={(e) => { 
-              // Fallback jika file png khusus slug tidak ada
-              e.currentTarget.src = `/${tenant.tenantSlug}mcut.png`
-            }}
-            alt="QRIS Code"
-            className="w-44 h-44 object-contain mx-auto"
-          />
-        </div>
-      )}
-      <p className="text-[10px] text-zinc-500">Dapat di-scan menggunakan BCA, GoPay, OVO, Dana, LinkAja, dll.</p>
-    </div>
-  )
+    const qrisSrc = 
+      qrisData?.qrUrl || 
+      tenant.qrisImageUrl || 
+      `/${tenant.tenantSlug}.png`
+
+    return (
+      <div className="p-4 bg-zinc-950/80 border border-zinc-800/80 rounded-2xl text-center space-y-3 shadow-inner">
+        <p className={`text-xs font-bold ${theme.accentText} tracking-wide`}>
+          Scan QRIS Pembayaran (Rp {payableAmount.toLocaleString('id-ID')})
+        </p>
+
+        {loadingQris ? (
+          <div className="py-10 flex flex-col items-center justify-center space-y-2">
+            <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+            <span className="text-[10px] text-zinc-500">Memuat Kode QRIS...</span>
+          </div>
+        ) : (
+          <div className="p-3 bg-white rounded-2xl inline-block shadow-xl border border-zinc-200">
+            <img
+              src={qrisSrc}
+              onError={(e) => { 
+                // Jika file /slug.png tidak ditemukan, otomatis switch ke gambar default ini
+                e.currentTarget.onerror = null // Mencegah infinite loop
+                e.currentTarget.src = defaultQris
+              }}
+              alt="QRIS Code"
+              className="w-44 h-44 object-contain mx-auto"
+            />
+          </div>
+        )}
+        <p className="text-[10px] text-zinc-500">Dapat di-scan menggunakan BCA, GoPay, OVO, Dana, LinkAja, dll.</p>
+      </div>
+    )
+  }
 
   if (fetchingServices && !tenant.category) {
     return (
