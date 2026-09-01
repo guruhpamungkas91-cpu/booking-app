@@ -678,7 +678,7 @@ function BookingFormContent() {
                   </p>
                   <div className="p-3 bg-white rounded-2xl inline-block shadow-xl border border-zinc-200">
                     <img
-                      src={`/${tenant.tenantSlug}.png`}
+                      src={`/${tenant.tenantSlug}mcut.png`}
                       onError={(e) => { e.currentTarget.style.display = 'none' }}
                       alt="QRIS Code"
                       className="w-44 h-44 object-contain mx-auto"
