@@ -200,111 +200,117 @@ function BookingFormContent() {
       ]
 
   useEffect(() => {
-  if (typeof window !== 'undefined') {
-    const hostname = window.location.hostname
-    const searchParams = new URLSearchParams(window.location.search)
-    const tenantQuery = searchParams.get('tenant')
+    if (typeof window !== 'undefined') {
+      const hostname = window.location.hostname
+      const searchParams = new URLSearchParams(window.location.search)
+      const tenantQuery = searchParams.get('tenant')
 
-    // 1. Ambil subdomain tanpa memotong kata penting seperti '-lashes' atau '-clinic'
-    const rawSubdomain = hostname.split('.')[0]
-    
-    // Ambil slug dari query URL jika ada, jika tidak gunakan subdomain Vercel (bukan localhost)
-    let extractedSlug = tenantQuery || (rawSubdomain === 'localhost' ? '' : rawSubdomain)
-
-    // Fallback default jika di localhost tanpa query param
-    const targetSlug = (extractedSlug || 'fitrifeb-lashes').trim().toLowerCase()
-
-    const fetchTenantAndData = async () => {
-      setFetchingServices(true)
-
-      try {
-        // 2. Fetch Tenant Data
-        const { data: tenantData } = await supabase
-          .from('Tenants')
-          .select('*')
-          .or(`tenant_slug.eq.${targetSlug},client_code.eq.${targetSlug}`)
-          .maybeSingle()
-
-        if (tenantData) {
-          const dbPlan = ((tenantData.subscription_plan || 'BASIC') as string).toUpperCase() as 'BASIC' | 'PREMIUM' | 'PROFESIONAL'
-          const rawCategory = tenantData.category || 'Layanan'
-
-          setTenant({
-            clientCode: tenantData.client_code || targetSlug.toUpperCase(),
-            tenantSlug: tenantData.tenant_slug,
-            name: tenantData.business_name || tenantData.name || targetSlug.toUpperCase(),
-            adminWa: tenantData.admin_wa || '',
-            subscriptionPlan: dbPlan,
-            category: rawCategory,
-            staffLabel: tenantData.staff_label || 'Staff',
-            layoutType: tenantData.layout_type || 'STEP_WIZARD',
-            themeColor: tenantData.theme_color || 'rose',
-            requireConsent: tenantData.require_consent ?? true,
-            showExtraAddon: tenantData.show_extra_addon ?? true,
-            addonLabel: tenantData.addon_label || 'Perlu lepas eyelash lama (+Rp 30.000)',
-            addonPrice: tenantData.addon_price || 30000,
-            dpType: tenantData.dp_type || 'PERCENTAGE',
-            dpValue: tenantData.dp_value ?? 50,
-            waGatewayUrl: tenantData.wa_gateway_url || '',
-            waApiKey: tenantData.wa_api_key || '',
-            qrisUrl: tenantData.qris_url || ''
-          })
-        }
-
-        // 3. Fetch Services Data
-        const { data: serviceData } = await supabase
-          .from('Services')
-          .select('*')
-          .or(`tenant_slug.eq.${targetSlug},client_code.eq.${targetSlug}`)
-
-        if (serviceData && serviceData.length > 0) {
-          setServices(serviceData)
-          setFormData((prev) => ({ 
-            ...prev, 
-            selected_services: [serviceData[0].name] 
-          }))
+      // 1. Ambil subdomain murni (misal: 'glow-clinic', 'fitrifeb-lashes', 'barber-bro')
+      const rawSubdomain = hostname.split('.')[0].toLowerCase()
+      
+      // Ambil slug dari query URL jika ada, jika tidak otomatis pakai subdomain Vercel
+      let targetSlug = tenantQuery
+      if (!targetSlug) {
+        if (rawSubdomain !== 'localhost' && rawSubdomain !== '127') {
+          targetSlug = rawSubdomain
         } else {
-          setServices([])
+          targetSlug = 'fitrifeb-lashes'
         }
-
-        // 4. Fetch Staff Data
-        const { data: staffData } = await supabase
-          .from('Staff')
-          .select('*')
-          .or(`tenant_slug.eq.${targetSlug},client_code.eq.${targetSlug}`)
-          .eq('is_active', true)
-
-        if (staffData && staffData.length > 0) {
-          setStaffList(staffData)
-          setFormData((prev) => ({ ...prev, selected_staff: staffData[0].name }))
-        } else {
-          setStaffList([])
-        }
-
-        // 5. Fetch Blocked Slots (Titik B)
-        const { data: blockedData } = await supabase
-          .from('blocked_slots')
-          .select('date, start_time')
-          .or(`tenant_id.eq.${targetSlug},tenant_id.eq.${targetSlug.toUpperCase()}`)
-
-        if (blockedData) {
-          const formattedData = blockedData.map((item) => ({
-            block_date: item.date,
-            block_time: item.start_time ? item.start_time.substring(0, 5) : null,
-          }))
-          setBlockedSlots(formattedData)
-        }
-
-      } catch (err) {
-        console.error("Error fetching tenant data:", err)
-      } finally {
-        setFetchingServices(false)
       }
-    }
 
-    fetchTenantAndData()
-  }
-}, [])
+      targetSlug = targetSlug.trim().toLowerCase()
+
+      const fetchTenantAndData = async () => {
+        setFetchingServices(true)
+
+        try {
+          // 2. Fetch Tenant Data (Mendukung slug maupun client code KAPITAL/kecil)
+          const { data: tenantData } = await supabase
+            .from('Tenants')
+            .select('*')
+            .or(`tenant_slug.eq.${targetSlug},client_code.eq.${targetSlug},client_code.eq.${targetSlug.toUpperCase()}`)
+            .maybeSingle()
+
+          if (tenantData) {
+            const dbPlan = ((tenantData.subscription_plan || 'BASIC') as string).toUpperCase() as 'BASIC' | 'PREMIUM' | 'PROFESIONAL'
+            const rawCategory = tenantData.category || 'Layanan'
+
+            setTenant({
+              clientCode: tenantData.client_code || targetSlug.toUpperCase(),
+              tenantSlug: tenantData.tenant_slug || targetSlug,
+              name: tenantData.business_name || tenantData.name || targetSlug.toUpperCase(),
+              adminWa: tenantData.admin_wa || '',
+              subscriptionPlan: dbPlan,
+              category: rawCategory,
+              staffLabel: tenantData.staff_label || 'Staff',
+              layoutType: tenantData.layout_type || 'STEP_WIZARD',
+              themeColor: tenantData.theme_color || 'rose',
+              requireConsent: tenantData.require_consent ?? true,
+              showExtraAddon: tenantData.show_extra_addon ?? true,
+              addonLabel: tenantData.addon_label || 'Perlu lepas eyelash lama (+Rp 30.000)',
+              addonPrice: tenantData.addon_price || 30000,
+              dpType: tenantData.dp_type || 'PERCENTAGE',
+              dpValue: tenantData.dp_value ?? 50,
+              waGatewayUrl: tenantData.wa_gateway_url || '',
+              waApiKey: tenantData.wa_api_key || '',
+              qrisUrl: tenantData.qris_url || ''
+            })
+          }
+
+          // 3. Fetch Services Data
+          const { data: serviceData } = await supabase
+            .from('Services')
+            .select('*')
+            .or(`tenant_slug.eq.${targetSlug},client_code.eq.${targetSlug},client_code.eq.${targetSlug.toUpperCase()}`)
+
+          if (serviceData && serviceData.length > 0) {
+            setServices(serviceData)
+            setFormData((prev) => ({ 
+              ...prev, 
+              selected_services: [serviceData[0].name] 
+            }))
+          } else {
+            setServices([])
+          }
+
+          // 4. Fetch Staff Data
+          const { data: staffData } = await supabase
+            .from('Staff')
+            .select('*')
+            .or(`tenant_slug.eq.${targetSlug},client_code.eq.${targetSlug},client_code.eq.${targetSlug.toUpperCase()}`)
+            .eq('is_active', true)
+
+          if (staffData && staffData.length > 0) {
+            setStaffList(staffData)
+            setFormData((prev) => ({ ...prev, selected_staff: staffData[0].name }))
+          } else {
+            setStaffList([])
+          }
+
+          // 5. Fetch Blocked Slots (Titik B)
+          const { data: blockedData } = await supabase
+            .from('blocked_slots')
+            .select('date, start_time')
+            .or(`tenant_id.eq.${targetSlug},tenant_id.eq.${targetSlug.toUpperCase()}`)
+
+          if (blockedData) {
+            const formattedData = blockedData.map((item) => ({
+              block_date: item.date,
+              block_time: item.start_time ? item.start_time.substring(0, 5) : null,
+            }))
+            setBlockedSlots(formattedData)
+          }
+
+        } catch (err) {
+          console.error("Error fetching tenant data:", err)
+        } finally {
+          setFetchingServices(false)
+        }
+      }
+
+      fetchTenantAndData()
+    }
+  }, [])
 
   // Efek untuk generate QRIS Dinamis otomatis saat nominal / metode bayar berubah
   useEffect(() => {
@@ -354,11 +360,11 @@ function BookingFormContent() {
 
   // Helper function untuk cek apakah tanggal & jam di-block admin
   const isSlotBlocked = (date: string, time: string) => {
-  if (!date || !time) return false
-  return blockedSlots.some(
-    (slot) => slot.block_date === date && slot.block_time === time
-  )
-}
+    if (!date || !time) return false
+    return blockedSlots.some(
+      (slot) => slot.block_date === date && slot.block_time === time
+    )
+  }
   
   const handleNextStep = () => {
     if (step === 1) {
@@ -380,10 +386,9 @@ function BookingFormContent() {
         alert('Mohon tentukan tanggal dan jam kedatangan!')
         return
       }
-      // TAMBAHKAN PENGECEKAN INI DI BAWAHNYA:
       if (isSlotBlocked(formData.booking_date, formData.booking_time)) {
-      alert('Maaf, tanggal/jam yang Anda pilih sedang tidak tersedia (diblokir/libur). Silakan pilih jam lain.')
-      return
+        alert('Maaf, tanggal/jam yang Anda pilih sedang tidak tersedia (diblokir/libur). Silakan pilih jam lain.')
+        return
       }
     }
     setStep((prev) => Math.min(prev + 1, 3))
@@ -403,11 +408,10 @@ function BookingFormContent() {
       return
     }
 
-    // TAMBAHKAN VALIDASI INI:
     if (isSlotBlocked(formData.booking_date, formData.booking_time)) {
-    alert('Maaf, tanggal/jam yang Anda pilih sedang tidak tersedia (diblokir/libur). Silakan pilih jam lain.')
-    setLoading(false)
-    return
+      alert('Maaf, tanggal/jam yang Anda pilih sedang tidak tersedia (diblokir/libur). Silakan pilih jam lain.')
+      setLoading(false)
+      return
     }
 
     const formattedServicesText = formData.selected_services.join(', ')
