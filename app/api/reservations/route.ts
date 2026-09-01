@@ -1,26 +1,30 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
-// Inisialisasi Supabase Client Server-Side
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY! // Memakai service role key agar aman di server
-const supabase = createClient(supabaseUrl, supabaseServiceKey)
-
 export async function POST(request: Request) {
   try {
+    // Inisialisasi di dalam handler agar tidak crash saat npm run build
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+    
+    if (!supabaseUrl || !supabaseServiceKey) {
+      return NextResponse.json({ error: 'Supabase credentials missing.' }, { status: 500 })
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseServiceKey)
+
     const body = await request.json()
     const { tenant_slug, client_code, booking_date, booking_time } = body
 
-    // Target slug yang dipakai (bisa dari tenant_slug atau client_code)
     const targetSlug = tenant_slug || client_code
 
-    // 1. BACKEND VALIDATION: Cek apakah slot terblokir di DB (Tabel: BlockedSlots)
+    // 1. BACKEND VALIDATION: Cek slot terblokir
     const { data: isBlocked, error: checkError } = await supabase
-      .from('BlockedSlots')
+      .from('blocked_slots')
       .select('id')
-      .or(`client_code.eq.${targetSlug},tenant_slug.eq.${targetSlug}`)
-      .eq('block_date', booking_date)
-      .eq('block_time', booking_time)
+      .eq('tenant_id', targetSlug)
+      .eq('date', booking_date)
+      .eq('start_time', booking_time)
       .maybeSingle()
 
     if (checkError) {
@@ -35,7 +39,7 @@ export async function POST(request: Request) {
       )
     }
 
-    // 2. JIKA AMAN: Lakukan insert ke tabel Reservations
+    // 2. JIKA AMAN: Insert ke tabel Reservations
     const { data: insertedData, error: insertError } = await supabase
       .from('Reservations')
       .insert([body])

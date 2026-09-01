@@ -200,26 +200,29 @@ function BookingFormContent() {
       ]
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const hostname = window.location.hostname
-      const searchParams = new URLSearchParams(window.location.search)
-      const tenantQuery = searchParams.get('tenant')
+  if (typeof window !== 'undefined') {
+    const hostname = window.location.hostname
+    const searchParams = new URLSearchParams(window.location.search)
+    const tenantQuery = searchParams.get('tenant')
 
-      const rawSubdomain = hostname.split('.')[0]
-      const extractedSlug = rawSubdomain.replace('-barbershop', '').replace('-lashes', '').replace('-dental', '')
-      const currentSlug = tenantQuery || (rawSubdomain === 'localhost' ? '' : extractedSlug)
+    // 1. Ambil subdomain tanpa memotong kata penting seperti '-lashes' atau '-clinic'
+    const rawSubdomain = hostname.split('.')[0]
+    
+    // Ambil slug dari query URL jika ada, jika tidak gunakan subdomain Vercel (bukan localhost)
+    let extractedSlug = tenantQuery || (rawSubdomain === 'localhost' ? '' : rawSubdomain)
 
-      const fetchTenantAndData = async () => {
-        setFetchingServices(true)
+    // Fallback default jika di localhost tanpa query param
+    const targetSlug = (extractedSlug || 'fitrifeb-lashes').trim().toLowerCase()
 
-        // 1. Dapatkan targetSlug dari URL & bersihkan karakter
-        const targetSlug = (currentSlug || 'fitrifeb-lashes').trim().toLowerCase()
+    const fetchTenantAndData = async () => {
+      setFetchingServices(true)
 
-        // 2. Fetch Tenant Data secara presisi
+      try {
+        // 2. Fetch Tenant Data
         const { data: tenantData } = await supabase
           .from('Tenants')
           .select('*')
-          .eq('tenant_slug', targetSlug)
+          .or(`tenant_slug.eq.${targetSlug},client_code.eq.${targetSlug}`)
           .maybeSingle()
 
         if (tenantData) {
@@ -248,11 +251,11 @@ function BookingFormContent() {
           })
         }
 
-        // 3. Fetch Services Data presisi tanpa or() berlebihan
+        // 3. Fetch Services Data
         const { data: serviceData } = await supabase
           .from('Services')
           .select('*')
-          .eq('tenant_slug', targetSlug)
+          .or(`tenant_slug.eq.${targetSlug},client_code.eq.${targetSlug}`)
 
         if (serviceData && serviceData.length > 0) {
           setServices(serviceData)
@@ -268,7 +271,7 @@ function BookingFormContent() {
         const { data: staffData } = await supabase
           .from('Staff')
           .select('*')
-          .eq('tenant_slug', targetSlug)
+          .or(`tenant_slug.eq.${targetSlug},client_code.eq.${targetSlug}`)
           .eq('is_active', true)
 
         if (staffData && staffData.length > 0) {
@@ -278,29 +281,30 @@ function BookingFormContent() {
           setStaffList([])
         }
 
-        // ==========================================
-        // 5. TITIK B (Fetch Blocked Slots) - PERBAIKAN
-        // ==========================================
+        // 5. Fetch Blocked Slots (Titik B)
         const { data: blockedData } = await supabase
           .from('blocked_slots')
           .select('date, start_time')
+          .or(`tenant_id.eq.${targetSlug},tenant_id.eq.${targetSlug.toUpperCase()}`)
 
         if (blockedData) {
           const formattedData = blockedData.map((item) => ({
             block_date: item.date,
-            // Ambil 5 karakter pertama '10:00:00' -> '10:00'
             block_time: item.start_time ? item.start_time.substring(0, 5) : null,
           }))
           setBlockedSlots(formattedData)
         }
-      // ==========================================
 
+      } catch (err) {
+        console.error("Error fetching tenant data:", err)
+      } finally {
         setFetchingServices(false)
       }
-
-      fetchTenantAndData()
     }
-  }, [])
+
+    fetchTenantAndData()
+  }
+}, [])
 
   // Efek untuk generate QRIS Dinamis otomatis saat nominal / metode bayar berubah
   useEffect(() => {
