@@ -20,6 +20,16 @@ interface Reservation {
   tenant_slug?: string
 }
 
+interface BlockedSlot {
+  id: number
+  created_at?: string
+  client_code: string
+  tenant_slug?: string
+  block_date: string
+  block_time: string
+  reason?: string
+}
+
 type SortField = 'booking_date' | 'booking_time' | 'customer_name' | 'service_name' | 'staff_name' | 'price' | 'payment_method' | 'status'
 type SortOrder = 'asc' | 'desc'
 type SubscriptionPlanType = 'BASIC' | 'PREMIUM' | 'PROFESIONAL'
@@ -61,6 +71,13 @@ export default function AdminDashboard() {
   const [reservations, setReservations] = useState<Reservation[]>([])
   const [filteredReservations, setFilteredReservations] = useState<Reservation[]>([])
   const [loading, setLoading] = useState(false)
+
+  // STATE BARU: BLOCK SLOT
+  const [blockedSlots, setBlockedSlots] = useState<BlockedSlot[]>([])
+  const [blockDateInput, setBlockDateInput] = useState('')
+  const [blockTimeInput, setBlockTimeInput] = useState('10:00')
+  const [blockReasonInput, setBlockReasonInput] = useState('')
+  const [isBlocking, setIsBlocking] = useState(false)
 
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
@@ -179,6 +196,66 @@ export default function AdminDashboard() {
   const handleLogout = async () => {
     await supabase.auth.signOut()
     setIsAuthenticated(false)
+  }
+
+  // HANDLER & FETCH BLOCK SLOTS
+  const fetchBlockedSlots = useCallback(async () => {
+    if (!tenantCode) return
+    const { data, error } = await supabase
+      .from('BlockedSlots')
+      .select('*')
+      .or(`client_code.eq.${tenantCode},tenant_slug.eq.${tenantCode}`)
+      .order('block_date', { ascending: true })
+
+    if (!error && data) {
+      setBlockedSlots(data)
+    }
+  }, [tenantCode])
+
+  const handleAddBlockSlot = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!blockDateInput || !blockTimeInput) {
+      alert('Pilih tanggal dan jam yang ingin diblokir!')
+      return
+    }
+
+    setIsBlocking(true)
+    const { error } = await supabase
+      .from('BlockedSlots')
+      .insert([
+        {
+          client_code: tenantCode || 'FITRI',
+          tenant_slug: tenantCode || 'fitrifeb',
+          block_date: blockDateInput,
+          block_time: blockTimeInput,
+          reason: blockReasonInput || 'Di-block Admin'
+        }
+      ])
+
+    if (error) {
+      alert('Gagal memblokir slot: ' + error.message)
+    } else {
+      alert(`Berhasil memblokir slot jam ${blockTimeInput} pada tanggal ${blockDateInput}`)
+      setBlockReasonInput('')
+      fetchBlockedSlots()
+    }
+    setIsBlocking(false)
+  }
+
+  const handleDeleteBlockSlot = async (id: number) => {
+    const isConfirmed = window.confirm('Apakah kamu yakin ingin membuka kembali slot jam ini?')
+    if (!isConfirmed) return
+
+    const { error } = await supabase
+      .from('BlockedSlots')
+      .delete()
+      .eq('id', id)
+
+    if (error) {
+      alert('Gagal menghapus block slot: ' + error.message)
+    } else {
+      setBlockedSlots((prev) => prev.filter((item) => item.id !== id))
+    }
   }
 
   const fetchReservations = useCallback(async () => {
@@ -815,8 +892,11 @@ export default function AdminDashboard() {
   }, [fetchTenantDetail])
 
   useEffect(() => {
-    if (isAuthenticated) fetchReservations()
-  }, [isAuthenticated, fetchReservations])
+    if (isAuthenticated) {
+      fetchReservations()
+      fetchBlockedSlots()
+    }
+  }, [isAuthenticated, fetchReservations, fetchBlockedSlots])
 
   const themeStyles = useMemo(() => {
     if (subscriptionPlan === 'BASIC') {
@@ -915,7 +995,7 @@ export default function AdminDashboard() {
             : 'bg-blue-600 hover:bg-blue-500 text-white',
           btnActivePeriod: 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-600/30',
           headerGradient: isPro 
-            ? 'bg-gradient-to-r from-blue-950/90 via-zinc-950/90 to-indigo-950/70 border-blue-500/50 shadow-2xl shadow-blue-950/50 ring-1 ring-blue-500/30' 
+            ? 'bg-gradient-to-r from-blue-950/90 via-zinc-950/90 to-indigo-950/70 border-blue-500/50 shadow-2xl shadow-blue-950/50 ring-1 ring-blue-950/30' 
             : 'bg-gradient-to-r from-blue-950/40 via-zinc-950/90 to-indigo-950/20 border-blue-500/30',
         }
       case 'purple':
@@ -1104,7 +1184,10 @@ export default function AdminDashboard() {
 
             <div className="flex items-center space-x-2">
               <button
-                onClick={fetchReservations}
+                onClick={() => {
+                  fetchReservations()
+                  fetchBlockedSlots()
+                }}
                 className="bg-zinc-900/90 hover:bg-zinc-800 text-zinc-200 border border-zinc-700/80 hover:border-zinc-500 px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl font-bold transition-all text-[11px] sm:text-xs flex items-center gap-1.5 sm:gap-2 shadow-lg active:scale-95"
               >
                 <svg className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${themeStyles.textAccent}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1246,6 +1329,85 @@ export default function AdminDashboard() {
             </button>
           </div>
         )}
+
+        {/* KOMPONEN UI BLOCK SLOT (LANGKAH A) */}
+        <div className={`p-4 sm:p-6 rounded-2xl sm:rounded-3xl shadow-2xl border transition-all space-y-4 ${themeStyles.cardBg}`}>
+          <div className="flex items-center justify-between border-b border-zinc-800/80 pb-3">
+            <div>
+              <h3 className={`text-sm sm:text-base font-black flex items-center gap-2 ${themeStyles.textAccent}`}>
+                <span>🚫 Manajemen Block Slot / Jam Tutup Off</span>
+              </h3>
+              <p className="text-[11px] text-zinc-300 font-medium">Tutup jam tertentu agar pelanggan tidak bisa memilih slot tersebut di form booking.</p>
+            </div>
+            <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-rose-500/10 text-rose-300 border border-rose-500/30">
+              {blockedSlots.length} Jam Di-block
+            </span>
+          </div>
+
+          <form onSubmit={handleAddBlockSlot} className="grid grid-cols-1 sm:grid-cols-4 gap-3 items-end">
+            <div>
+              <label className="block text-[11px] font-bold text-zinc-300 mb-1">Tanggal Off:</label>
+              <input 
+                type="date" 
+                required 
+                value={blockDateInput} 
+                onChange={(e) => setBlockDateInput(e.target.value)} 
+                className={`w-full px-3 py-2 bg-zinc-950/80 border border-zinc-800 rounded-xl text-xs text-zinc-100 focus:outline-none ${themeStyles.focusBorder}`}
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] font-bold text-zinc-300 mb-1">Jam Off:</label>
+              <select 
+                value={blockTimeInput} 
+                onChange={(e) => setBlockTimeInput(e.target.value)} 
+                className={`w-full px-3 py-2 bg-zinc-950/80 border border-zinc-800 rounded-xl text-xs text-zinc-100 focus:outline-none cursor-pointer ${themeStyles.focusBorder}`}
+              >
+                {['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00', '20:00', '21:00'].map((time) => (
+                  <option key={time} value={time}>{time} WIB</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-[11px] font-bold text-zinc-300 mb-1">Keterangan (Opsional):</label>
+              <input 
+                type="text" 
+                placeholder="misal: Istirahat / Acara Salon" 
+                value={blockReasonInput} 
+                onChange={(e) => setBlockReasonInput(e.target.value)} 
+                className={`w-full px-3 py-2 bg-zinc-950/80 border border-zinc-800 rounded-xl text-xs text-zinc-100 focus:outline-none ${themeStyles.focusBorder}`}
+              />
+            </div>
+            <button 
+              type="submit" 
+              disabled={isBlocking} 
+              className="bg-rose-600 hover:bg-rose-500 text-white font-bold py-2 px-4 rounded-xl text-xs transition-all shadow-md active:scale-95 h-[38px]"
+            >
+              {isBlocking ? 'Memproses...' : '🔒 Block Jam Ini'}
+            </button>
+          </form>
+
+          {blockedSlots.length > 0 && (
+            <div className="mt-4 pt-3 border-t border-zinc-800/60">
+              <p className="text-[11px] font-bold text-zinc-400 mb-2 uppercase tracking-wider">Daftar Slot Ter-block Saat Ini:</p>
+              <div className="flex flex-wrap gap-2">
+                {blockedSlots.map((bs) => (
+                  <div key={bs.id} className="flex items-center gap-2 bg-zinc-900 border border-rose-500/30 px-3 py-1.5 rounded-xl text-xs text-rose-300 shadow-sm">
+                    <span className="font-bold">{formatDateID(bs.block_date)} - {bs.block_time} WIB</span>
+                    {bs.reason && <span className="text-[10px] text-zinc-400">({bs.reason})</span>}
+                    <button 
+                      type="button"
+                      onClick={() => handleDeleteBlockSlot(bs.id)} 
+                      className="text-zinc-500 hover:text-white ml-1 font-bold transition-colors" 
+                      title="Buka kembali slot jam ini"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
 
         {subscriptionPlan !== 'BASIC' && (
           <div className={`p-4 sm:p-6 md:p-7 rounded-2xl sm:rounded-3xl shadow-2xl space-y-4 sm:space-y-5 border transition-all ${themeStyles.cardBg}`}>

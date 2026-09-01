@@ -79,6 +79,9 @@ function BookingFormContent() {
   const [qrisData, setQrisData] = useState<{ qrUrl?: string; qrString?: string; snapToken?: string } | null>(null)
   const [loadingQris, setLoadingQris] = useState(false)
 
+  // Tambahkan baris ini untuk menyimpan daftar slot yang diblokir:
+  const [blockedSlots, setBlockedSlots] = useState<{ block_date: string; block_time: string }[]>([])
+
   const [formData, setFormData] = useState({
     customer_name: '',
     whatsapp_number: '',
@@ -203,90 +206,94 @@ function BookingFormContent() {
       const tenantQuery = searchParams.get('tenant')
 
       const rawSubdomain = hostname.split('.')[0]
-      // Tambahkan .replace untuk suffix domain si GLOW (misal: -clinic atau -beauty)
-      const extractedSlug = rawSubdomain
-        .replace('-barbershop', '')
-        .replace('-lashes', '')
-        .replace('-dental', '')
-        .replace('-clinic', '')
-        .replace('-beauty', '')
-
-const currentSlug = tenantQuery || (rawSubdomain === 'localhost' ? '' : extractedSlug)
-
-if (!currentSlug && !rawSubdomain) {
-  setFetchingServices(false)
-  return
-}
+      const extractedSlug = rawSubdomain.replace('-barbershop', '').replace('-lashes', '').replace('-dental', '')
+      const currentSlug = tenantQuery || (rawSubdomain === 'localhost' ? '' : extractedSlug)
 
       const fetchTenantAndData = async () => {
         setFetchingServices(true)
-        
+
+        // 1. Dapatkan targetSlug dari URL & bersihkan karakter
+        const targetSlug = (currentSlug || 'fitrifeb-lashes').trim().toLowerCase()
+
+        // 2. Fetch Tenant Data secara presisi
         const { data: tenantData } = await supabase
           .from('Tenants')
           .select('*')
-          .or(`tenant_slug.eq.${currentSlug},tenant_slug.eq.${rawSubdomain},domain.ilike.%${hostname}%`)
+          .eq('tenant_slug', targetSlug)
           .maybeSingle()
 
-        const dbPlan = ((tenantData?.subscription_plan || 'BASIC') as string).toUpperCase() as 'BASIC' | 'PREMIUM' | 'PROFESIONAL'
-        const rawCategory = tenantData?.category || 'Layanan'
+        if (tenantData) {
+          const dbPlan = ((tenantData.subscription_plan || 'BASIC') as string).toUpperCase() as 'BASIC' | 'PREMIUM' | 'PROFESIONAL'
+          const rawCategory = tenantData.category || 'Layanan'
 
-        const defaultLayout = tenantData?.layout_type || (rawCategory.toLowerCase().includes('lash') ? 'STEP_WIZARD' : 'BASIC_SINGLE_PAGE')
-        const defaultColor = tenantData?.theme_color || (rawCategory.toLowerCase().includes('lash') ? 'rose' : 'amber')
-        const defaultConsent = tenantData?.require_consent ?? rawCategory.toLowerCase().includes('lash')
-        const defaultShowAddon = tenantData?.show_extra_addon ?? rawCategory.toLowerCase().includes('lash')
-
-        const activeTenant: TenantData = {
-          clientCode: tenantData?.client_code || currentSlug.toUpperCase(),
-          tenantSlug: tenantData?.tenant_slug || rawSubdomain || currentSlug,
-          name: tenantData?.business_name || tenantData?.name || currentSlug.toUpperCase(),
-          adminWa: tenantData?.admin_wa || '',
-          subscriptionPlan: dbPlan,
-          category: rawCategory,
-          staffLabel: tenantData?.staff_label || (rawCategory.toLowerCase().includes('barber') ? 'Capster' : 'Staff / Spesialis'),
-          layoutType: defaultLayout,
-          themeColor: defaultColor,
-          requireConsent: defaultConsent,
-          showExtraAddon: defaultShowAddon,
-          addonLabel: tenantData?.addon_label || 'Perlu lepas eyelash lama (+Rp 30.000)',
-          addonPrice: tenantData?.addon_price || 30000,
-          dpType: tenantData?.dp_type || 'PERCENTAGE',
-          dpValue: tenantData?.dp_value ?? 50,
-          waGatewayUrl: tenantData?.wa_gateway_url || '',
-          waApiKey: tenantData?.wa_api_key || '',
-          qrisUrl: tenantData?.qris_url || ''
+          setTenant({
+            clientCode: tenantData.client_code || targetSlug.toUpperCase(),
+            tenantSlug: tenantData.tenant_slug,
+            name: tenantData.business_name || tenantData.name || targetSlug.toUpperCase(),
+            adminWa: tenantData.admin_wa || '',
+            subscriptionPlan: dbPlan,
+            category: rawCategory,
+            staffLabel: tenantData.staff_label || 'Staff',
+            layoutType: tenantData.layout_type || 'STEP_WIZARD',
+            themeColor: tenantData.theme_color || 'rose',
+            requireConsent: tenantData.require_consent ?? true,
+            showExtraAddon: tenantData.show_extra_addon ?? true,
+            addonLabel: tenantData.addon_label || 'Perlu lepas eyelash lama (+Rp 30.000)',
+            addonPrice: tenantData.addon_price || 30000,
+            dpType: tenantData.dp_type || 'PERCENTAGE',
+            dpValue: tenantData.dp_value ?? 50,
+            waGatewayUrl: tenantData.wa_gateway_url || '',
+            waApiKey: tenantData.wa_api_key || '',
+            qrisUrl: tenantData.qris_url || ''
+          })
         }
 
-        setTenant(activeTenant)
-
+        // 3. Fetch Services Data presisi tanpa or() berlebihan
         const { data: serviceData } = await supabase
           .from('Services')
           .select('*')
-          .or(`tenant_slug.eq.${activeTenant.tenantSlug},tenant_slug.eq.${rawSubdomain},tenant_slug.eq.${currentSlug}`)
+          .eq('tenant_slug', targetSlug)
 
         if (serviceData && serviceData.length > 0) {
           setServices(serviceData)
-          setFormData((prev) => ({ ...prev, selected_services: [serviceData[0].name] }))
+          setFormData((prev) => ({ 
+            ...prev, 
+            selected_services: [serviceData[0].name] 
+          }))
         } else {
           setServices([])
         }
 
-        if (activeTenant.subscriptionPlan !== 'BASIC') {
-          const { data: staffData } = await supabase
-            .from('Staff')
-            .select('*')
-            .or(`tenant_slug.eq.${activeTenant.tenantSlug},tenant_slug.eq.${rawSubdomain},tenant_slug.eq.${currentSlug}`)
-            .eq('is_active', true)
+        // 4. Fetch Staff Data
+        const { data: staffData } = await supabase
+          .from('Staff')
+          .select('*')
+          .eq('tenant_slug', targetSlug)
+          .eq('is_active', true)
 
-          if (staffData && staffData.length > 0) {
-            setStaffList(staffData)
-            setFormData((prev) => ({ ...prev, selected_staff: staffData[0].name }))
-          } else {
-            setStaffList([])
-          }
+        if (staffData && staffData.length > 0) {
+          setStaffList(staffData)
+          setFormData((prev) => ({ ...prev, selected_staff: staffData[0].name }))
         } else {
           setStaffList([])
-          setFormData((prev) => ({ ...prev, selected_staff: '' }))
         }
+
+        // ==========================================
+        // 5. TITIK B (Fetch Blocked Slots) - PERBAIKAN
+        // ==========================================
+        const { data: blockedData } = await supabase
+          .from('blocked_slots')
+          .select('date, start_time')
+
+        if (blockedData) {
+          const formattedData = blockedData.map((item) => ({
+            block_date: item.date,
+            // Ambil 5 karakter pertama '10:00:00' -> '10:00'
+            block_time: item.start_time ? item.start_time.substring(0, 5) : null,
+          }))
+          setBlockedSlots(formattedData)
+        }
+      // ==========================================
 
         setFetchingServices(false)
       }
@@ -341,6 +348,14 @@ if (!currentSlug && !rawSubdomain) {
     }
   }
 
+  // Helper function untuk cek apakah tanggal & jam di-block admin
+  const isSlotBlocked = (date: string, time: string) => {
+  if (!date || !time) return false
+  return blockedSlots.some(
+    (slot) => slot.block_date === date && slot.block_time === time
+  )
+}
+  
   const handleNextStep = () => {
     if (step === 1) {
       if (!formData.customer_name || !formData.whatsapp_number) {
@@ -361,6 +376,11 @@ if (!currentSlug && !rawSubdomain) {
         alert('Mohon tentukan tanggal dan jam kedatangan!')
         return
       }
+      // TAMBAHKAN PENGECEKAN INI DI BAWAHNYA:
+      if (isSlotBlocked(formData.booking_date, formData.booking_time)) {
+      alert('Maaf, tanggal/jam yang Anda pilih sedang tidak tersedia (diblokir/libur). Silakan pilih jam lain.')
+      return
+      }
     }
     setStep((prev) => Math.min(prev + 1, 3))
   }
@@ -379,8 +399,16 @@ if (!currentSlug && !rawSubdomain) {
       return
     }
 
+    // TAMBAHKAN VALIDASI INI:
+    if (isSlotBlocked(formData.booking_date, formData.booking_time)) {
+    alert('Maaf, tanggal/jam yang Anda pilih sedang tidak tersedia (diblokir/libur). Silakan pilih jam lain.')
+    setLoading(false)
+    return
+    }
+
     const formattedServicesText = formData.selected_services.join(', ')
 
+    // 1. Susun payload data yang akan dikirim ke API Route
     const insertPayload: any = {
       customer_name: formData.customer_name,
       whatsapp_number: formData.whatsapp_number,
@@ -405,18 +433,25 @@ if (!currentSlug && !rawSubdomain) {
       insertPayload.payment_type = isBasic ? 'FULL' : formData.payment_type
     }
 
-    const { data: insertedData, error } = await supabase
-      .from('Reservations')
-      .insert([insertPayload])
-      .select('id')
-      .single()
+    // 2. Kirim payload ke API backend Next.js (/api/reservations)
+    const response = await fetch('/api/reservations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(insertPayload)
+    })
 
-    if (error) {
-      alert('Gagal membuat reservasi: ' + error.message)
+    const result = await response.json()
+
+    // 3. Jika slot terblokir atau ada error dari server, hentikan proses
+    if (!response.ok) {
+      alert(result.error || 'Gagal membuat reservasi!')
       setLoading(false)
       return
     }
 
+    const insertedData = result.data
+
+    // 4. Lanjut ke proses redirect WhatsApp
     const bookingId = insertedData?.id ? `BK-${insertedData.id}` : 'BK-NEW'
     const origin = typeof window !== 'undefined' ? window.location.origin : ''
     const invoiceUrl = `${origin}/invoice/${bookingId}`
@@ -608,6 +643,8 @@ if (!currentSlug && !rawSubdomain) {
 
                 {fetchingServices ? (
                   <p className="text-xs text-zinc-500 animate-pulse text-center py-4">Memuat layanan...</p>
+                ) : services.length === 0 ? (
+                  <p className="text-xs text-zinc-500 text-center py-4">Belum ada layanan tersedia.</p>
                 ) : (
                   <div className="grid grid-cols-1 gap-2.5">
                     {services.map((item) => {
@@ -943,6 +980,8 @@ if (!currentSlug && !rawSubdomain) {
 
                     {fetchingServices ? (
                       <p className="text-xs text-zinc-500 animate-pulse text-center py-4">Memuat layanan...</p>
+                    ) : services.length === 0 ? (
+                      <p className="text-xs text-zinc-500 text-center py-4">Belum ada layanan tersedia.</p>
                     ) : (
                       <div className="grid grid-cols-1 gap-2.5">
                         {services.map((item) => {
@@ -1176,7 +1215,7 @@ if (!currentSlug && !rawSubdomain) {
                 <button
                   type="button"
                   onClick={() => setSelectedServiceDetail(null)}
-                  className="absolute top-3 right-3 w-8 h-8 bg-black/60 hover:bg-black text-white rounded-full flex items-center justify-center backdrop-blur-md transition-all text-xs"
+                  className="absolute top-3 right-3 w-8 h-8 bg-black/60 hover:bg-black text-white rounded-full flex items-center justify-center backdrop-blur-md transition-all text-sm font-bold"
                 >
                   ✕
                 </button>
@@ -1184,43 +1223,45 @@ if (!currentSlug && !rawSubdomain) {
             )}
 
             <div className="p-5 space-y-3">
-              <div className="flex justify-between items-start">
-                <div>
+              {!selectedServiceDetail.image_url && (
+                <div className="flex justify-between items-start">
                   <h3 className="text-base font-bold text-white">{selectedServiceDetail.name}</h3>
-                  {selectedServiceDetail.duration && (
-                    <span className="inline-block mt-1 text-[10px] font-semibold text-zinc-400 bg-zinc-800 px-2 py-0.5 rounded-md">
-                      ⏱ Durasi: {selectedServiceDetail.duration}
-                    </span>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => setSelectedServiceDetail(null)}
+                    className="text-zinc-400 hover:text-white text-sm font-bold"
+                  >
+                    ✕
+                  </button>
                 </div>
-                <span className={`text-sm font-black ${theme.accentText}`}>
+              )}
+
+              {selectedServiceDetail.image_url && (
+                <h3 className="text-base font-bold text-white">{selectedServiceDetail.name}</h3>
+              )}
+
+              <div className="flex items-center space-x-2 text-xs">
+                <span className={`font-extrabold ${theme.accentText}`}>
                   {selectedServiceDetail.price}
                 </span>
+                {selectedServiceDetail.duration && (
+                  <span className="text-zinc-500">• Estimasi {selectedServiceDetail.duration}</span>
+                )}
               </div>
 
-              <p className="text-xs text-zinc-300 leading-relaxed bg-zinc-950/60 p-3 rounded-2xl border border-zinc-800/60">
-                {selectedServiceDetail.long_description || selectedServiceDetail.desc}
-              </p>
-
-              <div className="flex space-x-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setSelectedServiceDetail(null)}
-                  className="w-full py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-bold text-xs rounded-xl transition-all"
-                >
-                  Tutup
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    handleServiceSelect(selectedServiceDetail.name)
-                    setSelectedServiceDetail(null)
-                  }}
-                  className={`w-full py-2.5 ${theme.accentBg} text-white font-bold text-xs rounded-xl shadow-lg transition-all`}
-                >
-                  Pilih Paket Ini
-                </button>
+              <div className="border-t border-zinc-800 pt-3">
+                <p className="text-xs text-zinc-300 leading-relaxed whitespace-pre-line">
+                  {selectedServiceDetail.long_description || selectedServiceDetail.desc || 'Tidak ada deskripsi rinci.'}
+                </p>
               </div>
+
+              <button
+                type="button"
+                onClick={() => setSelectedServiceDetail(null)}
+                className={`w-full py-2.5 rounded-xl text-xs font-bold text-white ${theme.accentBg} transition-all duration-300 mt-2`}
+              >
+                Tutup
+              </button>
             </div>
           </div>
         </div>
