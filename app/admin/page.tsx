@@ -860,6 +860,8 @@ export default function AdminDashboard() {
         buttonPrimary: 'bg-purple-600 hover:bg-purple-500 text-white',
         btnActivePeriod: 'bg-purple-600 text-white',
         headerGradient: 'bg-zinc-950 border-zinc-800',
+        cardStyle: 'bg-zinc-950/70 border-zinc-800/80 hover:border-purple-500/40',
+        topStaffCard: 'bg-zinc-950 border-zinc-800',
       }
     }
 
@@ -880,6 +882,12 @@ export default function AdminDashboard() {
           headerGradient: isPro 
             ? 'bg-gradient-to-r from-pink-950/80 via-zinc-950/90 to-rose-950/60 border-pink-500/50 shadow-pink-950/50' 
             : 'bg-gradient-to-r from-pink-950/40 via-zinc-950/90 to-rose-950/20 border-pink-500/30',
+          cardStyle: isPro
+            ? 'bg-gradient-to-br from-pink-950/30 via-zinc-950/90 to-zinc-950 border-pink-500/40 shadow-pink-950/30 hover:border-pink-500/60'
+            : 'bg-zinc-950/70 border-pink-500/20 hover:border-pink-500/40',
+          topStaffCard: isPro
+            ? 'bg-gradient-to-r from-pink-950/80 via-zinc-950/90 to-rose-950/60 border-pink-500/50 shadow-pink-950/50'
+            : 'bg-gradient-to-r from-pink-950/40 via-zinc-950/90 to-rose-950/20 border-pink-500/30',
         }
       case 'amber':
         return {
@@ -894,6 +902,12 @@ export default function AdminDashboard() {
           btnActivePeriod: 'bg-amber-500 text-zinc-950 shadow-lg shadow-amber-500/30',
           headerGradient: isPro 
             ? 'bg-gradient-to-r from-amber-950/80 via-zinc-950/90 to-amber-950/60 border-amber-500/50 shadow-amber-950/50' 
+            : 'bg-gradient-to-r from-amber-950/40 via-zinc-950/90 to-amber-950/20 border-amber-500/30',
+          cardStyle: isPro
+            ? 'bg-gradient-to-br from-amber-950/30 via-zinc-950/90 to-zinc-950 border-amber-500/40 shadow-amber-950/30 hover:border-amber-500/60'
+            : 'bg-zinc-950/70 border-amber-500/20 hover:border-amber-500/40',
+          topStaffCard: isPro
+            ? 'bg-gradient-to-r from-amber-950/80 via-zinc-950/90 to-amber-950/60 border-amber-500/50 shadow-amber-950/50'
             : 'bg-gradient-to-r from-amber-950/40 via-zinc-950/90 to-amber-950/20 border-amber-500/30',
         }
       case 'emerald':
@@ -910,6 +924,12 @@ export default function AdminDashboard() {
           headerGradient: isPro 
             ? 'bg-gradient-to-r from-emerald-950/80 via-zinc-950/90 to-teal-950/60 border-emerald-500/50 shadow-emerald-950/50' 
             : 'bg-gradient-to-r from-emerald-950/40 via-zinc-950/90 to-teal-950/20 border-emerald-500/30',
+          cardStyle: isPro
+            ? 'bg-gradient-to-br from-emerald-950/30 via-zinc-950/90 to-zinc-950 border-emerald-500/40 shadow-emerald-950/30 hover:border-emerald-500/60'
+            : 'bg-zinc-950/70 border-emerald-500/20 hover:border-emerald-500/40',
+          topStaffCard: isPro
+            ? 'bg-gradient-to-r from-emerald-950/80 via-zinc-950/90 to-teal-950/60 border-emerald-500/50 shadow-emerald-950/50'
+            : 'bg-gradient-to-r from-emerald-950/40 via-zinc-950/90 to-teal-950/20 border-emerald-500/30',
         }
       case 'blue':
         return {
@@ -924,6 +944,12 @@ export default function AdminDashboard() {
           btnActivePeriod: 'bg-blue-600 text-white shadow-lg shadow-blue-600/30',
           headerGradient: isPro 
             ? 'bg-gradient-to-r from-blue-950/80 via-zinc-950/90 to-indigo-950/60 border-blue-500/50 shadow-blue-950/50' 
+            : 'bg-gradient-to-r from-blue-950/40 via-zinc-950/90 to-indigo-950/20 border-blue-500/30',
+          cardStyle: isPro
+            ? 'bg-gradient-to-br from-blue-950/30 via-zinc-950/90 to-zinc-950 border-blue-500/40 shadow-blue-950/30 hover:border-blue-500/60'
+            : 'bg-zinc-950/70 border-blue-500/20 hover:border-blue-500/40',
+          topStaffCard: isPro
+            ? 'bg-gradient-to-r from-blue-950/80 via-zinc-950/90 to-indigo-950/60 border-blue-500/50 shadow-blue-950/50'
             : 'bg-gradient-to-r from-blue-950/40 via-zinc-950/90 to-indigo-950/20 border-blue-500/30',
         }
       case 'purple':
@@ -940,6 +966,12 @@ export default function AdminDashboard() {
           btnActivePeriod: 'bg-purple-600 text-white shadow-lg shadow-purple-600/30',
           headerGradient: isPro 
             ? 'bg-gradient-to-r from-purple-950/80 via-zinc-950/90 to-indigo-950/60 border-purple-500/50 shadow-purple-950/50' 
+            : 'bg-gradient-to-r from-purple-950/40 via-zinc-950/90 to-indigo-950/20 border-purple-500/30',
+          cardStyle: isPro
+            ? 'bg-gradient-to-br from-purple-950/30 via-zinc-950/90 to-zinc-950 border-purple-500/40 shadow-purple-950/30 hover:border-purple-500/60'
+            : 'bg-zinc-950/70 border-purple-500/20 hover:border-purple-500/40',
+          topStaffCard: isPro
+            ? 'bg-gradient-to-r from-purple-950/80 via-zinc-950/90 to-indigo-950/60 border-purple-500/50 shadow-purple-950/50'
             : 'bg-gradient-to-r from-purple-950/40 via-zinc-950/90 to-indigo-950/20 border-purple-500/30',
         }
     }
@@ -1157,7 +1189,7 @@ export default function AdminDashboard() {
           
           {/* Card 1: Total Omzet */}
           {(subscriptionPlan === 'PREMIUM' || isProfesional) && (
-            <div className={`col-span-2 sm:col-span-1 border p-4 sm:p-6 rounded-2xl sm:rounded-3xl shadow-2xl transition-all relative overflow-hidden group bg-gradient-to-br from-zinc-950/80 via-zinc-900/90 to-zinc-950 ${themeStyles.borderAccent}`}>
+            <div className={`col-span-2 sm:col-span-1 border p-4 sm:p-6 rounded-2xl sm:rounded-3xl shadow-2xl transition-all relative overflow-hidden group backdrop-blur-2xl ${themeStyles.cardStyle}`}>
               <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
                 <span className="text-3xl sm:text-5xl">{isEyelash ? '💄' : '💰'}</span>
               </div>
@@ -1175,7 +1207,7 @@ export default function AdminDashboard() {
           )}
 
           {/* Card 2: Total Booking */}
-          <div className={`backdrop-blur-2xl border p-4 sm:p-6 rounded-2xl sm:rounded-3xl shadow-xl transition-all bg-zinc-950/70 ${themeStyles.borderAccent}`}>
+          <div className={`backdrop-blur-2xl border p-4 sm:p-6 rounded-2xl sm:rounded-3xl shadow-xl transition-all ${themeStyles.cardStyle}`}>
             <p className="text-[10px] sm:text-xs font-bold text-zinc-400 uppercase tracking-wider">Total Booking</p>
             <div className="flex flex-col sm:flex-row sm:items-baseline justify-between mt-2 sm:mt-3 gap-1">
               <h3 className="text-2xl sm:text-3xl font-black text-white tracking-tight">{stats.totalBookings}</h3>
@@ -1184,7 +1216,7 @@ export default function AdminDashboard() {
           </div>
 
           {/* Card 3: Menunggu */}
-          <div className="backdrop-blur-2xl border p-4 sm:p-6 rounded-2xl sm:rounded-3xl shadow-xl transition-all bg-zinc-950/70 border-zinc-800/80 hover:border-amber-500/40">
+          <div className={`backdrop-blur-2xl border p-4 sm:p-6 rounded-2xl sm:rounded-3xl shadow-xl transition-all ${themeStyles.cardStyle}`}>
             <p className="text-[10px] sm:text-xs font-bold text-amber-400 uppercase tracking-wider">Menunggu</p>
             <div className="flex flex-col sm:flex-row sm:items-baseline justify-between mt-2 sm:mt-3 gap-1">
               <h3 className="text-2xl sm:text-3xl font-black text-amber-400 tracking-tight">{stats.pendingCount}</h3>
@@ -1193,7 +1225,7 @@ export default function AdminDashboard() {
           </div>
 
           {/* Card 4: Selesai */}
-          <div className="backdrop-blur-2xl border p-4 sm:p-6 rounded-2xl sm:rounded-3xl shadow-xl transition-all bg-zinc-950/70 border-zinc-800/80 hover:border-emerald-500/40">
+          <div className={`backdrop-blur-2xl border p-4 sm:p-6 rounded-2xl sm:rounded-3xl shadow-xl transition-all ${themeStyles.cardStyle}`}>
             <p className="text-[10px] sm:text-xs font-bold text-emerald-400 uppercase tracking-wider">Selesai</p>
             <div className="flex flex-col sm:flex-row sm:items-baseline justify-between mt-2 sm:mt-3 gap-1">
               <h3 className="text-2xl sm:text-3xl font-black text-emerald-400 tracking-tight">{stats.completedCount}</h3>
@@ -1204,7 +1236,7 @@ export default function AdminDashboard() {
           </div>
 
           {/* Card 5: Pembatalan */}
-          <div className="backdrop-blur-2xl border p-4 sm:p-6 rounded-2xl sm:rounded-3xl shadow-xl transition-all bg-zinc-950/70 border-zinc-800/80 hover:border-rose-500/40">
+          <div className={`backdrop-blur-2xl border p-4 sm:p-6 rounded-2xl sm:rounded-3xl shadow-xl transition-all ${themeStyles.cardStyle}`}>
             <p className="text-[10px] sm:text-xs font-bold text-rose-400 uppercase tracking-wider">Pembatalan</p>
             <div className="flex flex-col sm:flex-row sm:items-baseline justify-between mt-2 sm:mt-3 gap-1">
               <h3 className="text-2xl sm:text-3xl font-black text-rose-400 tracking-tight">{stats.cancelledCount}</h3>
@@ -1224,7 +1256,7 @@ export default function AdminDashboard() {
 
         {/* WIDGET HIGHLIGHT TOP STAFF (PROFESIONAL ONLY) */}
         {isProfesional && (
-          <div className={`border p-4 sm:p-5 rounded-2xl sm:rounded-3xl shadow-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 relative overflow-hidden backdrop-blur-2xl transition-all ${themeStyles.headerGradient}`}>
+          <div className={`border p-4 sm:p-5 rounded-2xl sm:rounded-3xl shadow-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 relative overflow-hidden backdrop-blur-2xl transition-all ${themeStyles.topStaffCard}`}>
             <div className="flex items-center space-x-3 sm:space-x-4">
               <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl border border-purple-400/40 bg-purple-500/20 flex items-center justify-center text-xl sm:text-2xl shrink-0 shadow-lg shadow-purple-500/10">
                 👑
@@ -1263,7 +1295,7 @@ export default function AdminDashboard() {
 
         {/* PENARIKAN LAPORAN KEUANGAN (PREMIUM & PROFESIONAL) */}
         {subscriptionPlan !== 'BASIC' && (
-          <div className={`p-4 sm:p-6 md:p-7 rounded-2xl sm:rounded-3xl shadow-2xl space-y-4 sm:space-y-5 border backdrop-blur-2xl transition-all bg-zinc-950/80 ${themeStyles.borderAccent}`}>
+          <div className={`p-4 sm:p-6 md:p-7 rounded-2xl sm:rounded-3xl shadow-2xl space-y-4 sm:space-y-5 border backdrop-blur-2xl transition-all ${themeStyles.cardStyle}`}>
             <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-zinc-800/80 pb-4 gap-2">
               <div>
                 <h2 className={`text-base sm:text-lg font-black flex items-center gap-2 ${themeStyles.textAccent}`}>
