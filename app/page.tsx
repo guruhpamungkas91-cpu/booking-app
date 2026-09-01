@@ -11,6 +11,9 @@ interface ServiceItem {
   name: string
   price: string
   desc: string
+  long_description?: string
+  duration?: string
+  image_url?: string
 }
 
 interface StaffItem {
@@ -68,6 +71,9 @@ function BookingFormContent() {
   const [services, setServices] = useState<ServiceItem[]>([])
   const [staffList, setStaffList] = useState<StaffItem[]>([])
   const [fetchingServices, setFetchingServices] = useState(true)
+
+  // State untuk Managing Modal Detail Paket Pro
+  const [selectedServiceDetail, setSelectedServiceDetail] = useState<ServiceItem | null>(null)
 
   // State Tambahan untuk QRIS Dinamis
   const [qrisData, setQrisData] = useState<{ qrUrl?: string; qrString?: string; snapToken?: string } | null>(null)
@@ -481,10 +487,6 @@ function BookingFormContent() {
 
   // Sub-Komponen Render QRIS reusable
   const renderQrisSection = () => {
-    // Hirarki prioritas sumber QRIS:
-    // 1. API QRIS Dinamis (jika ada)
-    // 2. URL dari database Supabase (`qris_url`)
-    // 3. Fallback file lokal berdasarkan slug
     const qrisSrc = 
       qrisData?.qrUrl || 
       tenant.qrisUrl || 
@@ -607,32 +609,51 @@ function BookingFormContent() {
                         <div
                           key={item.id}
                           onClick={() => handleServiceSelect(item.name)}
-                          className={`cursor-pointer p-3.5 rounded-2xl border transition-all duration-300 flex items-center justify-between group ${
+                          className={`cursor-pointer p-3.5 rounded-2xl border transition-all duration-300 flex flex-col group ${
                             active 
                               ? `${theme.accentBgLight} ${theme.accentBorder} text-white shadow-md` 
                               : 'bg-zinc-950/60 border-zinc-800/80 text-zinc-400 hover:border-zinc-700 hover:bg-zinc-950'
                           }`}
                         >
-                          <div className="flex items-center space-x-3">
-                            {!isBasic && (
-                              <div className={`w-4.5 h-4.5 rounded-lg border flex items-center justify-center transition-all duration-300 ${
-                                active ? `${theme.accentSolidBg} border-white shadow-sm` : 'border-zinc-700 bg-zinc-900 group-hover:border-zinc-600'
-                              }`}>
-                                {active && (
-                                  <svg className="w-3 h-3 text-zinc-950 stroke-[3]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                                  </svg>
-                                )}
+                          <div className="flex items-center justify-between w-full">
+                            <div className="flex items-center space-x-3">
+                              {!isBasic && (
+                                <div className={`w-4.5 h-4.5 rounded-lg border flex items-center justify-center transition-all duration-300 ${
+                                  active ? `${theme.accentSolidBg} border-white shadow-sm` : 'border-zinc-700 bg-zinc-900 group-hover:border-zinc-600'
+                                }`}>
+                                  {active && (
+                                    <svg className="w-3 h-3 text-zinc-950 stroke-[3]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                    </svg>
+                                  )}
+                                </div>
+                              )}
+                              <div>
+                                <p className={`text-xs font-bold transition-colors ${active ? theme.accentText : 'text-zinc-200 group-hover:text-white'}`}>{item.name}</p>
+                                <p className="text-[10px] text-zinc-500 mt-0.5">{item.desc}</p>
                               </div>
-                            )}
-                            <div>
-                              <p className={`text-xs font-bold transition-colors ${active ? theme.accentText : 'text-zinc-200 group-hover:text-white'}`}>{item.name}</p>
-                              <p className="text-[10px] text-zinc-500 mt-0.5">{item.desc}</p>
                             </div>
+                            <span className="text-xs font-extrabold text-zinc-200 bg-zinc-900/90 px-2.5 py-1 rounded-xl border border-zinc-800 shadow-inner">
+                              {item.price}
+                            </span>
                           </div>
-                          <span className="text-xs font-extrabold text-zinc-200 bg-zinc-900/90 px-2.5 py-1 rounded-xl border border-zinc-800 shadow-inner">
-                            {item.price}
-                          </span>
+
+                          {/* Tombol Lihat Detail Paket (Khusus Pro) */}
+                          {isPro && (item.long_description || item.image_url) && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setSelectedServiceDetail(item)
+                              }}
+                              className={`mt-2.5 self-start inline-flex items-center space-x-1 text-[10px] font-bold ${theme.accentText} hover:underline`}
+                            >
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
+                              <span>Lihat Detail Paket</span>
+                            </button>
+                          )}
                         </div>
                       )
                     })}
@@ -923,32 +944,51 @@ function BookingFormContent() {
                             <div
                               key={item.id}
                               onClick={() => handleServiceSelect(item.name)}
-                              className={`cursor-pointer p-3.5 rounded-2xl border transition-all duration-300 flex items-center justify-between group ${
+                              className={`cursor-pointer p-3.5 rounded-2xl border transition-all duration-300 flex flex-col group ${
                                 active 
                                   ? `${theme.accentBgLight} ${theme.accentBorder} text-white shadow-md` 
                                   : 'bg-zinc-950/60 border-zinc-800/80 text-zinc-400 hover:border-zinc-700 hover:bg-zinc-950'
                               }`}
                             >
-                              <div className="flex items-center space-x-3">
-                                {!isBasic && (
-                                  <div className={`w-4.5 h-4.5 rounded-lg border flex items-center justify-center transition-all duration-300 ${
-                                    active ? `${theme.accentSolidBg} border-white shadow-sm` : 'border-zinc-700 bg-zinc-900 group-hover:border-zinc-600'
-                                  }`}>
-                                    {active && (
-                                      <svg className="w-3 h-3 text-zinc-950 stroke-[3]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                                      </svg>
-                                    )}
+                              <div className="flex items-center justify-between w-full">
+                                <div className="flex items-center space-x-3">
+                                  {!isBasic && (
+                                    <div className={`w-4.5 h-4.5 rounded-lg border flex items-center justify-center transition-all duration-300 ${
+                                      active ? `${theme.accentSolidBg} border-white shadow-sm` : 'border-zinc-700 bg-zinc-900 group-hover:border-zinc-600'
+                                    }`}>
+                                      {active && (
+                                        <svg className="w-3 h-3 text-zinc-950 stroke-[3]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                        </svg>
+                                      )}
+                                    </div>
+                                  )}
+                                  <div>
+                                    <p className={`text-xs font-bold transition-colors ${active ? theme.accentText : 'text-zinc-200 group-hover:text-white'}`}>{item.name}</p>
+                                    <p className="text-[10px] text-zinc-500 mt-0.5">{item.desc}</p>
                                   </div>
-                                )}
-                                <div>
-                                  <p className={`text-xs font-bold transition-colors ${active ? theme.accentText : 'text-zinc-200 group-hover:text-white'}`}>{item.name}</p>
-                                  <p className="text-[10px] text-zinc-500 mt-0.5">{item.desc}</p>
                                 </div>
+                                <span className="text-xs font-extrabold text-zinc-200 bg-zinc-900/90 px-2.5 py-1 rounded-xl border border-zinc-800 shadow-inner">
+                                  {item.price}
+                                </span>
                               </div>
-                              <span className="text-xs font-extrabold text-zinc-200 bg-zinc-900/90 px-2.5 py-1 rounded-xl border border-zinc-800 shadow-inner">
-                                {item.price}
-                              </span>
+
+                              {/* Tombol Lihat Detail Paket (Khusus Pro) */}
+                              {isPro && (item.long_description || item.image_url) && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    setSelectedServiceDetail(item)
+                                  }}
+                                  className={`mt-2.5 self-start inline-flex items-center space-x-1 text-[10px] font-bold ${theme.accentText} hover:underline`}
+                                >
+                                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                  </svg>
+                                  <span>Lihat Detail Paket</span>
+                                </button>
+                              )}
                             </div>
                           )
                         })}
@@ -1112,6 +1152,72 @@ function BookingFormContent() {
 
         </form>
       </div>
+
+      {/* MODAL POP-UP DETAIL LAYANAN (KHUSUS PAKET PROFESIONAL) */}
+      {selectedServiceDetail && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl max-w-sm w-full overflow-hidden shadow-2xl relative">
+            
+            {/* Gambar Layanan */}
+            {selectedServiceDetail.image_url && (
+              <div className="relative w-full h-48 bg-zinc-950">
+                <img
+                  src={selectedServiceDetail.image_url}
+                  alt={selectedServiceDetail.name}
+                  className="w-full h-full object-cover"
+                />
+                <button
+                  type="button"
+                  onClick={() => setSelectedServiceDetail(null)}
+                  className="absolute top-3 right-3 w-8 h-8 bg-black/60 hover:bg-black text-white rounded-full flex items-center justify-center backdrop-blur-md transition-all text-xs"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+
+            <div className="p-5 space-y-3">
+              <div className="flex justify-between items-start">
+                <div>
+                  <h3 className="text-base font-bold text-white">{selectedServiceDetail.name}</h3>
+                  {selectedServiceDetail.duration && (
+                    <span className="inline-block mt-1 text-[10px] font-semibold text-zinc-400 bg-zinc-800 px-2 py-0.5 rounded-md">
+                      ⏱ Durasi: {selectedServiceDetail.duration}
+                    </span>
+                  )}
+                </div>
+                <span className={`text-sm font-black ${theme.accentText}`}>
+                  {selectedServiceDetail.price}
+                </span>
+              </div>
+
+              <p className="text-xs text-zinc-300 leading-relaxed bg-zinc-950/60 p-3 rounded-2xl border border-zinc-800/60">
+                {selectedServiceDetail.long_description || selectedServiceDetail.desc}
+              </p>
+
+              <div className="flex space-x-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedServiceDetail(null)}
+                  className="w-full py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-bold text-xs rounded-xl transition-all"
+                >
+                  Tutup
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleServiceSelect(selectedServiceDetail.name)
+                    setSelectedServiceDetail(null)
+                  }}
+                  className={`w-full py-2.5 ${theme.accentBg} text-white font-bold text-xs rounded-xl shadow-lg transition-all`}
+                >
+                  Pilih Paket Ini
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   )
 }
