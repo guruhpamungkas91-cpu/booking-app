@@ -38,7 +38,7 @@ interface TenantData {
   dpValue: number
   waGatewayUrl?: string
   waApiKey?: string
-  qrisImageUrl?: string
+  qrisUrl?: string
 }
 
 function BookingFormContent() {
@@ -62,7 +62,7 @@ function BookingFormContent() {
     dpValue: 50,
     waGatewayUrl: '',
     waApiKey: '',
-    qrisImageUrl: ''
+    qrisUrl: ''
   })
 
   const [services, setServices] = useState<ServiceItem[]>([])
@@ -240,7 +240,7 @@ function BookingFormContent() {
           dpValue: tenantData?.dp_value ?? 50,
           waGatewayUrl: tenantData?.wa_gateway_url || '',
           waApiKey: tenantData?.wa_api_key || '',
-          qrisImageUrl: tenantData?.qris_image_url || ''
+          qrisUrl: tenantData?.qris_url || ''
         }
 
         setTenant(activeTenant)
@@ -292,7 +292,6 @@ function BookingFormContent() {
   const generateDynamicQris = async () => {
     setLoadingQris(true)
     try {
-      // Opsi 1: Panggil API Backend / Gateway Midtrans kamu di sini
       const response = await fetch('/api/qris/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -307,7 +306,6 @@ function BookingFormContent() {
         const resData = await response.json()
         setQrisData({ qrUrl: resData.qrUrl })
       } else {
-        // Fallback jika API dinamis belum dipasang
         setQrisData(null)
       }
     } catch (err) {
@@ -483,12 +481,13 @@ function BookingFormContent() {
 
   // Sub-Komponen Render QRIS reusable
   const renderQrisSection = () => {
-    // Tentukan image fallback default (bisa isi URL QRIS umum atau file default di /public/qris-default.png)
-    const defaultQris = '/qris-default.png' 
-
+    // Hirarki prioritas sumber QRIS:
+    // 1. API QRIS Dinamis (jika ada)
+    // 2. URL dari database Supabase (`qris_url`)
+    // 3. Fallback file lokal berdasarkan slug
     const qrisSrc = 
       qrisData?.qrUrl || 
-      tenant.qrisImageUrl || 
+      tenant.qrisUrl || 
       `/${tenant.tenantSlug}.png`
 
     return (
@@ -507,11 +506,11 @@ function BookingFormContent() {
             <img
               src={qrisSrc}
               onError={(e) => { 
-                // Jika file /slug.png tidak ditemukan, otomatis switch ke gambar default ini
-                e.currentTarget.onerror = null // Mencegah infinite loop
-                e.currentTarget.src = defaultQris
+                // Fallback jika URL dari DB / slug error, arahkan ke file default/mcut.png
+                e.currentTarget.onerror = null
+                e.currentTarget.src = '/mcut.png'
               }}
-              alt="QRIS Code"
+              alt={`QRIS ${tenant.name}`}
               className="w-44 h-44 object-contain mx-auto"
             />
           </div>
