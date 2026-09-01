@@ -203,13 +203,20 @@ function BookingFormContent() {
       const tenantQuery = searchParams.get('tenant')
 
       const rawSubdomain = hostname.split('.')[0]
-      const extractedSlug = rawSubdomain.replace('-barbershop', '').replace('-lashes', '').replace('-dental', '')
-      const currentSlug = tenantQuery || (rawSubdomain === 'localhost' ? '' : extractedSlug)
+      // Tambahkan .replace untuk suffix domain si GLOW (misal: -clinic atau -beauty)
+      const extractedSlug = rawSubdomain
+        .replace('-barbershop', '')
+        .replace('-lashes', '')
+        .replace('-dental', '')
+        .replace('-clinic', '')
+        .replace('-beauty', '')
 
-      if (!currentSlug && !rawSubdomain) {
-        setFetchingServices(false)
-        return
-      }
+const currentSlug = tenantQuery || (rawSubdomain === 'localhost' ? '' : extractedSlug)
+
+if (!currentSlug && !rawSubdomain) {
+  setFetchingServices(false)
+  return
+}
 
       const fetchTenantAndData = async () => {
         setFetchingServices(true)
