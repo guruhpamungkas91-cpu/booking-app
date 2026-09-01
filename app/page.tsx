@@ -502,16 +502,15 @@ function BookingFormContent() {
             <span className="text-[10px] text-zinc-500">Memuat Kode QRIS...</span>
           </div>
         ) : (
-          <div className="p-3 bg-white rounded-2xl inline-block shadow-xl border border-zinc-200">
+          <div className="p-1 bg-white rounded-2xl inline-block shadow-xl border border-zinc-200 overflow-hidden w-full max-w-[280px]">
             <img
               src={qrisSrc}
               onError={(e) => { 
-                // Fallback jika URL dari DB / slug error, arahkan ke file default/mcut.png
                 e.currentTarget.onerror = null
                 e.currentTarget.src = '/mcut.png'
               }}
               alt={`QRIS ${tenant.name}`}
-              className="w-44 h-44 object-contain mx-auto"
+              className="w-full h-auto object-cover rounded-xl mx-auto"
             />
           </div>
         )}
