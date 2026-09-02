@@ -42,9 +42,10 @@ interface TenantData {
   waGatewayUrl?: string
   waApiKey?: string
   qrisUrl?: string
+  preventDoubleBooking: boolean
+  hideBookedSlots: boolean
 }
 
-// Interface Slot Jam untuk TimePicker
 interface TimeSlot {
   time: string
   maxQuota: number
@@ -72,29 +73,24 @@ function BookingFormContent() {
     dpValue: 50,
     waGatewayUrl: '',
     waApiKey: '',
-    qrisUrl: ''
+    qrisUrl: '',
+    preventDoubleBooking: true,
+    hideBookedSlots: false
   })
 
   const [services, setServices] = useState<ServiceItem[]>([])
   const [staffList, setStaffList] = useState<StaffItem[]>([])
   const [fetchingServices, setFetchingServices] = useState(true)
 
-  // State Modal Detail Paket Pro
   const [selectedServiceDetail, setSelectedServiceDetail] = useState<ServiceItem | null>(null)
-
-  // State QRIS Dinamis
   const [qrisData, setQrisData] = useState<{ qrUrl?: string; qrString?: string; snapToken?: string } | null>(null)
   const [loadingQris, setLoadingQris] = useState(false)
 
-  // State Slot Diblokir Manual & Confirmed dari Supabase
   const [blockedSlots, setBlockedSlots] = useState<{ block_date: string; block_time: string }[]>([])
-
-  // State ketersediaan jam (API Auto-fetch)
   const [blockedTimes, setBlockedTimes] = useState<string[]>([])
   const [bookedTimes, setBookedTimes] = useState<string[]>([])
   const [loadingSlots, setLoadingSlots] = useState<boolean>(false)
 
-  // Daftar default slot jam operasional
   const [availableSlots, setAvailableSlots] = useState<TimeSlot[]>([
     { time: '09:00', maxQuota: 1, bookedCount: 0 },
     { time: '10:00', maxQuota: 1, bookedCount: 0 },
@@ -244,7 +240,7 @@ function BookingFormContent() {
           const { data: tenantData } = await supabase
             .from('Tenants')
             .select('*')
-            .or(`tenant_slug.ilike.${currentSlug},tenant_slug.ilike.${rawSubdomain},client_code.ilike.${currentSlug}`)
+            .eq('tenant_slug', currentSlug)
             .maybeSingle()
 
           const dbPlan = ((tenantData?.subscription_plan || 'BASIC') as string).toUpperCase() as 'BASIC' | 'PREMIUM' | 'PROFESIONAL'
@@ -271,15 +267,18 @@ function BookingFormContent() {
             dpValue: tenantData?.dp_value ?? 50,
             waGatewayUrl: tenantData?.wa_gateway_url || '',
             waApiKey: tenantData?.wa_api_key || '',
-            qrisUrl: tenantData?.qris_url || ''
+            qrisUrl: tenantData?.qris_url || '',
+            preventDoubleBooking: tenantData?.prevent_double_booking ?? true,
+            hideBookedSlots: tenantData?.hide_booked_slots ?? false
           }
 
           setTenant(activeTenant)
 
+          // 1. Fetch Services menggunakan tenant_slug
           const { data: serviceData } = await supabase
             .from('Services')
             .select('*')
-            .or(`tenant_slug.ilike.${activeTenant.tenantSlug},client_code.ilike.${activeTenant.clientCode}`)
+            .eq('tenant_slug', activeTenant.tenantSlug)
 
           if (serviceData && serviceData.length > 0) {
             setServices(serviceData)
@@ -288,11 +287,12 @@ function BookingFormContent() {
             setServices([])
           }
 
+          // 2. Fetch Staff menggunakan tenant_slug
           if (activeTenant.subscriptionPlan !== 'BASIC') {
             const { data: staffData } = await supabase
               .from('Staff')
               .select('*')
-              .or(`tenant_slug.ilike.${activeTenant.tenantSlug},client_code.ilike.${activeTenant.clientCode}`)
+              .eq('tenant_slug', activeTenant.tenantSlug)
               .eq('is_active', true)
 
             if (staffData && staffData.length > 0) {
@@ -305,16 +305,21 @@ function BookingFormContent() {
             setStaffList([])
           }
 
-          const { data: blockedData } = await supabase
+          // 3. Fetch Blocked Slots menggunakan tenant_slug (Sesuai perbaikan kolom Supabase)
+          const { data: blockedData, error: blockedErr } = await supabase
             .from('blocked_slots')
             .select('date, start_time')
-            .or(`tenant_slug.ilike.${activeTenant.tenantSlug},client_code.ilike.${activeTenant.clientCode}`)
+            .eq('tenant_slug', activeTenant.tenantSlug)
 
-          const { data: confirmedReservations } = await supabase
+          if (blockedErr) console.error("Error fetching blocked_slots:", blockedErr)
+
+          const { data: confirmedReservations, error: resErr } = await supabase
             .from('Reservations')
             .select('booking_date, booking_time')
-            .or(`tenant_slug.ilike.${activeTenant.tenantSlug},client_code.ilike.${activeTenant.clientCode}`)
+            .eq('tenant_slug', activeTenant.tenantSlug)
             .eq('status', 'confirmed')
+
+          if (resErr) console.error("Error fetching Reservations:", resErr)
 
           const combinedBlockedSlots = [
             ...(blockedData?.map((item) => ({
@@ -340,7 +345,6 @@ function BookingFormContent() {
     }
   }, [])
 
-  // Auto-fetch ketersediaan jam tiap kali tanggal berubah
   useEffect(() => {
     if (!formData.booking_date || !tenant?.tenantSlug) return
 
@@ -364,7 +368,6 @@ function BookingFormContent() {
     fetchAvailability()
   }, [formData.booking_date, tenant?.tenantSlug])
 
-  // Efek QRIS Dinamis
   const generateDynamicQris = async () => {
     setLoadingQris(true)
     try {
@@ -411,25 +414,25 @@ function BookingFormContent() {
 
   const isSlotBlocked = (date: string, time: string) => {
     if (!date || !time) return false
-    
+
     const isSupabaseBlocked = blockedSlots.some(
       (slot) => slot.block_date === date && slot.block_time === time
     )
 
-    const isApiBlocked = blockedTimes.includes(time) || bookedTimes.includes(time)
+    const isManualApiBlocked = blockedTimes.includes(time)
 
-    return isSupabaseBlocked || isApiBlocked
+    return isSupabaseBlocked || isManualApiBlocked
   }
 
-  // LOGIKA PEMERIKSAAN DISABLE SLOT JAM
   const isTimeDisabled = (timeString: string, maxQuota: number, currentBookings: number) => {
-    // 1. Cek kuota terpakai
-    if (currentBookings >= maxQuota) return true
-
-    // 2. Cek apakah diblokir dari Supabase / API Availability
     if (isSlotBlocked(formData.booking_date, timeString)) return true
 
-    // 3. Cek apakah jam sudah berlalu (jika memilih hari ini)
+    if (tenant.preventDoubleBooking) {
+      const isBooked = bookedTimes.includes(timeString)
+      const isQuotaFull = currentBookings >= maxQuota
+      if (isBooked || isQuotaFull) return true
+    }
+
     if (formData.booking_date) {
       const selectedDate = new Date(formData.booking_date)
       const now = new Date()
@@ -450,7 +453,6 @@ function BookingFormContent() {
     return false
   }
 
-  // KOMPONEN TIMEPICKER
   const TimePicker = ({
     availableSlots,
     selectedTime,
@@ -460,9 +462,16 @@ function BookingFormContent() {
     selectedTime: string
     onSelectTime: (time: string) => void
   }) => {
+    const filteredSlots = availableSlots.filter((slot) => {
+      if (!tenant.hideBookedSlots) return true
+
+      const isBooked = bookedTimes.includes(slot.time) || slot.bookedCount >= slot.maxQuota
+      return !isBooked
+    })
+
     return (
       <div className="grid grid-cols-3 gap-2 mt-2">
-        {availableSlots.map((slot) => {
+        {filteredSlots.map((slot) => {
           const disabled = isTimeDisabled(slot.time, slot.maxQuota, slot.bookedCount)
           const isSelected = selectedTime === slot.time
 
@@ -509,7 +518,7 @@ function BookingFormContent() {
         return
       }
       if (isSlotBlocked(formData.booking_date, formData.booking_time)) {
-        alert('Maaf, tanggal/jam yang Anda pilih sedang tidak tersedia (diblokir/libur/terpesan). Silakan pilih jam lain.')
+        alert('Maaf, tanggal/jam yang Anda pilih sedang tidak tersedia. Silakan pilih jam lain.')
         return
       }
     }
@@ -699,7 +708,6 @@ function BookingFormContent() {
     <main className="min-h-screen bg-[#09090b] bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(120,119,198,0.15),rgba(255,255,255,0))] text-zinc-100 flex items-center justify-center p-3 sm:p-6 font-sans">
       <div className="max-w-md w-full bg-zinc-900/90 border border-zinc-800/80 rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.7)] overflow-hidden backdrop-blur-xl">
         
-        {/* HEADER */}
         <div className="relative p-6 text-center bg-gradient-to-b from-zinc-800/40 via-zinc-900/60 to-zinc-900 border-b border-zinc-800/60">
           <div className={`inline-flex items-center justify-center w-12 h-12 rounded-2xl mb-3 border ${theme.iconBg} backdrop-blur-md shadow-lg transform transition-transform hover:scale-105 duration-300`}>
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -725,7 +733,6 @@ function BookingFormContent() {
 
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
           
-          {/* LAYOUT 1: SINGLE PAGE */}
           {!isWizard && (
             <div className="space-y-4">
               <div>
@@ -947,7 +954,6 @@ function BookingFormContent() {
             </div>
           )}
 
-          {/* LAYOUT 2: STEP WIZARD */}
           {isWizard && (
             <>
               {step === 1 && (
@@ -1334,7 +1340,6 @@ function BookingFormContent() {
         </form>
       </div>
 
-      {/* MODAL POP-UP DETAIL LAYANAN */}
       {selectedServiceDetail && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
           <div className="bg-zinc-900 border border-zinc-800 rounded-3xl max-w-sm w-full overflow-hidden shadow-2xl relative">

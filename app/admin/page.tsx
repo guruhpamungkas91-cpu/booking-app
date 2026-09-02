@@ -39,13 +39,15 @@ type ThemeMode = 'purple' | 'pink' | 'amber' | 'emerald' | 'blue'
 const detectBrandFromHostname = (): { brand: string; type: BusinessType } => {
   if (typeof window !== 'undefined') {
     const host = window.location.hostname.toLowerCase()
-    if (host.includes('mcut')) return { brand: 'MCUT', type: 'barber' }
     if (host.includes('sem')) return { brand: 'SEM BARBERSHOP', type: 'barber' }
     if (host.includes('fitrifeb') || host.includes('lashes') || host.includes('eyelash')) {
       return { brand: 'FITRIFEB', type: 'eyelash' }
     }
+    if (host.includes('mcut') || host.includes('barber')) {
+      return { brand: 'MCUT', type: 'barber' }
+    }
   }
-  return { brand: 'FITRIFEB', type: 'eyelash' }
+  return { brand: 'DASHBOARD ADMIN', type: 'barber' }
 }
 
 export default function AdminDashboard() {
@@ -72,7 +74,7 @@ export default function AdminDashboard() {
   const [filteredReservations, setFilteredReservations] = useState<Reservation[]>([])
   const [loading, setLoading] = useState(false)
 
-  // STATE BARU & UPDATE: BLOCK SLOT DETAILED LOGIC
+  // STATE BLOCK SLOT DETAILED LOGIC
   const [blockedSlots, setBlockedSlots] = useState<BlockedSlot[]>([])
   const [blockDateInput, setBlockDateInput] = useState('')
   const [blockTimeInput, setBlockTimeInput] = useState('10:00')
@@ -88,6 +90,12 @@ export default function AdminDashboard() {
   const [paymentFilter, setPaymentFilter] = useState('all')
 
   const [autoWaReminder, setAutoWaReminder] = useState<boolean>(true)
+  const [isUpdatingWaToggle, setIsUpdatingWaToggle] = useState<boolean>(false)
+
+  // STATE FEATURE BOOKING TOGGLES
+  const [preventDoubleBooking, setPreventDoubleBooking] = useState<boolean>(true)
+  const [hideBookedSlots, setHideBookedSlots] = useState<boolean>(true)
+  const [isUpdatingBookingToggle, setIsUpdatingBookingToggle] = useState<boolean>(false)
 
   const [limit, setLimit] = useState<number | 'all'>(10)
   const [currentPage, setCurrentPage] = useState<number>(1)
@@ -122,7 +130,7 @@ export default function AdminDashboard() {
       if (cleanCode) {
         const { data } = await supabase
           .from('Tenants')
-          .select('subscription_plan, staff_label, tenant_slug')
+          .select('subscription_plan, staff_label, tenant_slug, auto_wa_reminder, prevent_double_booking, hide_booked_slots')
           .ilike('tenant_slug', `%${cleanCode}%`)
           .maybeSingle()
         tenantData = data
@@ -131,7 +139,7 @@ export default function AdminDashboard() {
       if (!tenantData && detectedBrandHint) {
         const { data } = await supabase
           .from('Tenants')
-          .select('subscription_plan, staff_label, tenant_slug')
+          .select('subscription_plan, staff_label, tenant_slug, auto_wa_reminder, prevent_double_booking, hide_booked_slots')
           .ilike('tenant_slug', `%${detectedBrandHint.toLowerCase()}%`)
           .maybeSingle()
         tenantData = data
@@ -161,11 +169,100 @@ export default function AdminDashboard() {
           setBrandTitle(tenantData.tenant_slug.toUpperCase())
           setTenantCode(tenantData.tenant_slug)
         }
+
+        if (typeof tenantData.auto_wa_reminder === 'boolean') {
+          setAutoWaReminder(tenantData.auto_wa_reminder)
+        }
+        if (typeof tenantData.prevent_double_booking === 'boolean') {
+          setPreventDoubleBooking(tenantData.prevent_double_booking)
+        }
+        if (typeof tenantData.hide_booked_slots === 'boolean') {
+          setHideBookedSlots(tenantData.hide_booked_slots)
+        }
       }     
     } catch (err) {
       console.error('Error fetching tenant details:', err)
     }
   }, [])
+
+  // HANDLER API UNTUK TOGGLE SWITCH WA REMINDER (DINAMIS Sesuai Tenant Active)
+  const handleToggleWaReminder = async (newStatus: boolean) => {
+    if (!tenantCode) {
+      alert('Tenant code tidak ditemukan.')
+      return
+    }
+
+    const previousStatus = autoWaReminder
+    setAutoWaReminder(newStatus)
+    setIsUpdatingWaToggle(true)
+
+    try {
+      const response = await fetch('/api/tenant', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          tenant_slug: tenantCode,
+          auto_wa_reminder: newStatus,
+        }),
+      })
+
+      const text = await response.text()
+      const resData = text ? JSON.parse(text) : {}
+
+      if (!response.ok || (resData && resData.success === false)) {
+        throw new Error(resData?.message || 'Gagal mengubah status WA Reminder')
+      }
+    } catch (error: any) {
+      alert(`Gagal mengupdate pengingat WhatsApp: ${error.message}`)
+      setAutoWaReminder(previousStatus)
+    } finally {
+       setIsUpdatingWaToggle(false)
+     }
+  }
+
+  // HANDLER API UNTUK TOGGLE FITUR BOOKING (DINAMIS Sesuai Tenant Active)
+  const handleToggleBookingSetting = async (field: 'prevent_double_booking' | 'hide_booked_slots', newStatus: boolean) => {
+    if (!tenantCode) {
+      alert('Tenant code tidak ditemukan.')
+      return
+    }
+
+    const prevDoubleBooking = preventDoubleBooking
+    const prevHideSlots = hideBookedSlots
+
+    if (field === 'prevent_double_booking') setPreventDoubleBooking(newStatus)
+    if (field === 'hide_booked_slots') setHideBookedSlots(newStatus)
+
+    setIsUpdatingBookingToggle(true)
+
+    try {
+      const response = await fetch('/api/tenant', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          tenant_slug: tenantCode,
+          [field]: newStatus,
+        }),
+      })
+
+      const text = await response.text()
+      const resData = text ? JSON.parse(text) : {}
+
+      if (!response.ok || (resData && resData.success === false)) {
+        throw new Error(resData?.message || `Error status: ${response.status}`)
+      }
+    } catch (error: any) {
+      alert(`Gagal mengupdate pengaturan booking: ${error.message}`)
+      setPreventDoubleBooking(prevDoubleBooking)
+      setHideBookedSlots(prevHideSlots)
+      } finally {
+      setIsUpdatingBookingToggle(false)
+      }
+  }
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -199,11 +296,10 @@ export default function AdminDashboard() {
     setIsAuthenticated(false)
   }
 
-  // HANDLER & FETCH BLOCK SLOTS (UPDATED WITH REASON PRESETS & SYNC)
   const fetchBlockedSlots = useCallback(async () => {
     if (!tenantCode) return
     const { data, error } = await supabase
-      .from('BlockedSlots')
+      .from('blocked_slots')
       .select('*')
       .or(`client_code.eq.${tenantCode},tenant_slug.eq.${tenantCode}`)
       .order('block_date', { ascending: true })
@@ -220,17 +316,22 @@ export default function AdminDashboard() {
       return
     }
 
+    if (!tenantCode) {
+      alert('Tenant code belum teridentifikasi!')
+      return
+    }
+
     const finalReason = reasonPreset === 'Lainnya' 
       ? (blockReasonInput || 'Di-block Admin') 
       : reasonPreset
 
     setIsBlocking(true)
     const { error } = await supabase
-      .from('BlockedSlots')
+      .from('blocked_slots')
       .insert([
         {
-          client_code: tenantCode || 'FITRI',
-          tenant_slug: tenantCode || 'fitrifeb',
+          client_code: tenantCode,
+          tenant_slug: tenantCode,
           block_date: blockDateInput,
           block_time: blockTimeInput,
           reason: finalReason
@@ -253,7 +354,7 @@ export default function AdminDashboard() {
     if (!isConfirmed) return
 
     const { error } = await supabase
-      .from('BlockedSlots')
+      .from('blocked_slots')
       .delete()
       .eq('id', id)
 
@@ -279,16 +380,19 @@ export default function AdminDashboard() {
       .or(`admin_email.eq.${user.email},client_code.eq.${tenantCode},tenant_slug.eq.${tenantCode}`)
       .maybeSingle()
 
-    const activeClientCode = tenantData?.client_code || user?.app_metadata?.client_code || 'FITRI'
-    const activeTenantSlug = tenantData?.tenant_slug || user?.app_metadata?.tenant_slug || 'fitrifeb'
+    const activeClientCode = tenantData?.client_code || user?.app_metadata?.client_code || tenantCode
+    const activeTenantSlug = tenantData?.tenant_slug || user?.app_metadata?.tenant_slug || tenantCode
 
-    await fetchTenantDetail(activeClientCode)
+    if (activeClientCode || activeTenantSlug) {
+      await fetchTenantDetail(activeClientCode || activeTenantSlug)
+    }
 
-    const { data, error } = await supabase
-      .from('Reservations')
-      .select('*')
-      .or(`client_code.eq.${activeClientCode},tenant_slug.eq.${activeTenantSlug},client_code.ilike.%${activeClientCode}%`)
-      .order('created_at', { ascending: false })
+    let query = supabase.from('Reservations').select('*')
+    if (activeClientCode || activeTenantSlug) {
+      query = query.or(`client_code.eq.${activeClientCode},tenant_slug.eq.${activeTenantSlug},client_code.ilike.%${activeClientCode}%`)
+    }
+    
+    const { data, error } = await query.order('created_at', { ascending: false })
 
     if (error) {
       alert('Gagal mengambil data: ' + error.message)
@@ -299,8 +403,9 @@ export default function AdminDashboard() {
     setLoading(false)
   }, [tenantCode, fetchTenantDetail])
 
-  // LOGIC OTOMATIS: DUA ARAH (SINKRONISASI JAM STATUS CONFIRMED KE BLOCK SLOT)
   const syncConfirmedSlotsToBlocked = useCallback(async () => {
+    if (!tenantCode) return
+
     const confirmedList = reservations.filter((r) => {
       const s = (r.status || '').toLowerCase()
       return s === 'confirmed' || s === 'dikonfirmasi'
@@ -314,10 +419,10 @@ export default function AdminDashboard() {
       )
 
       if (!exists) {
-        await supabase.from('BlockedSlots').insert([
+        await supabase.from('blocked_slots').insert([
           {
-            client_code: tenantCode || 'FITRI',
-            tenant_slug: tenantCode || 'fitrifeb',
+            client_code: tenantCode,
+            tenant_slug: tenantCode,
             block_date: item.booking_date,
             block_time: item.booking_time,
             reason: `Otomatis: Booking Confirmed (${item.customer_name})`
@@ -338,7 +443,6 @@ export default function AdminDashboard() {
       alert('Gagal update status: ' + error.message)
     } else {
       await fetchReservations()
-      // Jika status berubah jadi confirmed, otomatis trigger sync slot
       if (newStatus === 'confirmed') {
         syncConfirmedSlotsToBlocked()
       }
@@ -575,7 +679,7 @@ export default function AdminDashboard() {
     } else if (reportPeriod === 'monthly') labelPeriode = `Bulanan (${reportDate.substring(0, 7)})`
     else labelPeriode = `Custom (${formatDateID(reportStartDate)} s/d ${formatDateID(reportEndDate)})`
 
-    const displayBrand = brandTitle || tenantCode || (businessType === 'eyelash' ? 'FITRIFEB LASHES' : 'BARBERSHOP')
+    const displayBrand = brandTitle || tenantCode || 'BUSINESS'
     const themeColor = selectedTheme === 'pink' ? '#ec4899' : selectedTheme === 'amber' ? '#f59e0b' : selectedTheme === 'emerald' ? '#10b981' : selectedTheme === 'blue' ? '#3b82f6' : '#a855f7'
 
     const htmlContent = `
@@ -685,7 +789,7 @@ export default function AdminDashboard() {
     } else if (reportPeriod === 'monthly') labelPeriode = `Bulanan (${reportDate.substring(0, 7)})`
     else labelPeriode = `Custom (${formatDateID(reportStartDate)} s/d ${formatDateID(reportEndDate)})`
 
-    const displayBrand = brandTitle || tenantCode || (businessType === 'eyelash' ? 'Fitrifeb Eyelash' : 'BARBERSHOP')
+    const displayBrand = brandTitle || tenantCode || 'BUSINESS'
     const printWindow = window.open('', '_blank')
     if (!printWindow) return
 
@@ -937,7 +1041,6 @@ export default function AdminDashboard() {
     }
   }, [isAuthenticated, fetchReservations, fetchBlockedSlots])
 
-  // Triger sinkronisasi saat ketersediaan reservasi berubah
   useEffect(() => {
     if (isAuthenticated && reservations.length > 0) {
       syncConfirmedSlotsToBlocked()
@@ -1105,7 +1208,7 @@ export default function AdminDashboard() {
               {isEyelash ? '✨ Eyelash Control Center' : '💈 Barber Control Center'}
             </span>
             <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight uppercase bg-gradient-to-b from-white via-zinc-200 to-purple-200/60 bg-clip-text text-transparent mt-2">
-              {brandTitle || (isEyelash ? 'FITRIFEB LASHES' : 'BARBERSHOP PORTAL')}
+              {brandTitle || (isEyelash ? 'Eyelash Salon' : 'Barbershop Portal')}
             </h1>
             <p className="text-xs text-zinc-400 font-medium">Masuk untuk mengakses dasbor manajemen reservasi</p>
           </div>
@@ -1116,7 +1219,7 @@ export default function AdminDashboard() {
               <input
                 type="email"
                 required
-                placeholder={isEyelash ? "admin@fitrieyelash.com" : "admin@barbershop.com"}
+                placeholder="admin@bisnis.com"
                 className={`w-full px-4 py-3 bg-zinc-950/80 border rounded-2xl text-xs text-zinc-100 placeholder-zinc-600 focus:outline-none transition-all shadow-inner ${
                   isEyelash ? 'border-pink-900/50 focus:border-pink-500 focus:ring-2 focus:ring-pink-500/20' : 'border-zinc-800 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20'
                 }`}
@@ -1174,7 +1277,7 @@ export default function AdminDashboard() {
             <div className="flex items-center space-x-3 flex-wrap gap-y-2">
               <span className="text-xl sm:text-2xl">{isEyelash ? '✨' : '💈'}</span>
               <h1 className="text-xl sm:text-2xl md:text-3xl font-black text-white tracking-tight uppercase bg-gradient-to-r from-white via-zinc-200 to-zinc-400 bg-clip-text text-transparent">
-                {brandTitle || tenantCode || (isEyelash ? 'FITRIFEB LASHES' : 'BARBERSHOP')}
+                {brandTitle || tenantCode || (isEyelash ? 'EYELASH SALON' : 'BARBERSHOP')}
               </h1>
               
               <span className={`text-[9px] sm:text-[10px] font-black px-3.5 py-1.5 rounded-full border tracking-widest transition-all uppercase flex items-center gap-1.5 ${
@@ -1251,6 +1354,66 @@ export default function AdminDashboard() {
           </div>
         </div>
 
+        {/* KARTU PENGATURAN FITUR BOOKING */}
+        <div className={`p-4 sm:p-6 rounded-2xl sm:rounded-3xl border transition-all space-y-4 shadow-xl ${themeStyles.cardBg}`}>
+          <div className="border-b border-zinc-800/80 pb-3">
+            <h3 className={`text-sm sm:text-base font-black flex items-center gap-2 ${themeStyles.textAccent}`}>
+              <span>⚙️ Pengaturan Fitur Booking Tenant ({brandTitle})</span>
+            </h3>
+            <p className="text-[11px] text-zinc-300 font-medium">
+              Aktifkan atau nonaktifkan pembatasan booking dan visibilitas jam pada halaman pelanggan secara instan.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* TOGGLE 1: PREVENT DOUBLE BOOKING */}
+            <div className="flex items-center justify-between p-3.5 bg-zinc-950/60 border border-zinc-800/80 rounded-2xl">
+              <div className="pr-2">
+                <h4 className="text-xs font-black text-white uppercase tracking-wider">Batasi Double Booking</h4>
+                <p className="text-[10px] text-zinc-400 font-medium mt-0.5">
+                  Mencegah pelanggan memesan jam & tanggal yang sudah diisi oleh orang lain.
+                </p>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                <input 
+                  type="checkbox" 
+                  disabled={isUpdatingBookingToggle}
+                  checked={preventDoubleBooking} 
+                  onChange={(e) => handleToggleBookingSetting('prevent_double_booking', e.target.checked)} 
+                  className="sr-only peer"
+                />
+                <div className="w-11 h-6 bg-zinc-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-gradient-to-r peer-checked:from-emerald-500 peer-checked:to-teal-600"></div>
+                <span className="ml-2.5 text-xs font-black text-zinc-200 min-w-[55px]">
+                  {isUpdatingBookingToggle ? '...' : preventDoubleBooking ? 'ON' : 'OFF'}
+                </span>
+              </label>
+            </div>
+
+            {/* TOGGLE 2: HIDE BOOKED SLOTS */}
+            <div className="flex items-center justify-between p-3.5 bg-zinc-950/60 border border-zinc-800/80 rounded-2xl">
+              <div className="pr-2">
+                <h4 className="text-xs font-black text-white uppercase tracking-wider">Sembunyikan Jam Terisi</h4>
+                <p className="text-[10px] text-zinc-400 font-medium mt-0.5">
+                  Sembunyikan jam yang sudah terisi sepenuhnya dari pilihan jadwal pelanggan.
+                </p>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                <input 
+                  type="checkbox" 
+                  disabled={isUpdatingBookingToggle}
+                  checked={hideBookedSlots} 
+                  onChange={(e) => handleToggleBookingSetting('hide_booked_slots', e.target.checked)} 
+                  className="sr-only peer"
+                />
+                <div className="w-11 h-6 bg-zinc-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-gradient-to-r peer-checked:from-emerald-500 peer-checked:to-teal-600"></div>
+                <span className="ml-2.5 text-xs font-black text-zinc-200 min-w-[55px]">
+                  {isUpdatingBookingToggle ? '...' : hideBookedSlots ? 'ON' : 'OFF'}
+                </span>
+              </label>
+            </div>
+          </div>
+        </div>
+
         {isProfesional && (
           <div className={`p-4 rounded-2xl border transition-all flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xl ${themeStyles.cardBg}`}>
             <div className="flex items-center gap-3">
@@ -1263,12 +1426,15 @@ export default function AdminDashboard() {
             <label className="relative inline-flex items-center cursor-pointer shrink-0">
               <input 
                 type="checkbox" 
+                disabled={isUpdatingWaToggle}
                 checked={autoWaReminder} 
-                onChange={(e) => setAutoWaReminder(e.target.checked)} 
+                onChange={(e) => handleToggleWaReminder(e.target.checked)} 
                 className="sr-only peer"
               />
               <div className="w-11 h-6 bg-zinc-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-gradient-to-r peer-checked:from-purple-500 peer-checked:to-indigo-600"></div>
-              <span className="ml-2.5 text-xs font-black text-zinc-200">{autoWaReminder ? 'AKTIF' : 'NONAKTIF'}</span>
+              <span className="ml-2.5 text-xs font-black text-zinc-200">
+                {isUpdatingWaToggle ? 'PROSES...' : autoWaReminder ? 'AKTIF' : 'NONAKTIF'}
+              </span>
             </label>
           </div>
         )}
@@ -1376,7 +1542,7 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* KOMPONEN UI BLOCK SLOT (UPDATED MIT PRESET & LOGIC DETAILED) */}
+        {/* KOMPONEN UI BLOCK SLOT */}
         <div className={`p-4 sm:p-6 rounded-2xl sm:rounded-3xl shadow-2xl border transition-all space-y-4 ${themeStyles.cardBg}`}>
           <div className="flex items-center justify-between border-b border-zinc-800/80 pb-3">
             <div>
@@ -1416,7 +1582,7 @@ export default function AdminDashboard() {
               </select>
             </div>
             <div>
-              <label className="block text-[11px] font-bold text-zinc-[300] mb-1">Kategori Keterangan:</label>
+              <label className="block text-[11px] font-bold text-zinc-300 mb-1">Kategori Keterangan:</label>
               <select 
                 value={reasonPreset} 
                 onChange={(e) => setReasonPreset(e.target.value)} 
@@ -1840,7 +2006,7 @@ export default function AdminDashboard() {
                     {displayedReservations.map((item) => {
                       const currentStatus = item.status || 'pending'
                       const cleanPhone = item.whatsapp_number ? item.whatsapp_number.replace(/^0/, '62') : ''
-                      const displayBrand = brandTitle || tenantCode || (isEyelash ? 'FITRIFEB LASHES' : 'BARBERSHOP')
+                      const displayBrand = brandTitle || tenantCode || 'BISNIS'
                       
                       const refundWaMsg = encodeURIComponent(
                         `Halo Kak ${item.customer_name}, mohon maaf reservasi Kamu di ${displayBrand} pada tanggal ${formatDateID(item.booking_date)} jam ${item.booking_time} WIB kami batalkan.\n\n` +
@@ -1863,99 +2029,98 @@ export default function AdminDashboard() {
                           {(subscriptionPlan === 'PREMIUM' || isProfesional) && (
                             <td className="py-3 px-3 font-bold text-zinc-200">
                               {item.staff_name ? (
-                                <span className="px-2.5 py-1 rounded-lg text-[10px] border border-zinc-700 bg-zinc-900 text-zinc-200 whitespace-nowrap">
+                                <span className="px-2.5 py-1 rounded-lg text-[10px] font-bold inline-block bg-zinc-800 border border-zinc-700">
                                   👤 {item.staff_name}
                                 </span>
                               ) : (
-                                <span className="text-zinc-600 font-mono text-[10px]">-</span>
+                                <span className="text-zinc-500 italic text-[10px]">Belum Dipilih</span>
                               )}
                             </td>
                           )}
 
-                          <td className="py-3 px-3 font-mono font-bold text-emerald-400 whitespace-nowrap">
+                          <td className="py-3 px-3 font-black text-emerald-400 whitespace-nowrap font-mono">
                             Rp {getServicePrice(item.service_name).toLocaleString('id-ID')}
                           </td>
-                          <td className="py-3 px-3">
-                            <span className="bg-zinc-900 text-zinc-300 border border-zinc-700/80 px-2.5 py-1 rounded-lg text-[10px] font-bold whitespace-nowrap">
+
+                          <td className="py-3 px-3 whitespace-nowrap">
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-zinc-800 text-zinc-300 border border-zinc-700">
                               {item.payment_method || 'QRIS'}
                             </span>
                           </td>
-                          <td className="py-3 px-3">
-                            <a
-                              href={`https://wa.me/${cleanPhone}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-emerald-400 hover:text-emerald-300 font-bold inline-flex items-center gap-1 transition-colors whitespace-nowrap text-[11px]"
-                            >
-                              <span>{item.whatsapp_number}</span>
-                              <svg className="w-3 h-3 fill-current" viewBox="0 0 24 24">
-                                <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981z"/>
-                              </svg>
-                            </a>
-                          </td>
-                          <td className="py-3 px-3">
-                            <div className="space-y-1">
-                              <select
-                                value={
-                                  currentStatus.startsWith('cancelled')
-                                    ? 'cancelled'
-                                    : currentStatus
-                                }
-                                onChange={(e) => handleStatusChange(item, e.target.value)}
-                                className={`px-2.5 py-1 rounded-lg text-[11px] font-black border bg-zinc-950 focus:outline-none cursor-pointer transition-all ${
-                                  currentStatus === 'confirmed'
-                                    ? 'text-blue-400 border-blue-500/50 bg-blue-500/10'
-                                    : currentStatus === 'completed'
-                                    ? 'text-emerald-400 border-emerald-500/50 bg-emerald-500/10'
-                                    : currentStatus.startsWith('cancelled')
-                                    ? 'text-rose-400 border-rose-500/50 bg-rose-500/10'
-                                    : 'text-amber-400 border-amber-500/50 bg-amber-500/10'
-                                }`}
-                              >
-                                <option value="pending">🟡 Pending</option>
-                                <option value="confirmed">🟢 Confirmed</option>
-                                <option value="completed">🔵 Completed</option>
-                                <option value="cancelled">🔴 Cancelled</option>
-                              </select>
 
+                          <td className="py-3 px-3 whitespace-nowrap">
+                            {cleanPhone ? (
+                              <a
+                                href={`https://wa.me/${cleanPhone}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-1 text-emerald-400 hover:text-emerald-300 font-bold hover:underline"
+                              >
+                                <span>💬</span> {item.whatsapp_number}
+                              </a>
+                            ) : (
+                              <span className="text-zinc-600">-</span>
+                            )}
+                          </td>
+
+                          <td className="py-3 px-3 whitespace-nowrap">
+                            <select
+                              value={currentStatus}
+                              onChange={(e) => handleStatusChange(item, e.target.value)}
+                              className={`px-2.5 py-1 rounded-xl text-[10px] font-black cursor-pointer border focus:outline-none transition-all ${
+                                currentStatus === 'completed' || currentStatus === 'selesai'
+                                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                                  : currentStatus === 'confirmed' || currentStatus === 'dikonfirmasi'
+                                  ? 'bg-purple-500/20 text-purple-300 border-purple-500/40'
+                                  : currentStatus === 'cancelled_need_refund'
+                                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 animate-pulse'
+                                  : currentStatus === 'cancelled_refunded'
+                                  ? 'bg-zinc-800 text-zinc-400 border-zinc-700'
+                                  : currentStatus.startsWith('cancelled')
+                                  ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                                  : 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                              }`}
+                            >
+                              <option value="pending" className="bg-zinc-900 text-amber-300">🟡 Pending</option>
+                              <option value="confirmed" className="bg-zinc-900 text-purple-300">🟢 Confirmed</option>
+                              <option value="completed" className="bg-zinc-900 text-emerald-300">🔵 Completed</option>
+                              <option value="cancelled" className="bg-zinc-900 text-rose-300">🔴 Cancelled</option>
+                              <option value="cancelled_need_refund" className="bg-zinc-900 text-amber-300">⚠️ Need Refund</option>
+                              <option value="cancelled_refunded" className="bg-zinc-900 text-zinc-400">✅ Refund Done</option>
+                            </select>
+                          </td>
+
+                          <td className="py-3 px-3 pr-4 text-center whitespace-nowrap">
+                            <div className="flex items-center justify-center gap-1.5">
                               {currentStatus === 'cancelled_need_refund' && (
-                                <div className="flex flex-col gap-1 mt-1">
-                                  <span className="bg-amber-500/10 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded text-[9px] font-black flex items-center gap-1 w-max">
-                                    <span>⚠️</span> REFUND
-                                  </span>
+                                <>
                                   <a
                                     href={`https://wa.me/${cleanPhone}?text=${refundWaMsg}`}
                                     target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-lg text-[9px] font-bold text-center block transition-all"
+                                    rel="noreferrer"
+                                    className="bg-amber-500/20 hover:bg-amber-500/40 text-amber-300 border border-amber-500/40 px-2 py-1 rounded-lg text-[10px] font-black transition-all flex items-center gap-1"
+                                    title="Minta Rekening Pelanggan via WhatsApp"
                                   >
-                                    💬 Rekening (WA)
+                                    💬 Chat Rekening
                                   </a>
                                   <button
                                     onClick={() => handleCompleteRefund(item.id)}
-                                    className="bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 border border-blue-500/30 px-2 py-0.5 rounded-lg text-[9px] font-bold transition-all"
+                                    className="bg-emerald-500/20 hover:bg-emerald-500/40 text-emerald-300 border border-emerald-500/40 px-2 py-1 rounded-lg text-[10px] font-black transition-all"
+                                    title="Tandai Sudah Transfer Refund"
                                   >
-                                    ✅ Selesai
+                                    ✅ Selesai Refund
                                   </button>
-                                </div>
+                                </>
                               )}
 
-                              {currentStatus === 'cancelled_refunded' && (
-                                <span className="bg-zinc-800 text-zinc-400 border border-zinc-700 px-2 py-0.5 rounded-lg text-[9px] font-bold block w-max">
-                                  ✓ Refund Selesai
-                                </span>
-                              )}
+                              <button
+                                onClick={() => handleDelete(item.id, item.customer_name)}
+                                className="bg-rose-500/10 hover:bg-rose-500/30 text-rose-400 hover:text-rose-200 border border-rose-500/20 p-1.5 rounded-lg text-xs font-bold transition-all"
+                                title="Hapus Data Reservasi"
+                              >
+                                🗑️
+                              </button>
                             </div>
-                          </td>
-
-                          <td className="py-3 px-3 pr-4 text-center">
-                            <button
-                              onClick={() => handleDelete(item.id, item.customer_name)}
-                              className="bg-rose-500/10 hover:bg-rose-500 text-rose-300 hover:text-white px-2.5 py-1 rounded-lg text-[11px] font-bold border border-rose-500/30 transition-all active:scale-95 whitespace-nowrap"
-                              title="Hapus Data"
-                            >
-                              🗑️
-                            </button>
                           </td>
                         </tr>
                       )
@@ -1964,105 +2129,74 @@ export default function AdminDashboard() {
                 </table>
               </div>
 
-              <div className="flex flex-col sm:flex-row items-center justify-between p-4 border-t border-zinc-800/80 bg-zinc-950/90 text-xs text-zinc-400 gap-3">
-                <div>
-                  Menampilkan <b className="text-white">{displayedReservations.length}</b> dari <b className="text-white">{filteredReservations.length}</b> data
-                  {limit !== 'all' && (
-                    <span> (Halaman <b className="text-white">{currentPage}</b> dari <b className="text-white">{totalPages}</b>)</span>
-                  )}
-                </div>
-
-                {limit !== 'all' && totalPages > 1 && (
-                  <div className="flex items-center gap-1.5">
+              {/* PAGINASI NAVIGASI */}
+              {limit !== 'all' && totalPages > 1 && (
+                <div className="flex items-center justify-between p-4 border-t border-zinc-800/80 bg-zinc-950/60 text-xs">
+                  <span className="text-zinc-400 font-medium">
+                    Halaman <strong className="text-white">{currentPage}</strong> dari <strong className="text-white">{totalPages}</strong>
+                  </span>
+                  <div className="flex items-center space-x-2">
                     <button
                       disabled={currentPage === 1}
                       onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
-                      className="px-3 py-1.5 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-800 disabled:opacity-40 disabled:hover:bg-zinc-900 disabled:hover:text-zinc-300 transition-all text-xs font-bold active:scale-95"
+                      className="px-3 py-1.5 rounded-xl border border-zinc-700 bg-zinc-900 text-zinc-300 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-zinc-800 transition-all font-bold"
                     >
-                      ◀ Prev
+                      &larr; Prev
                     </button>
-                    
-                    {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
-                      <button
-                        key={pageNum}
-                        onClick={() => setCurrentPage(pageNum)}
-                        className={`w-7 h-7 rounded-xl font-bold text-xs transition-all ${
-                          currentPage === pageNum
-                            ? themeStyles.btnActivePeriod
-                            : 'bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-800'
-                        }`}
-                      >
-                        {pageNum}
-                      </button>
-                    ))}
-
                     <button
                       disabled={currentPage === totalPages}
                       onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
-                      className="px-3 py-1.5 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-800 disabled:opacity-40 disabled:hover:bg-zinc-900 disabled:hover:text-zinc-300 transition-all text-xs font-bold active:scale-95"
+                      className="px-3 py-1.5 rounded-xl border border-zinc-700 bg-zinc-900 text-zinc-300 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-zinc-800 transition-all font-bold"
                     >
-                      Next ▶
+                      Next &rarr;
                     </button>
                   </div>
-                )}
-              </div>
+                </div>
+              )}
             </>
           )}
         </div>
 
       </div>
 
+      {/* MODAL BATAL RESERVASI & OPTION REFUND */}
       {cancelModalItem && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-          <div className={`bg-zinc-900 border rounded-3xl p-5 sm:p-7 max-w-md w-full space-y-4 sm:space-y-5 shadow-2xl animate-in fade-in zoom-in duration-200 relative ${themeStyles.borderAccent}`}>
-            
-            <button
-              onClick={() => setCancelModalItem(null)}
-              className="absolute top-4 right-4 text-zinc-400 hover:text-white bg-zinc-800/60 hover:bg-zinc-800 w-8 h-8 rounded-full flex items-center justify-center transition-all text-sm font-bold border border-zinc-700/50"
-              title="Tutup Modal"
-            >
-              ✕
-            </button>
-
-            <div className="text-center space-y-2 pt-2 sm:pt-0">
-              <span className="text-3xl sm:text-4xl inline-block mb-1">💸</span>
-              <h3 className="text-base sm:text-lg font-black text-white">Konfirmasi Pembatalan & Refund</h3>
-              <p className="text-xs text-zinc-400 leading-relaxed font-medium">
-                Kamu membatalkan reservasi atas nama <strong className={`${themeStyles.textAccent} font-bold`}>{cancelModalItem.customer_name}</strong>. Apakah transaksi ini perlu refund uang pelanggan?
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-3xl max-w-sm w-full space-y-4 text-center shadow-2xl">
+            <div className="w-12 h-12 rounded-2xl bg-rose-500/20 text-rose-400 border border-rose-500/30 flex items-center justify-center text-2xl mx-auto">
+              ⚠️
+            </div>
+            <div>
+              <h3 className="text-base font-black text-white uppercase tracking-wider">Konfirmasi Pembatalan</h3>
+              <p className="text-xs text-zinc-400 mt-1">
+                Reservasi atas nama <strong className="text-white">{cancelModalItem.customer_name}</strong> akan dibatalkan.
+              </p>
+              <p className="text-[11px] text-zinc-500 mt-2 bg-zinc-950 p-3 rounded-xl border border-zinc-800">
+                Apakah pelanggan ini membutuhkan pengembalian dana (Refund)?
               </p>
             </div>
 
-            <div className="bg-zinc-950/80 border border-zinc-800/80 p-3.5 sm:p-4 rounded-2xl text-xs space-y-2 shadow-inner">
-              <div className="flex justify-between text-zinc-400 font-medium">
-                <span>Layanan:</span>
-                <span className="text-zinc-200 font-bold">{cancelModalItem.service_name}</span>
-              </div>
-              <div className="flex justify-between text-zinc-400 font-medium">
-                <span>Metode Bayar:</span>
-                <span className="text-zinc-200 font-bold">{cancelModalItem.payment_method || 'QRIS'}</span>
-              </div>
-              <div className="flex justify-between text-zinc-400 font-medium">
-                <span>Nominal:</span>
-                <span className="text-emerald-400 font-black">
-                  Rp {getServicePrice(cancelModalItem.service_name).toLocaleString('id-ID')}
-                </span>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3 pt-1">
-              <button
-                onClick={() => handleConfirmCancel(false)}
-                className="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-bold py-2.5 sm:py-3 px-3 sm:px-4 rounded-2xl text-xs transition-all border border-zinc-700/80 active:scale-95"
-              >
-                Tidak (Belum Bayar)
-              </button>
+            <div className="grid grid-cols-2 gap-3 pt-2">
               <button
                 onClick={() => handleConfirmCancel(true)}
-                className={`font-black py-2.5 sm:py-3 px-3 sm:px-4 rounded-2xl text-xs transition-all shadow-lg active:scale-95 ${themeStyles.buttonPrimary}`}
+                className="bg-amber-500 hover:bg-amber-400 text-zinc-950 font-black py-2.5 px-3 rounded-xl text-xs transition-all shadow-md active:scale-95"
               >
-                Ya, Perlu Refund 💸
+                Ya, Perlu Refund ⚠️
+              </button>
+              <button
+                onClick={() => handleConfirmCancel(false)}
+                className="bg-rose-600 hover:bg-rose-500 text-white font-black py-2.5 px-3 rounded-xl text-xs transition-all shadow-md active:scale-95"
+              >
+                Batal Tanpa Refund
               </button>
             </div>
+
+            <button
+              onClick={() => setCancelModalItem(null)}
+              className="text-zinc-500 hover:text-zinc-300 text-xs font-semibold block w-full pt-1"
+            >
+              Kembali (Batal)
+            </button>
           </div>
         </div>
       )}
