@@ -387,36 +387,43 @@ function BookingFormContent() {
   }, [formData.booking_date, tenant?.tenantSlug])
 
   const generateDynamicQris = async () => {
-    setLoadingQris(true)
-    try {
-      const response = await fetch('/api/qris/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          amount: payableAmount,
-          tenantSlug: tenant.tenantSlug,
-          customerName: formData.customer_name || 'Pelanggan'
-        })
+  setLoadingQris(true)
+  try {
+    const response = await fetch('/api/qris/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        amount: payableAmount,
+        tenantSlug: tenant.tenantSlug,
+        customerName: formData.customer_name || 'Pelanggan'
       })
+    })
 
-      if (response.ok) {
-        const resData = await response.json()
+    if (response.ok) {
+      const resData = await response.json()
+      if (resData?.qrUrl) {
         setQrisData({ qrUrl: resData.qrUrl })
       } else {
-        setQrisData(null)
+        // Fallback ke QRIS statis dari DB jika API tidak merespon qrUrl
+        setQrisData(tenant?.qrisUrl ? { qrUrl: tenant.qrisUrl } : null)
       }
-    } catch (err) {
-      setQrisData(null)
-    } finally {
-      setLoadingQris(false)
+    } else {
+      // Fallback ke QRIS statis dari DB jika API error (500/404/dll)
+      setQrisData(tenant?.qrisUrl ? { qrUrl: tenant.qrisUrl } : null)
     }
+  } catch (err) {
+    // Fallback ke QRIS statis dari DB jika koneksi/network error
+    setQrisData(tenant?.qrisUrl ? { qrUrl: tenant.qrisUrl } : null)
+  } finally {
+    setLoadingQris(false)
   }
+}
 
-  useEffect(() => {
-    if (formData.payment_method === 'QRIS' && payableAmount > 0) {
-      generateDynamicQris()
-    }
-  }, [formData.payment_method, payableAmount])
+useEffect(() => {
+  if (formData.payment_method === 'QRIS' && payableAmount > 0) {
+    generateDynamicQris()
+  }
+}, [formData.payment_method, payableAmount, tenant?.qrisUrl])
 
   const handleServiceSelect = (serviceName: string) => {
     if (isBasic) {
