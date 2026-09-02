@@ -72,14 +72,14 @@ function BookingFormContent() {
   const [staffList, setStaffList] = useState<StaffItem[]>([])
   const [fetchingServices, setFetchingServices] = useState(true)
 
-  // State untuk Managing Modal Detail Paket Pro
+  // State Modal Detail Paket Pro
   const [selectedServiceDetail, setSelectedServiceDetail] = useState<ServiceItem | null>(null)
 
-  // State Tambahan untuk QRIS Dinamis
+  // State QRIS Dinamis
   const [qrisData, setQrisData] = useState<{ qrUrl?: string; qrString?: string; snapToken?: string } | null>(null)
   const [loadingQris, setLoadingQris] = useState(false)
 
-  // Tambahkan baris ini untuk menyimpan daftar slot yang diblokir:
+  // State Slot Diblokir
   const [blockedSlots, setBlockedSlots] = useState<{ block_date: string; block_time: string }[]>([])
 
   const [formData, setFormData] = useState({
@@ -205,112 +205,101 @@ function BookingFormContent() {
       const searchParams = new URLSearchParams(window.location.search)
       const tenantQuery = searchParams.get('tenant')
 
-     // 1. Ekstraksi subdomain murni
-      const parts = hostname.split('.')
-      const rawSubdomain = parts[0].toLowerCase()
+      const rawSubdomain = hostname.split('.')[0].toLowerCase()
+      const isLocal = rawSubdomain === 'localhost' || rawSubdomain.startsWith('127') || hostname.includes('localhost')
 
-      // 2. Tentukan targetSlug secara fleksibel
-      let targetSlug = tenantQuery
-
-      if (!targetSlug) {
-        // Cek apakah ini run di environment lokal
-        const isLocal = rawSubdomain === 'localhost' || rawSubdomain.startsWith('127') || hostname.includes('localhost')
-
-        if (!isLocal) {
-          // Di produksi (Vercel/Custom Domain), ambil subdomain paling depan (misal: glow-clinic)
-          targetSlug = rawSubdomain
-        } else {
-          // Fallback khusus saat testing di localhost tanpa query ?tenant=
-          targetSlug = 'fitrifeb-lashes'
-        }
-      }
-
-      targetSlug = targetSlug.trim().toLowerCase()
+      // Ekstrak slug secara akurat tanpa merusak nama tenant asli
+      const extractedSlug = rawSubdomain.replace('-barbershop', '').replace('-lashes', '').replace('-dental', '').replace('-clinic', '')
+      const currentSlug = (tenantQuery || (isLocal ? 'fitrifeb-lashes' : extractedSlug)).trim().toLowerCase()
 
       const fetchTenantAndData = async () => {
         setFetchingServices(true)
 
         try {
-          // 3. Fetch Tenant Data (Gunakan .ilike agar case-insensitive)
+          // 1. Fetch Tenant
           const { data: tenantData } = await supabase
             .from('Tenants')
             .select('*')
-            .or(`tenant_slug.ilike.${targetSlug},client_code.ilike.${targetSlug}`)
+            .or(`tenant_slug.ilike.${currentSlug},tenant_slug.ilike.${rawSubdomain},client_code.ilike.${currentSlug}`)
             .maybeSingle()
 
-          if (tenantData) {
-            const dbPlan = ((tenantData.subscription_plan || 'BASIC') as string).toUpperCase() as 'BASIC' | 'PREMIUM' | 'PROFESIONAL'
-            const rawCategory = tenantData.category || 'Layanan'
+          const dbPlan = ((tenantData?.subscription_plan || 'BASIC') as string).toUpperCase() as 'BASIC' | 'PREMIUM' | 'PROFESIONAL'
+          const rawCategory = tenantData?.category || 'Layanan'
 
-            setTenant({
-              clientCode: tenantData.client_code || targetSlug.toUpperCase(),
-              tenantSlug: tenantData.tenant_slug || targetSlug,
-              name: tenantData.business_name || tenantData.name || targetSlug.toUpperCase(),
-              adminWa: tenantData.admin_wa || '',
-              subscriptionPlan: dbPlan,
-              category: rawCategory,
-              staffLabel: tenantData.staff_label || 'Staff',
-              layoutType: tenantData.layout_type || 'BASIC_SINGLE_PAGE',
-              themeColor: tenantData.theme_color || 'rose',
-              requireConsent: tenantData.require_consent ?? true,
-              showExtraAddon: tenantData.show_extra_addon ?? true,
-              addonLabel: tenantData.addon_label || 'Perlu lepas eyelash lama (+Rp 30.000)',
-              addonPrice: tenantData.addon_price || 30000,
-              dpType: tenantData.dp_type || 'PERCENTAGE',
-              dpValue: tenantData.dp_value ?? 50,
-              waGatewayUrl: tenantData.wa_gateway_url || '',
-              waApiKey: tenantData.wa_api_key || '',
-              qrisUrl: tenantData.qris_url || ''
-            })
+          // Default fallback dinamis
+          const defaultLayout = tenantData?.layout_type || (rawCategory.toLowerCase().includes('barber') ? 'BASIC_SINGLE_PAGE' : 'STEP_WIZARD')
+          const defaultColor = tenantData?.theme_color || (rawCategory.toLowerCase().includes('barber') ? 'amber' : 'rose')
+
+          const activeTenant: TenantData = {
+            clientCode: tenantData?.client_code || currentSlug.toUpperCase(),
+            tenantSlug: tenantData?.tenant_slug || currentSlug,
+            name: tenantData?.business_name || tenantData?.name || currentSlug.toUpperCase(),
+            adminWa: tenantData?.admin_wa || '',
+            subscriptionPlan: dbPlan,
+            category: rawCategory,
+            staffLabel: tenantData?.staff_label || (rawCategory.toLowerCase().includes('barber') ? 'Capster' : 'Staff / Dokter'),
+            layoutType: defaultLayout,
+            themeColor: defaultColor,
+            requireConsent: tenantData?.require_consent ?? rawCategory.toLowerCase().includes('lash'),
+            showExtraAddon: tenantData?.show_extra_addon ?? rawCategory.toLowerCase().includes('lash'),
+            addonLabel: tenantData?.addon_label || 'Perlu lepas eyelash lama (+Rp 30.000)',
+            addonPrice: tenantData?.addon_price || 30000,
+            dpType: tenantData?.dp_type || 'PERCENTAGE',
+            dpValue: tenantData?.dp_value ?? 50,
+            waGatewayUrl: tenantData?.wa_gateway_url || '',
+            waApiKey: tenantData?.wa_api_key || '',
+            qrisUrl: tenantData?.qris_url || ''
           }
 
-          // 4. Fetch Services Data (Gunakan .ilike)
+          setTenant(activeTenant)
+
+          // 2. Fetch Services
           const { data: serviceData } = await supabase
             .from('Services')
             .select('*')
-            .or(`tenant_slug.ilike.${targetSlug},client_code.ilike.${targetSlug}`)
+            .or(`tenant_slug.ilike.${activeTenant.tenantSlug},client_code.ilike.${activeTenant.clientCode}`)
 
           if (serviceData && serviceData.length > 0) {
             setServices(serviceData)
-            setFormData((prev) => ({ 
-              ...prev, 
-              selected_services: [serviceData[0].name] 
-            }))
+            setFormData((prev) => ({ ...prev, selected_services: [serviceData[0].name] }))
           } else {
             setServices([])
           }
 
-          // 5. Fetch Staff Data (Gunakan .ilike)
-          const { data: staffData } = await supabase
-            .from('Staff')
-            .select('*')
-            .or(`tenant_slug.ilike.${targetSlug},client_code.ilike.${targetSlug}`)
-            .eq('is_active', true)
+          // 3. Fetch Staff
+          if (activeTenant.subscriptionPlan !== 'BASIC') {
+            const { data: staffData } = await supabase
+              .from('Staff')
+              .select('*')
+              .or(`tenant_slug.ilike.${activeTenant.tenantSlug},client_code.ilike.${activeTenant.clientCode}`)
+              .eq('is_active', true)
 
-          if (staffData && staffData.length > 0) {
-            setStaffList(staffData)
-            setFormData((prev) => ({ ...prev, selected_staff: staffData[0].name }))
+            if (staffData && staffData.length > 0) {
+              setStaffList(staffData)
+              setFormData((prev) => ({ ...prev, selected_staff: staffData[0].name }))
+            } else {
+              setStaffList([])
+            }
           } else {
             setStaffList([])
           }
 
-          // 6. Fetch Blocked Slots (Gunakan .ilike)
-          // SESUDAH (Disesuaikan dengan nama kolom tenant_slug / client_code):
-        const { data: blockedData } = await supabase
+          // 4. Fetch Blocked Slots
+          const { data: blockedData } = await supabase
             .from('blocked_slots')
             .select('date, start_time')
-            .or(`tenant_slug.ilike.${targetSlug},client_code.ilike.${targetSlug}`)
+            .or(`tenant_slug.ilike.${activeTenant.tenantSlug},client_code.ilike.${activeTenant.clientCode}`)
 
           if (blockedData) {
             const formattedData = blockedData.map((item) => ({
               block_date: item.date,
-              block_time: item.start_time ? item.start_time.substring(0, 5) : null,
+              block_time: item.start_time ? item.start_time.substring(0, 5) : '',
             }))
             setBlockedSlots(formattedData)
           }
 
         } catch (err) {
-          console.error("Error fetching tenant data:", err)
+          console.error("Error fetching data:", err)
         } finally {
           setFetchingServices(false)
         }
@@ -320,7 +309,7 @@ function BookingFormContent() {
     }
   }, [])
 
-  // Efek untuk generate QRIS Dinamis otomatis saat nominal / metode bayar berubah
+  // Efek QRIS Dinamis
   useEffect(() => {
     if (formData.payment_method === 'QRIS' && payableAmount > 0) {
       generateDynamicQris()
@@ -347,7 +336,6 @@ function BookingFormContent() {
         setQrisData(null)
       }
     } catch (err) {
-      console.log('Menggunakan QRIS Statis dari database/file lokal.')
       setQrisData(null)
     } finally {
       setLoadingQris(false)
@@ -366,14 +354,13 @@ function BookingFormContent() {
     }
   }
 
-  // Helper function untuk cek apakah tanggal & jam di-block admin
   const isSlotBlocked = (date: string, time: string) => {
     if (!date || !time) return false
     return blockedSlots.some(
       (slot) => slot.block_date === date && slot.block_time === time
     )
   }
-  
+
   const handleNextStep = () => {
     if (step === 1) {
       if (!formData.customer_name || !formData.whatsapp_number) {
@@ -424,7 +411,6 @@ function BookingFormContent() {
 
     const formattedServicesText = formData.selected_services.join(', ')
 
-    // 1. Susun payload data yang akan dikirim ke API Route
     const insertPayload: any = {
       customer_name: formData.customer_name,
       whatsapp_number: formData.whatsapp_number,
@@ -449,7 +435,6 @@ function BookingFormContent() {
       insertPayload.payment_type = isBasic ? 'FULL' : formData.payment_type
     }
 
-    // 2. Kirim payload ke API backend Next.js (/api/reservations)
     const response = await fetch('/api/reservations', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -465,8 +450,6 @@ function BookingFormContent() {
     }
 
     const insertedData = result.data
-
-    // 3. Lanjut ke proses redirect WhatsApp
     const bookingId = insertedData?.id ? `BK-${insertedData.id}` : 'BK-NEW'
     const origin = typeof window !== 'undefined' ? window.location.origin : ''
     const invoiceUrl = `${origin}/invoice/${bookingId}`
@@ -534,7 +517,7 @@ function BookingFormContent() {
           body: formDataBody
         })
       } catch (err) {
-        console.error('Gagal memicu WA Gateway Fonnte:', err)
+        console.error('Gagal memicu WA Gateway:', err)
       }
     }
 
@@ -542,12 +525,8 @@ function BookingFormContent() {
     window.location.href = `https://wa.me/${cleanAdminWa}?text=${encodeURIComponent(messageText)}`
   }
 
-  // Sub-Komponen Render QRIS reusable
   const renderQrisSection = () => {
-    const qrisSrc = 
-      qrisData?.qrUrl || 
-      tenant.qrisUrl || 
-      `/${tenant.tenantSlug}.png`
+    const qrisSrc = qrisData?.qrUrl || tenant.qrisUrl || `/${tenant.tenantSlug}.png`
 
     return (
       <div className="p-4 bg-zinc-950/80 border border-zinc-800/80 rounded-2xl text-center space-y-3 shadow-inner">
@@ -697,7 +676,6 @@ function BookingFormContent() {
                             </span>
                           </div>
 
-                          {/* Tombol Lihat Detail Paket (Khusus Pro) */}
                           {isPro && (item.long_description || item.image_url) && (
                             <button
                               type="button"
@@ -821,7 +799,6 @@ function BookingFormContent() {
                 </div>
               </div>
 
-              {/* Tampilan QRIS pada Single Page Layout */}
               {formData.payment_method === 'QRIS' && renderQrisSection()}
 
               <button
@@ -1034,7 +1011,6 @@ function BookingFormContent() {
                                 </span>
                               </div>
 
-                              {/* Tombol Lihat Detail Paket (Khusus Pro) */}
                               {isPro && (item.long_description || item.image_url) && (
                                 <button
                                   type="button"
@@ -1187,7 +1163,6 @@ function BookingFormContent() {
                     ))}
                   </div>
 
-                  {/* Tampilan QRIS pada Step Wizard Layout */}
                   {formData.payment_method === 'QRIS' && renderQrisSection()}
 
                   <div className="flex space-x-2.5 pt-2">
@@ -1214,12 +1189,11 @@ function BookingFormContent() {
         </form>
       </div>
 
-      {/* MODAL POP-UP DETAIL LAYANAN (KHUSUS PAKET PROFESIONAL) */}
+      {/* MODAL POP-UP DETAIL LAYANAN */}
       {selectedServiceDetail && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
           <div className="bg-zinc-900 border border-zinc-800 rounded-3xl max-w-sm w-full overflow-hidden shadow-2xl relative">
             
-            {/* Gambar Layanan */}
             {selectedServiceDetail.image_url && (
               <div className="relative w-full h-48 bg-zinc-950">
                 <img
