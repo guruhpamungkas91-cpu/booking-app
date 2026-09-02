@@ -52,6 +52,14 @@ interface TimeSlot {
   bookedCount: number
 }
 
+const formatWaNumber = (phone: string) => {
+  let cleaned = phone.replace(/\D/g, '')
+  if (cleaned.startsWith('0')) {
+    cleaned = '62' + cleaned.slice(1)
+  }
+  return cleaned
+}
+
 function BookingFormContent() {
   const [step, setStep] = useState(1)
 
@@ -230,7 +238,6 @@ function BookingFormContent() {
       const rawSubdomain = hostname.split('.')[0].toLowerCase()
       const isLocal = rawSubdomain === 'localhost' || rawSubdomain.startsWith('127') || hostname.includes('localhost')
 
-      // PERBAIKAN PENTING: Jangan menghapus suffix '-lashes' dari subdomain fitrifeb-lashes
       let extractedSlug = rawSubdomain
       if (rawSubdomain.includes('fitrifeb')) {
         extractedSlug = 'fitrifeb-lashes'
@@ -281,7 +288,7 @@ function BookingFormContent() {
 
           setTenant(activeTenant)
 
-          // 1. Fetch Services menggunakan tenant_slug
+          // 1. Fetch Services
           const { data: serviceData } = await supabase
             .from('Services')
             .select('*')
@@ -294,7 +301,7 @@ function BookingFormContent() {
             setServices([])
           }
 
-          // 2. Fetch Staff menggunakan tenant_slug
+          // 2. Fetch Staff
           if (activeTenant.subscriptionPlan !== 'BASIC') {
             const { data: staffData } = await supabase
               .from('Staff')
@@ -359,14 +366,18 @@ function BookingFormContent() {
       setLoadingSlots(true)
       try {
         const res = await fetch(`/api/availability?date=${formData.booking_date}&tenant_slug=${tenant.tenantSlug}`)
-        const data = await res.json()
-
         if (res.ok) {
+          const data = await res.json()
           setBlockedTimes(data.blockedTimes || [])
           setBookedTimes(data.bookedTimes || [])
+        } else {
+          setBlockedTimes([])
+          setBookedTimes([])
         }
       } catch (err) {
         console.error('Gagal memuat ketersediaan jam:', err)
+        setBlockedTimes([])
+        setBookedTimes([])
       } finally {
         setLoadingSlots(false)
       }
@@ -578,98 +589,108 @@ function BookingFormContent() {
       insertPayload.payment_type = isBasic ? 'FULL' : formData.payment_type
     }
 
-    const response = await fetch('/api/reservations', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(insertPayload)
-    })
+    try {
+      const response = await fetch('/api/reservations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(insertPayload)
+      })
 
-    const result = await response.json()
+      const result = await response.json()
 
-    if (!response.ok) {
-      alert(result.error || 'Gagal membuat reservasi!')
-      setLoading(false)
-      return
-    }
-
-    const insertedData = result.data
-    const bookingId = insertedData?.id ? `BK-${insertedData.id}` : 'BK-NEW'
-    const origin = typeof window !== 'undefined' ? window.location.origin : ''
-    const invoiceUrl = `${origin}/invoice/${bookingId}`
-
-    let messageText =
-      `Halo *${tenant.name}*, saya ingin mengonfirmasi reservasi:\n\n` +
-      `📌 *DETAIL RESERVASI*\n` +
-      `• Kode Booking: #${bookingId}\n` +
-      `• Nama: ${formData.customer_name}\n` +
-      `• No. HP: ${formData.whatsapp_number}\n` +
-      `• Tanggal & Jam: ${formData.booking_date} - ${formData.booking_time} WIB\n` +
-      `• Layanan: ${formattedServicesText}\n`
-
-    if (isWizard && !isBasic) {
-      messageText += `• Jumlah Orang: ${formData.person_count} Orang\n`
-    }
-
-    if (formData.need_extra_addon) {
-      messageText += `• Tambahan: ${tenant.addonLabel.replace(/\s*\(\+Rp\s*[\d.]+\)/gi, '')} (${formData.addon_person_count} Orang)\n`
-    }
-
-    if (!isBasic && formData.selected_staff) {
-      messageText += `• ${tenant.staffLabel}: ${formData.selected_staff}\n`
-    }
-
-    if (isWizard && formData.custom_notes) {
-      messageText += `• Catatan Khusus: ${formData.custom_notes}\n`
-    }
-
-    messageText += `\n💳 *RINCIAN PEMBAYARAN*\n` +
-      `• Metode Bayar: ${formData.payment_method}\n` +
-      `• Total Biaya: Rp ${grandTotal.toLocaleString('id-ID')}\n`
-
-    if (!isBasic) {
-      messageText += `• Nominal Dibayar (${formData.payment_type}): Rp ${payableAmount.toLocaleString('id-ID')}\n`
-      if (formData.payment_type === 'DP') {
-        messageText += `• Sisa Pelunasan: Rp ${remainingAmount.toLocaleString('id-ID')} (Dibayar di Lokasi)\n`
+      if (!response.ok) {
+        alert(result.error || 'Gagal membuat reservasi!')
+        setLoading(false)
+        return
       }
-    } else {
-      messageText += `• Status Pembayaran: Menunggu Konfirmasi\n`
-    }
 
-    if (isPro) {
-      messageText += `\n🧾 *LINK INVOICE & REKAP:* \n${invoiceUrl}\n`
-    }
+      const insertedData = result.data
+      const bookingId = insertedData?.id ? `BK-${insertedData.id}` : 'BK-NEW'
+      const origin = typeof window !== 'undefined' ? window.location.origin : ''
+      const invoiceUrl = `${origin}/invoice/${bookingId}`
 
-    messageText += `\n----------------------------------\nBerikut saya lampirkan bukti transfernya. Mohon dikonfirmasi ya, terima kasih!`
+      let messageText =
+        `Halo *${tenant.name}*, saya ingin mengonfirmasi reservasi:\n\n` +
+        `📌 *DETAIL RESERVASI*\n` +
+        `• Kode Booking: #${bookingId}\n` +
+        `• Nama: ${formData.customer_name}\n` +
+        `• No. HP: ${formData.whatsapp_number}\n` +
+        `• Tanggal & Jam: ${formData.booking_date} - ${formData.booking_time} WIB\n` +
+        `• Layanan: ${formattedServicesText}\n`
 
-    if (isPro && tenant.waGatewayUrl) {
-      try {
-        let formattedPhone = formData.whatsapp_number.replace(/[^0-9]/g, '')
-        if (formattedPhone.startsWith('0')) {
-          formattedPhone = '62' + formattedPhone.slice(1)
+      if (isWizard && !isBasic) {
+        messageText += `• Jumlah Orang: ${formData.person_count} Orang\n`
+      }
+
+      if (formData.need_extra_addon) {
+        messageText += `• Tambahan: ${tenant.addonLabel.replace(/\s*\(\+Rp\s*[\d.]+\)/gi, '')} (${formData.addon_person_count} Orang)\n`
+      }
+
+      if (!isBasic && formData.selected_staff) {
+        messageText += `• ${tenant.staffLabel}: ${formData.selected_staff}\n`
+      }
+
+      if (isWizard && formData.custom_notes) {
+        messageText += `• Catatan Khusus: ${formData.custom_notes}\n`
+      }
+
+      messageText += `\n💳 *RINCIAN PEMBAYARAN*\n` +
+        `• Metode Bayar: ${formData.payment_method}\n` +
+        `• Total Biaya: Rp ${grandTotal.toLocaleString('id-ID')}\n`
+
+      if (!isBasic) {
+        messageText += `• Nominal Dibayar (${formData.payment_type}): Rp ${payableAmount.toLocaleString('id-ID')}\n`
+        if (formData.payment_type === 'DP') {
+          messageText += `• Sisa Pelunasan: Rp ${remainingAmount.toLocaleString('id-ID')} (Dibayar di Lokasi)\n`
         }
-
-        const formDataBody = new FormData()
-        formDataBody.append('target', formattedPhone)
-        formDataBody.append('message', messageText)
-
-        await fetch(tenant.waGatewayUrl, {
-          method: 'POST',
-          headers: {
-            'Authorization': tenant.waApiKey || ''
-          },
-          body: formDataBody
-        })
-      } catch (err) {
-        console.error('Gagal memicu WA Gateway:', err)
+      } else {
+        messageText += `• Status Pembayaran: Menunggu Konfirmasi\n`
       }
-    }
 
-    const cleanAdminWa = tenant.adminWa ? tenant.adminWa.replace(/[^0-9]/g, '') : ''
-    window.location.href = `https://wa.me/${cleanAdminWa}?text=${encodeURIComponent(messageText)}`
+      if (isPro) {
+        messageText += `\n🧾 *LINK INVOICE & REKAP:* \n${invoiceUrl}\n`
+      }
+
+      messageText += `\n----------------------------------\nBerikut saya lampirkan bukti transfernya. Mohon dikonfirmasi ya, terima kasih!`
+
+      if (isPro && tenant.waGatewayUrl) {
+        try {
+          let formattedPhone = formData.whatsapp_number.replace(/[^0-9]/g, '')
+          if (formattedPhone.startsWith('0')) {
+            formattedPhone = '62' + formattedPhone.slice(1)
+          }
+
+          const formDataBody = new FormData()
+          formDataBody.append('target', formattedPhone)
+          formDataBody.append('message', messageText)
+
+          await fetch(tenant.waGatewayUrl, {
+            method: 'POST',
+            headers: {
+              'Authorization': tenant.waApiKey || ''
+            },
+            body: formDataBody
+          })
+        } catch (err) {
+          console.error('Gagal memicu WA Gateway:', err)
+        }
+      }
+
+      const adminPhone = tenant.adminWa || '085899997828'
+      const formattedPhone = formatWaNumber(adminPhone)
+
+      const waUrl = `https://wa.me/${formattedPhone}?text=${encodeURIComponent(messageText)}`
+      window.open(waUrl, '_blank')
+    } catch (err) {
+      console.error("Error submitting reservation:", err)
+      alert("Terjadi kesalahan saat memproses reservasi.")
+    } finally {
+      setLoading(false)
+    }
   }
 
   const renderQrisSection = () => {
-    const qrisSrc = qrisData?.qrUrl || tenant.qrisUrl || `/${tenant.tenantSlug}.png`
+    const qrisSrc = qrisData?.qrUrl || tenant?.qrisUrl
 
     return (
       <div className="p-4 bg-zinc-950/80 border border-zinc-800/80 rounded-2xl text-center space-y-3 shadow-inner">
@@ -682,17 +703,21 @@ function BookingFormContent() {
             <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
             <span className="text-[10px] text-zinc-500">Memuat Kode QRIS...</span>
           </div>
-        ) : (
+        ) : qrisSrc ? (
           <div className="p-1 bg-white rounded-2xl inline-block shadow-xl border border-zinc-200 overflow-hidden w-full max-w-[280px]">
             <img
               src={qrisSrc}
               onError={(e) => { 
                 e.currentTarget.onerror = null
-                e.currentTarget.src = '/mcut.png'
+                console.error('Gagal memuat gambar dari URL:', qrisSrc)
               }}
-              alt={`QRIS ${tenant.name}`}
+              alt={`QRIS ${tenant?.name || 'Tenant'}`}
               className="w-full h-auto object-cover rounded-xl mx-auto"
             />
+          </div>
+        ) : (
+          <div className="py-6 px-4 bg-zinc-900/50 rounded-2xl border border-zinc-800 text-[11px] text-zinc-400">
+            Gambar QRIS belum dikonfigurasi.
           </div>
         )}
         <p className="text-[10px] text-zinc-500">Dapat di-scan menggunakan BCA, GoPay, OVO, Dana, LinkAja, dll.</p>

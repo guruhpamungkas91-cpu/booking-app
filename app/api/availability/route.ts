@@ -8,43 +8,44 @@ export async function GET(request: Request) {
     const tenantSlug = searchParams.get('tenant_slug')
 
     if (!date || !tenantSlug) {
-      return NextResponse.json({ error: 'Date & tenant_slug required' }, { status: 400 })
+      return NextResponse.json({ success: false, blockedTimes: [], bookedTimes: [] }, { status: 200 })
     }
 
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
-    const supabase = createClient(supabaseUrl, supabaseServiceKey)
-
-    // 1. Cek Feature Flag Tenant
-    const { data: tenantData } = await supabase
-      .from('Tenants')
-      .select('enable_auto_disable_time_slots')
-      .or(`tenant_slug.eq.${tenantSlug},client_code.eq.${tenantSlug}`)
-      .maybeSingle()
-
-    const isAutoDisableActive = tenantData?.enable_auto_disable_time_slots ?? true
-
-    if (!isAutoDisableActive) {
-      return NextResponse.json({ success: true, blockedTimes: [], bookedTimes: [] })
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+    
+    if (!supabaseUrl || !supabaseKey) {
+      return NextResponse.json({ success: true, blockedTimes: [], bookedTimes: [] }, { status: 200 })
     }
 
-    // 2. Fetch slot diblokir admin / libur
-    const { data: blockedData } = await supabase
+    const supabase = createClient(supabaseUrl, supabaseKey)
+
+    // 1. Fetch slot diblokir
+    // FIX: Hanya panggil tenant_slug (karena tenant_id tidak ada di tabel blocked_slots)
+    const { data: blockedData, error: blockedErr } = await supabase
       .from('blocked_slots')
       .select('start_time')
-      .eq('tenant_id', tenantSlug)
+      .eq('tenant_slug', tenantSlug)
       .eq('date', date)
 
-    // 3. Fetch slot terisi (OPSI A: Semua status KECUALI cancelled)
-    const { data: bookedData } = await supabase
+    if (blockedErr) {
+      console.error('Error fetching blocked_slots:', blockedErr)
+    }
+
+    // 2. Fetch slot terisi
+    const { data: bookedData, error: bookedErr } = await supabase
       .from('Reservations')
       .select('booking_time')
       .or(`tenant_slug.eq.${tenantSlug},client_code.eq.${tenantSlug}`)
       .eq('booking_date', date)
       .neq('status', 'cancelled')
 
-    const blockedTimes = blockedData ? blockedData.map(item => item.start_time) : []
-    const bookedTimes = bookedData ? bookedData.map(item => item.booking_time) : []
+    if (bookedErr) {
+      console.error('Error fetching Reservations:', bookedErr)
+    }
+
+    const blockedTimes = blockedData ? blockedData.map(item => item.start_time?.substring(0, 5)) : []
+    const bookedTimes = bookedData ? bookedData.map(item => item.booking_time?.substring(0, 5)) : []
 
     return NextResponse.json({
       success: true,
@@ -53,6 +54,7 @@ export async function GET(request: Request) {
     })
 
   } catch (err: any) {
-    return NextResponse.json({ error: err.message || 'Internal Server Error' }, { status: 500 })
+    console.error('API Availability Error:', err)
+    return NextResponse.json({ success: false, blockedTimes: [], bookedTimes: [] }, { status: 200 })
   }
 }

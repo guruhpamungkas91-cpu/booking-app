@@ -3,99 +3,81 @@ import { createClient } from '@supabase/supabase-js'
 
 export async function POST(request: Request) {
   try {
-    // Inisialisasi di dalam handler agar tidak crash saat npm run build
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
-    
-    if (!supabaseUrl || !supabaseServiceKey) {
-      return NextResponse.json({ error: 'Supabase credentials missing.' }, { status: 500 })
+    const body = await request.json()
+
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+
+    if (!supabaseUrl || !supabaseKey) {
+      return NextResponse.json(
+        { error: 'Supabase credentials missing on server environment' },
+        { status: 500 }
+      )
     }
 
-    const supabase = createClient(supabaseUrl, supabaseServiceKey)
+    const supabase = createClient(supabaseUrl, supabaseKey)
 
-    const body = await request.json()
-    const { tenant_slug, client_code, booking_date, booking_time } = body
-
-    const targetSlug = tenant_slug || client_code
-
-    // --- INTEGRASI FEATURE FLAG: Cek settingan tenant ---
-    const { data: tenantData } = await supabase
-      .from('tenants') // Sesuaikan nama tabel jika menggunakan 'businesses'
-      .select('enable_slot_blocking')
-      .or(`tenant_slug.eq.${targetSlug},client_code.eq.${targetSlug}`)
+    // 1. Cek dulu apakah slot jam yang dipilih diblokir/libur
+    // FIX: Gunakan tenant_slug, BUKAN tenant_id
+    const { data: checkBlocked, error: checkErr } = await supabase
+      .from('blocked_slots')
+      .select('id')
+      .eq('tenant_slug', body.tenant_slug)
+      .eq('date', body.booking_date)
+      .eq('start_time', body.booking_time)
       .maybeSingle()
 
-    // Jika tenant mengaktifkan fitur slot blocking (atau jika data setting belum ada/default true)
-    const isBlockingEnabled = tenantData?.enable_slot_blocking ?? true
-
-    if (isBlockingEnabled) {
-      // 1. CEK DIBLOKIR / LIBUR (Tabel blocked_slots)
-      const { data: isBlocked, error: checkBlockedError } = await supabase
-        .from('blocked_slots')
-        .select('id')
-        .eq('tenant_id', targetSlug)
-        .eq('date', booking_date)
-        .eq('start_time', booking_time)
-        .maybeSingle()
-
-      if (checkBlockedError) {
-        console.error('Error Cek Blocked Slot:', checkBlockedError)
-        return NextResponse.json({ error: 'Gagal mengecek ketersediaan slot.' }, { status: 500 })
-      }
-
-      if (isBlocked) {
-        return NextResponse.json(
-          { 
-            success: false, 
-            code: 'STORE_CLOSED',
-            error: 'Maaf, layanan tidak tersedia pada tanggal/jam tersebut. Silakan pilih jadwal operasional lainnya.' 
-          },
-          { status: 400 }
-        )
-      }
-
-      // 2. CEK SUDAH DIBOOKING CUSTOMER LAIN (Tabel Reservations)
-      const { data: isBooked, error: checkBookedError } = await supabase
-        .from('Reservations')
-        .select('id')
-        .or(`tenant_slug.eq.${targetSlug},client_code.eq.${targetSlug}`)
-        .eq('booking_date', booking_date)
-        .eq('booking_time', booking_time)
-        .neq('status', 'cancelled') // Mengecualikan reservasi yang dibatalkan
-        .maybeSingle()
-
-      if (checkBookedError) {
-        console.error('Error Cek Existing Reservation:', checkBookedError)
-        return NextResponse.json({ error: 'Gagal mengecek reservasi yang ada.' }, { status: 500 })
-      }
-
-      if (isBooked) {
-        return NextResponse.json(
-          { 
-            success: false, 
-            code: 'SLOT_BOOKED',
-            error: 'Maaf, slot waktu ini sudah dipesan. Silakan pilih jam atau tanggal lain.' 
-          },
-          { status: 400 }
-        )
-      }
+    if (checkErr) {
+      console.error('Error Cek Blocked Slot:', checkErr)
+      // Jika terjadi error query (misal kolom beda), log saja jangan langsung crash 500
     }
 
-    // 3. JIKA AMAN ATAU FEATURE FLAG DISABLED: Insert ke tabel Reservations
-    const { data: insertedData, error: insertError } = await supabase
+    if (checkBlocked) {
+      return NextResponse.json(
+        { error: 'Maaf, tanggal dan jam ini sudah diblokir oleh admin.' },
+        { status: 400 }
+      )
+    }
+
+    // 2. Sanitasi payload
+    const payload = {
+      customer_name: body.customer_name || '',
+      whatsapp_number: body.whatsapp_number || '',
+      booking_date: body.booking_date || '',
+      booking_time: body.booking_time || '',
+      service_name: body.service_name || '',
+      staff_name: body.staff_name || null,
+      payment_method: body.payment_method || 'QRIS',
+      status: body.status || 'pending',
+      client_code: body.client_code || '',
+      tenant_slug: body.tenant_slug || '',
+      payment_type: body.payment_type || 'FULL',
+      person_count: body.person_count ? Number(body.person_count) : 1,
+      need_remove_lash: Boolean(body.need_remove_lash),
+      addon_person_count: body.addon_person_count ? Number(body.addon_person_count) : 0,
+      has_eye_allergy_consent: Boolean(body.has_eye_allergy_consent),
+      eye_shape_notes: body.eye_shape_notes || null
+    }
+
+    // 3. Insert ke database
+    const { data, error } = await supabase
       .from('Reservations')
-      .insert([body])
-      .select('id')
+      .insert([payload])
+      .select()
       .single()
 
-    if (insertError) {
-      console.error('Error Insert Reservation:', insertError)
-      return NextResponse.json({ error: insertError.message }, { status: 500 })
+    if (error) {
+      console.error('Supabase Insert Error:', error)
+      return NextResponse.json({ error: error.message }, { status: 400 })
     }
 
-    return NextResponse.json({ success: true, data: insertedData }, { status: 200 })
+    return NextResponse.json({ success: true, data }, { status: 200 })
 
   } catch (err: any) {
-    return NextResponse.json({ error: err.message || 'Internal Server Error' }, { status: 500 })
+    console.error('Server Internal Error:', err)
+    return NextResponse.json(
+      { error: err.message || 'Internal Server Error' },
+      { status: 500 }
+    )
   }
 }
