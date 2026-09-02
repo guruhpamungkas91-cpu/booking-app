@@ -696,9 +696,9 @@ useEffect(() => {
     }
   }
 
+      // Render bagian QRIS yang sudah diperbaiki
       const renderQrisSection = () => {
-      // Ambil dari qrUrl (API dinamis), atau qrisUrl, atau qris_url dari DB Supabase
-      const qrisSrc = qrisData?.qrUrl || tenant?.qrisUrl || tenant?.qris_url
+      const qrisSrc = qrisData?.qrUrl || tenant?.qrisUrl
 
       return (
       <div className="p-4 bg-zinc-950/80 border border-zinc-800/80 rounded-2xl text-center space-y-3 shadow-inner">
