@@ -205,17 +205,22 @@ function BookingFormContent() {
       const searchParams = new URLSearchParams(window.location.search)
       const tenantQuery = searchParams.get('tenant')
 
-      // 1. Ekstraksi subdomain murni
-      const rawSubdomain = hostname.split('.')[0].toLowerCase()
+     // 1. Ekstraksi subdomain murni
+      const parts = hostname.split('.')
+      const rawSubdomain = parts[0].toLowerCase()
 
-      // 2. Tentukan targetSlug secara fleksibel (Cek URL query dulu, baru subdomain)
+      // 2. Tentukan targetSlug secara fleksibel
       let targetSlug = tenantQuery
 
       if (!targetSlug) {
-        if (rawSubdomain !== 'localhost' && rawSubdomain !== '127' && !rawSubdomain.includes('vercel')) {
+        // Cek apakah ini run di environment lokal
+        const isLocal = rawSubdomain === 'localhost' || rawSubdomain.startsWith('127') || hostname.includes('localhost')
+
+        if (!isLocal) {
+          // Di produksi (Vercel/Custom Domain), ambil subdomain paling depan (misal: glow-clinic)
           targetSlug = rawSubdomain
         } else {
-          // Fallback default jika tanpa query di localhost/vercel
+          // Fallback khusus saat testing di localhost tanpa query ?tenant=
           targetSlug = 'fitrifeb-lashes'
         }
       }
