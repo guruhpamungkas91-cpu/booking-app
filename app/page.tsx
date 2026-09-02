@@ -44,6 +44,13 @@ interface TenantData {
   qrisUrl?: string
 }
 
+// Interface Slot Jam untuk TimePicker
+interface TimeSlot {
+  time: string
+  maxQuota: number
+  bookedCount: number
+}
+
 function BookingFormContent() {
   const [step, setStep] = useState(1)
 
@@ -79,8 +86,27 @@ function BookingFormContent() {
   const [qrisData, setQrisData] = useState<{ qrUrl?: string; qrString?: string; snapToken?: string } | null>(null)
   const [loadingQris, setLoadingQris] = useState(false)
 
-  // State Slot Diblokir
+  // State Slot Diblokir Manual & Confirmed dari Supabase
   const [blockedSlots, setBlockedSlots] = useState<{ block_date: string; block_time: string }[]>([])
+
+  // State ketersediaan jam (API Auto-fetch)
+  const [blockedTimes, setBlockedTimes] = useState<string[]>([])
+  const [bookedTimes, setBookedTimes] = useState<string[]>([])
+  const [loadingSlots, setLoadingSlots] = useState<boolean>(false)
+
+  // Daftar default slot jam operasional
+  const [availableSlots, setAvailableSlots] = useState<TimeSlot[]>([
+    { time: '09:00', maxQuota: 1, bookedCount: 0 },
+    { time: '10:00', maxQuota: 1, bookedCount: 0 },
+    { time: '11:00', maxQuota: 1, bookedCount: 0 },
+    { time: '13:00', maxQuota: 1, bookedCount: 0 },
+    { time: '14:00', maxQuota: 1, bookedCount: 0 },
+    { time: '15:00', maxQuota: 1, bookedCount: 0 },
+    { time: '16:00', maxQuota: 1, bookedCount: 0 },
+    { time: '17:00', maxQuota: 1, bookedCount: 0 },
+    { time: '19:00', maxQuota: 1, bookedCount: 0 },
+    { time: '20:00', maxQuota: 1, bookedCount: 0 }
+  ])
 
   const [formData, setFormData] = useState({
     customer_name: '',
@@ -208,7 +234,6 @@ function BookingFormContent() {
       const rawSubdomain = hostname.split('.')[0].toLowerCase()
       const isLocal = rawSubdomain === 'localhost' || rawSubdomain.startsWith('127') || hostname.includes('localhost')
 
-      // Ekstrak slug secara akurat tanpa merusak nama tenant asli
       const extractedSlug = rawSubdomain.replace('-barbershop', '').replace('-lashes', '').replace('-dental', '').replace('-clinic', '')
       const currentSlug = (tenantQuery || (isLocal ? 'fitrifeb-lashes' : extractedSlug)).trim().toLowerCase()
 
@@ -216,7 +241,6 @@ function BookingFormContent() {
         setFetchingServices(true)
 
         try {
-          // 1. Fetch Tenant
           const { data: tenantData } = await supabase
             .from('Tenants')
             .select('*')
@@ -226,7 +250,6 @@ function BookingFormContent() {
           const dbPlan = ((tenantData?.subscription_plan || 'BASIC') as string).toUpperCase() as 'BASIC' | 'PREMIUM' | 'PROFESIONAL'
           const rawCategory = tenantData?.category || 'Layanan'
 
-          // Default fallback dinamis
           const defaultLayout = tenantData?.layout_type || (rawCategory.toLowerCase().includes('barber') ? 'BASIC_SINGLE_PAGE' : 'STEP_WIZARD')
           const defaultColor = tenantData?.theme_color || (rawCategory.toLowerCase().includes('barber') ? 'amber' : 'rose')
 
@@ -253,7 +276,6 @@ function BookingFormContent() {
 
           setTenant(activeTenant)
 
-          // 2. Fetch Services
           const { data: serviceData } = await supabase
             .from('Services')
             .select('*')
@@ -266,7 +288,6 @@ function BookingFormContent() {
             setServices([])
           }
 
-          // 3. Fetch Staff
           if (activeTenant.subscriptionPlan !== 'BASIC') {
             const { data: staffData } = await supabase
               .from('Staff')
@@ -284,20 +305,17 @@ function BookingFormContent() {
             setStaffList([])
           }
 
-          // 4. Fetch Blocked Slots (Manual dari Admin)
           const { data: blockedData } = await supabase
             .from('blocked_slots')
             .select('date, start_time')
             .or(`tenant_slug.ilike.${activeTenant.tenantSlug},client_code.ilike.${activeTenant.clientCode}`)
 
-          // 5. Fetch Jam yang Sudah Dikonfirmasi (Confirmed Reservations)
           const { data: confirmedReservations } = await supabase
             .from('Reservations')
             .select('booking_date, booking_time')
             .or(`tenant_slug.ilike.${activeTenant.tenantSlug},client_code.ilike.${activeTenant.clientCode}`)
             .eq('status', 'confirmed')
 
-          // Gabungkan kedua data agar jam manual & jam confirmed sama-sama terblokir
           const combinedBlockedSlots = [
             ...(blockedData?.map((item) => ({
               block_date: item.date,
@@ -322,13 +340,31 @@ function BookingFormContent() {
     }
   }, [])
 
-  // Efek QRIS Dinamis
+  // Auto-fetch ketersediaan jam tiap kali tanggal berubah
   useEffect(() => {
-    if (formData.payment_method === 'QRIS' && payableAmount > 0) {
-      generateDynamicQris()
-    }
-  }, [formData.payment_method, payableAmount, formData.payment_type])
+    if (!formData.booking_date || !tenant?.tenantSlug) return
 
+    const fetchAvailability = async () => {
+      setLoadingSlots(true)
+      try {
+        const res = await fetch(`/api/availability?date=${formData.booking_date}&tenant_slug=${tenant.tenantSlug}`)
+        const data = await res.json()
+
+        if (res.ok) {
+          setBlockedTimes(data.blockedTimes || [])
+          setBookedTimes(data.bookedTimes || [])
+        }
+      } catch (err) {
+        console.error('Gagal memuat ketersediaan jam:', err)
+      } finally {
+        setLoadingSlots(false)
+      }
+    }
+
+    fetchAvailability()
+  }, [formData.booking_date, tenant?.tenantSlug])
+
+  // Efek QRIS Dinamis
   const generateDynamicQris = async () => {
     setLoadingQris(true)
     try {
@@ -355,6 +391,12 @@ function BookingFormContent() {
     }
   }
 
+  useEffect(() => {
+    if (formData.payment_method === 'QRIS' && payableAmount > 0) {
+      generateDynamicQris()
+    }
+  }, [formData.payment_method, payableAmount])
+
   const handleServiceSelect = (serviceName: string) => {
     if (isBasic) {
       setFormData((prev) => ({ ...prev, selected_services: [serviceName] }))
@@ -369,8 +411,80 @@ function BookingFormContent() {
 
   const isSlotBlocked = (date: string, time: string) => {
     if (!date || !time) return false
-    return blockedSlots.some(
+    
+    const isSupabaseBlocked = blockedSlots.some(
       (slot) => slot.block_date === date && slot.block_time === time
+    )
+
+    const isApiBlocked = blockedTimes.includes(time) || bookedTimes.includes(time)
+
+    return isSupabaseBlocked || isApiBlocked
+  }
+
+  // LOGIKA PEMERIKSAAN DISABLE SLOT JAM
+  const isTimeDisabled = (timeString: string, maxQuota: number, currentBookings: number) => {
+    // 1. Cek kuota terpakai
+    if (currentBookings >= maxQuota) return true
+
+    // 2. Cek apakah diblokir dari Supabase / API Availability
+    if (isSlotBlocked(formData.booking_date, timeString)) return true
+
+    // 3. Cek apakah jam sudah berlalu (jika memilih hari ini)
+    if (formData.booking_date) {
+      const selectedDate = new Date(formData.booking_date)
+      const now = new Date()
+
+      if (
+        selectedDate.getFullYear() === now.getFullYear() &&
+        selectedDate.getMonth() === now.getMonth() &&
+        selectedDate.getDate() === now.getDate()
+      ) {
+        const [hours, minutes] = timeString.split(':').map(Number)
+        const slotTime = new Date()
+        slotTime.setHours(hours, minutes, 0, 0)
+
+        if (slotTime < now) return true
+      }
+    }
+
+    return false
+  }
+
+  // KOMPONEN TIMEPICKER
+  const TimePicker = ({
+    availableSlots,
+    selectedTime,
+    onSelectTime
+  }: {
+    availableSlots: TimeSlot[]
+    selectedTime: string
+    onSelectTime: (time: string) => void
+  }) => {
+    return (
+      <div className="grid grid-cols-3 gap-2 mt-2">
+        {availableSlots.map((slot) => {
+          const disabled = isTimeDisabled(slot.time, slot.maxQuota, slot.bookedCount)
+          const isSelected = selectedTime === slot.time
+
+          return (
+            <button
+              key={slot.time}
+              type="button"
+              disabled={disabled}
+              onClick={() => onSelectTime(slot.time)}
+              className={`py-2 px-3 rounded-2xl text-xs font-bold transition-all duration-300 border ${
+                disabled
+                  ? 'bg-zinc-950/40 text-zinc-600 border-zinc-800/50 cursor-not-allowed opacity-50'
+                  : isSelected
+                  ? `${theme.accentBg} text-white border-transparent shadow-md scale-105`
+                  : 'bg-zinc-950/80 text-zinc-300 border-zinc-800/80 hover:border-zinc-700 hover:text-white'
+              }`}
+            >
+              {slot.time}
+            </button>
+          )
+        })}
+      </div>
     )
   }
 
@@ -395,7 +509,7 @@ function BookingFormContent() {
         return
       }
       if (isSlotBlocked(formData.booking_date, formData.booking_time)) {
-        alert('Maaf, tanggal/jam yang Anda pilih sedang tidak tersedia (diblokir/libur). Silakan pilih jam lain.')
+        alert('Maaf, tanggal/jam yang Anda pilih sedang tidak tersedia (diblokir/libur/terpesan). Silakan pilih jam lain.')
         return
       }
     }
@@ -611,7 +725,7 @@ function BookingFormContent() {
 
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
           
-          {/* LAYOUT 1: SINGLE PAGE (BARBERSHOP / GENERAL) */}
+          {/* LAYOUT 1: SINGLE PAGE */}
           {!isWizard && (
             <div className="space-y-4">
               <div>
@@ -733,26 +847,35 @@ function BookingFormContent() {
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-3">
                 <div>
-                  <label className="block text-[11px] font-semibold text-zinc-300 uppercase tracking-wider mb-1.5">Tanggal</label>
+                  <label className="block text-[11px] font-semibold text-zinc-300 uppercase tracking-wider mb-1.5">Tanggal Kedatangan</label>
                   <input
                     type="date"
                     required
                     className={`w-full px-3.5 py-2.5 bg-zinc-950/80 border border-zinc-800/80 rounded-2xl text-zinc-200 text-xs outline-none transition-all duration-300 ${theme.accentRing}`}
                     value={formData.booking_date}
-                    onChange={(e) => setFormData({ ...formData, booking_date: e.target.value })}
+                    onChange={(e) => setFormData({ ...formData, booking_date: e.target.value, booking_time: '' })}
                   />
                 </div>
+
                 <div>
-                  <label className="block text-[11px] font-semibold text-zinc-300 uppercase tracking-wider mb-1.5">Jam</label>
-                  <input
-                    type="time"
-                    required
-                    className={`w-full px-3.5 py-2.5 bg-zinc-950/80 border border-zinc-800/80 rounded-2xl text-zinc-200 text-xs outline-none transition-all duration-300 ${theme.accentRing}`}
-                    value={formData.booking_time}
-                    onChange={(e) => setFormData({ ...formData, booking_time: e.target.value })}
-                  />
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="block text-[11px] font-semibold text-zinc-300 uppercase tracking-wider">Pilih Jam Kedatangan</label>
+                    {loadingSlots && <span className="text-[10px] text-zinc-500 animate-pulse">Memuat ketersediaan...</span>}
+                  </div>
+                  
+                  {!formData.booking_date ? (
+                    <p className="text-[11px] text-zinc-500 italic p-3 bg-zinc-950/40 border border-zinc-800/50 rounded-2xl text-center">
+                      Silakan pilih tanggal kedatangan terlebih dahulu.
+                    </p>
+                  ) : (
+                    <TimePicker
+                      availableSlots={availableSlots}
+                      selectedTime={formData.booking_time}
+                      onSelectTime={(time) => setFormData({ ...formData, booking_time: time })}
+                    />
+                  )}
                 </div>
               </div>
 
@@ -824,7 +947,7 @@ function BookingFormContent() {
             </div>
           )}
 
-          {/* LAYOUT 2: STEP WIZARD (CLINIC / LASH / SALON) */}
+          {/* LAYOUT 2: STEP WIZARD */}
           {isWizard && (
             <>
               {step === 1 && (
@@ -1068,26 +1191,35 @@ function BookingFormContent() {
                     </div>
                   )}
 
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-3">
                     <div>
-                      <label className="block text-[11px] font-semibold text-zinc-300 uppercase tracking-wider mb-1.5">Tanggal</label>
+                      <label className="block text-[11px] font-semibold text-zinc-300 uppercase tracking-wider mb-1.5">Tanggal Kedatangan</label>
                       <input
                         type="date"
                         required
                         className={`w-full px-3.5 py-2.5 bg-zinc-950/80 border border-zinc-800/80 rounded-2xl text-zinc-200 text-xs outline-none transition-all duration-300 ${theme.accentRing}`}
                         value={formData.booking_date}
-                        onChange={(e) => setFormData({ ...formData, booking_date: e.target.value })}
+                        onChange={(e) => setFormData({ ...formData, booking_date: e.target.value, booking_time: '' })}
                       />
                     </div>
+
                     <div>
-                      <label className="block text-[11px] font-semibold text-zinc-300 uppercase tracking-wider mb-1.5">Jam</label>
-                      <input
-                        type="time"
-                        required
-                        className={`w-full px-3.5 py-2.5 bg-zinc-950/80 border border-zinc-800/80 rounded-2xl text-zinc-200 text-xs outline-none transition-all duration-300 ${theme.accentRing}`}
-                        value={formData.booking_time}
-                        onChange={(e) => setFormData({ ...formData, booking_time: e.target.value })}
-                      />
+                      <div className="flex justify-between items-center mb-1">
+                        <label className="block text-[11px] font-semibold text-zinc-300 uppercase tracking-wider">Pilih Jam Kedatangan</label>
+                        {loadingSlots && <span className="text-[10px] text-zinc-500 animate-pulse">Memuat ketersediaan...</span>}
+                      </div>
+                      
+                      {!formData.booking_date ? (
+                        <p className="text-[11px] text-zinc-500 italic p-3 bg-zinc-950/40 border border-zinc-800/50 rounded-2xl text-center">
+                          Silakan pilih tanggal kedatangan terlebih dahulu.
+                        </p>
+                      ) : (
+                        <TimePicker
+                          availableSlots={availableSlots}
+                          selectedTime={formData.booking_time}
+                          onSelectTime={(time) => setFormData({ ...formData, booking_time: time })}
+                        />
+                      )}
                     </div>
                   </div>
 
