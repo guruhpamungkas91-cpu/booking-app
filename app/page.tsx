@@ -691,7 +691,10 @@ useEffect(() => {
 
       // Render bagian QRIS yang sudah diperbaiki
       const renderQrisSection = () => {
-      const qrisSrc = qrisData?.qrUrl || tenant?.qrisUrl
+      const qrisSrc = 
+      qrisData?.qrUrl || 
+      tenant.qrisUrl || 
+      `/${tenant.tenantSlug}.png`
 
       return (
       <div className="p-4 bg-zinc-950/80 border border-zinc-800/80 rounded-2xl text-center space-y-3 shadow-inner">
