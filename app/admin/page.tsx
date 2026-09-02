@@ -2038,13 +2038,13 @@ export default function AdminDashboard() {
                             </td>
                           )}
 
-                          <td className="py-3 px-3 font-black text-emerald-400 whitespace-nowrap font-mono">
+                          <td className="py-3 px-3 font-black text-emerald-400 whitespace-nowrap">
                             Rp {getServicePrice(item.service_name).toLocaleString('id-ID')}
                           </td>
 
-                          <td className="py-3 px-3 whitespace-nowrap">
-                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-zinc-800 text-zinc-300 border border-zinc-700">
-                              {item.payment_method || 'QRIS'}
+                          <td className="py-3 px-3 font-semibold text-zinc-300 whitespace-nowrap">
+                            <span className="px-2 py-0.5 rounded bg-zinc-800 border border-zinc-700 text-[10px]">
+                              💳 {item.payment_method || 'QRIS'}
                             </span>
                           </td>
 
@@ -2054,7 +2054,7 @@ export default function AdminDashboard() {
                                 href={`https://wa.me/${cleanPhone}`}
                                 target="_blank"
                                 rel="noreferrer"
-                                className="inline-flex items-center gap-1 text-emerald-400 hover:text-emerald-300 font-bold hover:underline"
+                                className="text-emerald-400 hover:text-emerald-300 font-mono font-bold flex items-center gap-1 hover:underline"
                               >
                                 <span>💬</span> {item.whatsapp_number}
                               </a>
@@ -2067,26 +2067,24 @@ export default function AdminDashboard() {
                             <select
                               value={currentStatus}
                               onChange={(e) => handleStatusChange(item, e.target.value)}
-                              className={`px-2.5 py-1 rounded-xl text-[10px] font-black cursor-pointer border focus:outline-none transition-all ${
-                                currentStatus === 'completed' || currentStatus === 'selesai'
+                              className={`px-2.5 py-1 rounded-lg text-[10px] font-black border cursor-pointer focus:outline-none transition-all ${
+                                currentStatus === 'confirmed'
                                   ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                                  : currentStatus === 'confirmed' || currentStatus === 'dikonfirmasi'
-                                  ? 'bg-purple-500/20 text-purple-300 border-purple-500/40'
+                                  : isCompleted(currentStatus)
+                                  ? 'bg-blue-500/20 text-blue-300 border-blue-500/40'
                                   : currentStatus === 'cancelled_need_refund'
-                                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 animate-pulse'
-                                  : currentStatus === 'cancelled_refunded'
-                                  ? 'bg-zinc-800 text-zinc-400 border-zinc-700'
+                                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 animate-pulse'
                                   : currentStatus.startsWith('cancelled')
                                   ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
                                   : 'bg-amber-500/20 text-amber-300 border-amber-500/40'
                               }`}
                             >
                               <option value="pending" className="bg-zinc-900 text-amber-300">🟡 Pending</option>
-                              <option value="confirmed" className="bg-zinc-900 text-purple-300">🟢 Confirmed</option>
-                              <option value="completed" className="bg-zinc-900 text-emerald-300">🔵 Completed</option>
+                              <option value="confirmed" className="bg-zinc-900 text-emerald-300">🟢 Confirmed</option>
+                              <option value="completed" className="bg-zinc-900 text-blue-300">🔵 Completed</option>
                               <option value="cancelled" className="bg-zinc-900 text-rose-300">🔴 Cancelled</option>
                               <option value="cancelled_need_refund" className="bg-zinc-900 text-amber-300">⚠️ Need Refund</option>
-                              <option value="cancelled_refunded" className="bg-zinc-900 text-zinc-400">✅ Refund Done</option>
+                              <option value="cancelled_refunded" className="bg-zinc-900 text-zinc-400">✅ Refunded</option>
                             </select>
                           </td>
 
@@ -2098,27 +2096,29 @@ export default function AdminDashboard() {
                                     href={`https://wa.me/${cleanPhone}?text=${refundWaMsg}`}
                                     target="_blank"
                                     rel="noreferrer"
-                                    className="bg-amber-500/20 hover:bg-amber-500/40 text-amber-300 border border-amber-500/40 px-2 py-1 rounded-lg text-[10px] font-black transition-all flex items-center gap-1"
-                                    title="Minta Rekening Pelanggan via WhatsApp"
+                                    className="bg-amber-500/20 hover:bg-amber-500/40 text-amber-300 border border-amber-500/40 px-2 py-1 rounded-lg font-bold text-[10px] transition-all flex items-center gap-1"
+                                    title="Minta Rekening Pelanggan via WA"
                                   >
-                                    💬 Chat Rekening
+                                    <span>💬 WA Refund</span>
                                   </a>
                                   <button
                                     onClick={() => handleCompleteRefund(item.id)}
-                                    className="bg-emerald-500/20 hover:bg-emerald-500/40 text-emerald-300 border border-emerald-500/40 px-2 py-1 rounded-lg text-[10px] font-black transition-all"
-                                    title="Tandai Sudah Transfer Refund"
+                                    className="bg-emerald-500/20 hover:bg-emerald-500/40 text-emerald-300 border border-emerald-500/40 px-2 py-1 rounded-lg font-bold text-[10px] transition-all"
+                                    title="Tandai Refund Selesai"
                                   >
-                                    ✅ Selesai Refund
+                                    Selesai Refund
                                   </button>
                                 </>
                               )}
 
                               <button
                                 onClick={() => handleDelete(item.id, item.customer_name)}
-                                className="bg-rose-500/10 hover:bg-rose-500/30 text-rose-400 hover:text-rose-200 border border-rose-500/20 p-1.5 rounded-lg text-xs font-bold transition-all"
+                                className="text-zinc-500 hover:text-rose-400 p-1.5 rounded-lg hover:bg-rose-500/10 transition-all"
                                 title="Hapus Data Reservasi"
                               >
-                                🗑️
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
                               </button>
                             </div>
                           </td>
@@ -2129,26 +2129,44 @@ export default function AdminDashboard() {
                 </table>
               </div>
 
-              {/* PAGINASI NAVIGASI */}
+              {/* PAGINATION CONTROLS */}
               {limit !== 'all' && totalPages > 1 && (
-                <div className="flex items-center justify-between p-4 border-t border-zinc-800/80 bg-zinc-950/60 text-xs">
+                <div className="p-3 sm:p-4 border-t border-zinc-800/80 bg-zinc-950/60 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
                   <span className="text-zinc-400 font-medium">
-                    Halaman <strong className="text-white">{currentPage}</strong> dari <strong className="text-white">{totalPages}</strong>
+                    Menampilkan <strong className="text-zinc-200">{(currentPage - 1) * limit + 1}</strong> - <strong className="text-zinc-200">{Math.min(currentPage * limit, filteredReservations.length)}</strong> dari <strong className="text-zinc-200">{filteredReservations.length}</strong> reservasi
                   </span>
-                  <div className="flex items-center space-x-2">
+
+                  <div className="flex items-center gap-1.5">
                     <button
                       disabled={currentPage === 1}
                       onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
-                      className="px-3 py-1.5 rounded-xl border border-zinc-700 bg-zinc-900 text-zinc-300 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-zinc-800 transition-all font-bold"
+                      className="px-3 py-1.5 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-300 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-zinc-800 transition-all font-bold"
                     >
-                      &larr; Prev
+                      Sebelumnya
                     </button>
+
+                    <div className="flex items-center gap-1 px-2">
+                      {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
+                        <button
+                          key={pageNum}
+                          onClick={() => setCurrentPage(pageNum)}
+                          className={`w-7 h-7 rounded-lg text-xs font-bold transition-all ${
+                            currentPage === pageNum
+                              ? `${themeStyles.buttonPrimary}`
+                              : 'bg-zinc-900 text-zinc-400 hover:text-white hover:bg-zinc-800'
+                          }`}
+                        >
+                          {pageNum}
+                        </button>
+                      ))}
+                    </div>
+
                     <button
                       disabled={currentPage === totalPages}
                       onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
-                      className="px-3 py-1.5 rounded-xl border border-zinc-700 bg-zinc-900 text-zinc-300 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-zinc-800 transition-all font-bold"
+                      className="px-3 py-1.5 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-300 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-zinc-800 transition-all font-bold"
                     >
-                      Next &rarr;
+                      Selanjutnya
                     </button>
                   </div>
                 </div>
@@ -2159,47 +2177,43 @@ export default function AdminDashboard() {
 
       </div>
 
-      {/* MODAL BATAL RESERVASI & OPTION REFUND */}
+      {/* MODAL CANCEL CONFIRMATION */}
       {cancelModalItem && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
-          <div className="bg-zinc-900 border border-zinc-800 p-6 rounded-3xl max-w-sm w-full space-y-4 text-center shadow-2xl">
-            <div className="w-12 h-12 rounded-2xl bg-rose-500/20 text-rose-400 border border-rose-500/30 flex items-center justify-center text-2xl mx-auto">
-              ⚠️
-            </div>
-            <div>
-              <h3 className="text-base font-black text-white uppercase tracking-wider">Konfirmasi Pembatalan</h3>
-              <p className="text-xs text-zinc-400 mt-1">
-                Reservasi atas nama <strong className="text-white">{cancelModalItem.customer_name}</strong> akan dibatalkan.
-              </p>
-              <p className="text-[11px] text-zinc-500 mt-2 bg-zinc-950 p-3 rounded-xl border border-zinc-800">
-                Apakah pelanggan ini membutuhkan pengembalian dana (Refund)?
-              </p>
-            </div>
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 max-w-md w-full space-y-4 shadow-2xl">
+            <h3 className="text-base font-black text-white flex items-center gap-2">
+              <span className="text-rose-400">⚠️</span> Konfirmasi Pembatalan
+            </h3>
+            <p className="text-xs text-zinc-300 leading-relaxed">
+              Kamu akan membatalkan pesanan atas nama <strong className="text-white">{cancelModalItem.customer_name}</strong>.
+              Apakah pelanggan ini membutuhkan pengembalian dana (refund)?
+            </p>
 
             <div className="grid grid-cols-2 gap-3 pt-2">
               <button
                 onClick={() => handleConfirmCancel(true)}
-                className="bg-amber-500 hover:bg-amber-400 text-zinc-950 font-black py-2.5 px-3 rounded-xl text-xs transition-all shadow-md active:scale-95"
+                className="bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 font-bold py-2.5 px-3 rounded-2xl text-xs transition-all"
               >
                 Ya, Perlu Refund ⚠️
               </button>
               <button
                 onClick={() => handleConfirmCancel(false)}
-                className="bg-rose-600 hover:bg-rose-500 text-white font-black py-2.5 px-3 rounded-xl text-xs transition-all shadow-md active:scale-95"
+                className="bg-rose-600 hover:bg-rose-500 text-white font-bold py-2.5 px-3 rounded-2xl text-xs transition-all shadow-md"
               >
-                Batal Tanpa Refund
+                Tidak Perlu Refund 🚫
               </button>
             </div>
 
             <button
               onClick={() => setCancelModalItem(null)}
-              className="text-zinc-500 hover:text-zinc-300 text-xs font-semibold block w-full pt-1"
+              className="w-full text-center text-xs text-zinc-500 hover:text-zinc-300 font-bold pt-2 transition-colors"
             >
-              Kembali (Batal)
+              Batal
             </button>
           </div>
         </div>
       )}
+
     </div>
   )
 }
