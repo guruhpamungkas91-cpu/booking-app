@@ -284,19 +284,32 @@ function BookingFormContent() {
             setStaffList([])
           }
 
-          // 4. Fetch Blocked Slots
+          // 4. Fetch Blocked Slots (Manual dari Admin)
           const { data: blockedData } = await supabase
             .from('blocked_slots')
             .select('date, start_time')
             .or(`tenant_slug.ilike.${activeTenant.tenantSlug},client_code.ilike.${activeTenant.clientCode}`)
 
-          if (blockedData) {
-            const formattedData = blockedData.map((item) => ({
+          // 5. Fetch Jam yang Sudah Dikonfirmasi (Confirmed Reservations)
+          const { data: confirmedReservations } = await supabase
+            .from('Reservations')
+            .select('booking_date, booking_time')
+            .or(`tenant_slug.ilike.${activeTenant.tenantSlug},client_code.ilike.${activeTenant.clientCode}`)
+            .eq('status', 'confirmed')
+
+          // Gabungkan kedua data agar jam manual & jam confirmed sama-sama terblokir
+          const combinedBlockedSlots = [
+            ...(blockedData?.map((item) => ({
               block_date: item.date,
               block_time: item.start_time ? item.start_time.substring(0, 5) : '',
-            }))
-            setBlockedSlots(formattedData)
-          }
+            })) || []),
+            ...(confirmedReservations?.map((item) => ({
+              block_date: item.booking_date,
+              block_time: item.booking_time ? item.booking_time.substring(0, 5) : '',
+            })) || [])
+          ]
+
+          setBlockedSlots(combinedBlockedSlots)
 
         } catch (err) {
           console.error("Error fetching data:", err)
