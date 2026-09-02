@@ -64,7 +64,7 @@ function BookingFormContent() {
     category: '',
     staffLabel: 'Staff',
     layoutType: 'BASIC_SINGLE_PAGE',
-    themeColor: 'amber',
+    themeColor: 'rose',
     requireConsent: false,
     showExtraAddon: false,
     addonLabel: 'Perlu lepas eyelash lama (+Rp 30.000)',
@@ -230,7 +230,14 @@ function BookingFormContent() {
       const rawSubdomain = hostname.split('.')[0].toLowerCase()
       const isLocal = rawSubdomain === 'localhost' || rawSubdomain.startsWith('127') || hostname.includes('localhost')
 
-      const extractedSlug = rawSubdomain.replace('-barbershop', '').replace('-lashes', '').replace('-dental', '').replace('-clinic', '')
+      // PERBAIKAN PENTING: Jangan menghapus suffix '-lashes' dari subdomain fitrifeb-lashes
+      let extractedSlug = rawSubdomain
+      if (rawSubdomain.includes('fitrifeb')) {
+        extractedSlug = 'fitrifeb-lashes'
+      } else {
+        extractedSlug = rawSubdomain.replace('-barbershop', '').replace('-dental', '').replace('-clinic', '')
+      }
+
       const currentSlug = (tenantQuery || (isLocal ? 'fitrifeb-lashes' : extractedSlug)).trim().toLowerCase()
 
       const fetchTenantAndData = async () => {
@@ -305,7 +312,7 @@ function BookingFormContent() {
             setStaffList([])
           }
 
-          // 3. Fetch Blocked Slots menggunakan tenant_slug (Sesuai perbaikan kolom Supabase)
+          // 3. Fetch Blocked Slots
           const { data: blockedData, error: blockedErr } = await supabase
             .from('blocked_slots')
             .select('date, start_time')
