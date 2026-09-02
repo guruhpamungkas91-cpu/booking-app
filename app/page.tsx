@@ -417,7 +417,7 @@ function BookingFormContent() {
     }
 
     if (isSlotBlocked(formData.booking_date, formData.booking_time)) {
-      alert('Maaf, tanggal/jam yang Anda pilih sedang tidak tersedia (diblokir/libur). Silakan pilih jam lain.')
+      alert('Maaf, slot waktu ini sudah dipesan. Silakan pilih jam atau tanggal lain.')
       setLoading(false)
       return
     }
