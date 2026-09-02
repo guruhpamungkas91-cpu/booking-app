@@ -290,10 +290,11 @@ function BookingFormContent() {
           }
 
           // 6. Fetch Blocked Slots (Gunakan .ilike)
-          const { data: blockedData } = await supabase
+          // SESUDAH (Disesuaikan dengan nama kolom tenant_slug / client_code):
+        const { data: blockedData } = await supabase
             .from('blocked_slots')
             .select('date, start_time')
-            .or(`tenant_id.ilike.${targetSlug}`)
+            .or(`tenant_slug.ilike.${targetSlug},client_code.ilike.${targetSlug}`)
 
           if (blockedData) {
             const formattedData = blockedData.map((item) => ({
@@ -572,7 +573,7 @@ function BookingFormContent() {
     )
   }
 
-  if (fetchingServices && !tenant.category) {
+  if (fetchingServices) {
     return (
       <main className="min-h-screen bg-[#09090b] text-white flex items-center justify-center font-sans">
         <div className="flex flex-col items-center space-y-3">
