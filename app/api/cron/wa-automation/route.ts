@@ -1,7 +1,23 @@
 import { NextResponse } from 'next/server'
-// Mundur 3 kali: wa-automation -> cron -> api -> root -> lib
 import { supabase } from '@/lib/supabase'
 import { sendWhatsAppMessage } from '@/lib/whatsapp'
+
+// Helper untuk format YYYY-MM-DD sesuai Timezone WIB (Asia/Jakarta)
+function getWibDateString(addDays = 0) {
+  const date = new Date()
+  date.setDate(date.getDate() + addDays)
+  
+  // Format ke timezone Jakarta
+  const options: Intl.DateTimeFormatOptions = {
+    timeZone: 'Asia/Jakarta',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }
+  
+  const formatter = new Intl.DateTimeFormat('en-CA', options) // format en-CA menghasilkan YYYY-MM-DD
+  return formatter.format(date)
+}
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
@@ -11,24 +27,10 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  // -------------------------------------------------------------
-  // Hitung Tanggal Besok (Format YYYY-MM-DD Lokal WIB / UTC+7)
-  // -------------------------------------------------------------
-  const now = new Date()
-  // Tambah 1 hari untuk target H-1
-  const tomorrow = new Date(now)
-  tomorrow.setDate(tomorrow.getDate() + 1)
+  // 1. Hitung Tanggal Besok (H-1) berbasis WIB
+  const tomorrowStr = getWibDateString(1)
 
-  // Konversi ke format string YYYY-MM-DD berdasarkan waktu lokal/Asia/Jakarta
-  const year = tomorrow.getFullYear()
-  const month = String(tomorrow.getMonth() + 1).padStart(2, '0')
-  const day = String(tomorrow.getDay() ? tomorrow.getDate() : tomorrow.getDate()).padStart(2, '0')
-  const tomorrowStr = `${year}-${month}-${day}`
-
-  // -------------------------------------------------------------
-  // 1. AUTO REMINDER (H-1 Sebelum Jadwal)
-  // -------------------------------------------------------------
-  // Menggunakan `.or()` agar data yang 'is_reminder_sent'-nya FALSE atau NULL tetap terbaca
+  // Ambil reservasi untuk besok
   const { data: upcomingBookings, error: dbError } = await supabase
     .from('Reservations')
     .select('*')
@@ -48,9 +50,8 @@ export async function GET(request: Request) {
         `Sampai jumpa besok ya Kak! Mohon datang tepat waktu.`
 
       const res = await sendWhatsAppMessage(booking.whatsapp_number, msg)
-      logs.push({ customer: booking.customer_name, fonnteResponse: res })
+      logs.push({ customer: booking.customer_name, targetDate: tomorrowStr, fonnteResponse: res })
 
-      // Fonnte biasanya mengembalikan nilai status: true atau target terisi
       if (res) {
         await supabase
           .from('Reservations')
@@ -60,15 +61,8 @@ export async function GET(request: Request) {
     }
   }
 
-  // -------------------------------------------------------------
-  // 2. CRM RETENSI (21 Hari Setelah Service)
-  // -------------------------------------------------------------
-  const past21Days = new Date(now)
-  past21Days.setDate(past21Days.getDate() - 21)
-  const pastYear = past21Days.getFullYear()
-  const pastMonth = String(past21Days.getMonth() + 1).padStart(2, '0')
-  const pastDay = String(past21Days.getDate()).padStart(2, '0')
-  const past21DaysStr = `${pastYear}-${pastMonth}-${pastDay}`
+  // 2. CRM RETENSI (21 Hari Setelah Service) berbasis WIB
+  const past21DaysStr = getWibDateString(-21)
 
   const { data: pastBookings } = await supabase
     .from('Reservations')
@@ -95,6 +89,11 @@ export async function GET(request: Request) {
     }
   }
 
-  // Hapus log debug dan kembalikan response standar produksi
-  return NextResponse.json({ success: true, message: 'Automation running cleanly' })
+  // Mengembalikan log transparan agar gampang di-debug
+  return NextResponse.json({ 
+    success: true, 
+    targetTomorrowDate: tomorrowStr,
+    foundBookings: upcomingBookings?.length || 0,
+    logs 
+  })
 }
