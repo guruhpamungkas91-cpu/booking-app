@@ -620,6 +620,12 @@ export default function AdminDashboard() {
       }
     })
 
+    // 1. BUAT ARRAY CHART DATA DI SINI
+    const staffChartData = Object.entries(staffPerformance).map(([name, count]) => ({
+      name,
+      count
+    }))
+
     return {
       totalBookings,
       pendingCount,
@@ -632,6 +638,7 @@ export default function AdminDashboard() {
       totalRevenue,
       topStaffName,
       topStaffCount,
+      staffChartData, // 2. MASUKKAN KE DALAM RETURN OBJECT
     }
   }, [reservations, businessType])
 
@@ -1569,28 +1576,54 @@ export default function AdminDashboard() {
 
         {/* 17.5 TOP STAFF PERFORMANCE SECTION */}
         {isProfesional && (
-          <div className={`border p-4 sm:p-5 rounded-2xl sm:rounded-3xl transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 relative overflow-hidden ${themeStyles.cardBg}`}>
-            <div className="flex items-center space-x-3 sm:space-x-4">
-              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl border border-amber-400/50 bg-amber-500/20 flex items-center justify-center text-xl sm:text-2xl shrink-0 shadow-lg shadow-amber-500/20">
-                👑
+          <div className={`border p-5 sm:p-6 rounded-2xl sm:rounded-3xl transition-all space-y-5 relative overflow-hidden ${themeStyles.cardBg}`}>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-zinc-800/80">
+              <div className="flex items-center space-x-3 sm:space-x-4">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl border border-amber-400/50 bg-amber-500/20 flex items-center justify-center text-xl sm:text-2xl shrink-0 shadow-lg shadow-amber-500/20">
+                  👑
+                </div>
+                <div className="min-w-0">
+                  <span className={`text-[9px] sm:text-[10px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-full border ${themeStyles.badgeBg}`}>
+                    Performa Staff Terbaik ({staffLabel})
+                  </span>
+                  <h3 className="text-lg sm:text-xl font-black text-white mt-1 truncate">
+                    {stats.topStaffName !== '-' ? stats.topStaffName : 'Belum Ada Data'}
+                  </h3>
+                </div>
               </div>
-              <div className="min-w-0">
-                <span className={`text-[9px] sm:text-[10px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-full border ${themeStyles.badgeBg}`}>
-                  Performa Staff Terbaik ({staffLabel})
+              <div className="flex sm:flex-col items-center sm:items-end justify-between border-t border-zinc-800 sm:border-t-0 pt-2 sm:pt-0">
+                <span className={`text-xl sm:text-2xl font-black font-mono ${themeStyles.textAccent}`}>
+                  {stats.topStaffCount}
                 </span>
-                <h3 className="text-lg sm:text-xl font-black text-white mt-1 truncate">
-                  {stats.topStaffName !== '-' ? stats.topStaffName : 'Belum Ada Data'}
-                </h3>
+                <p className="text-[10px] sm:text-[11px] text-zinc-300 font-bold uppercase tracking-wider">Transaksi Selesai</p>
               </div>
             </div>
-            <div className="flex sm:flex-col items-center sm:items-end justify-between border-t border-zinc-800 sm:border-t-0 pt-2 sm:pt-0">
-              <span className={`text-xl sm:text-2xl font-black font-mono ${themeStyles.textAccent}`}>
-                {stats.topStaffCount}
-              </span>
-              <p className="text-[10px] sm:text-[11px] text-zinc-300 font-bold uppercase tracking-wider">Transaksi Selesai</p>
+
+            {/* GRAFIK CHART PERFORMA STAFF (Di dalam blok isProfesional & Card Utama) */}
+            <div className="space-y-2.5">
+            {stats.staffChartData.map((staff) => {
+            const maxVal = Math.max(...stats.staffChartData.map(s => s.count), 1)
+            const percentage = Math.round((staff.count / maxVal) * 100)
+
+            return (
+            <div key={staff.name} className="space-y-1">
+            <div className="flex justify-between text-xs font-semibold">
+            <span className="text-zinc-200">{staff.name}</span>
+            <span className={`font-mono font-bold ${themeStyles.textAccent}`}>{staff.count} Pesanan Selesai</span>
             </div>
+              <div className="w-full bg-zinc-950/80 rounded-full h-3 border border-zinc-800/80 p-0.5 overflow-hidden">
+                <div 
+            className={`h-full rounded-full transition-all duration-500 ${themeStyles.buttonPrimary}`}
+            style={{ width: `${percentage}%` }}
+            />
           </div>
-        )}
+        </div>
+        )
+      })}
+      </div>
+    </div>
+  )}
+  
 
         {/* 17.6 BASIC PLAN UPGRADE BANNER */}
         {subscriptionPlan === 'BASIC' && (
@@ -2227,8 +2260,8 @@ export default function AdminDashboard() {
 
 </div>
 
-{/* REQUEST 3: MODAL REFUND HANYA BERLAKU UNTUK PAKET PROFESIONAL */}
-{cancelModalItem && (
+          {/* REQUEST 3: MODAL REFUND HANYA BERLAKU UNTUK PAKET PROFESIONAL */}
+          {cancelModalItem && (
           <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
             <div className={`max-w-md w-full border rounded-3xl p-6 space-y-5 shadow-2xl animate-in fade-in zoom-in duration-200 ${themeStyles.cardBg}`}>
               <div className="text-center space-y-2">
