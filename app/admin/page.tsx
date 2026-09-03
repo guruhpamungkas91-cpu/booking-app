@@ -258,7 +258,6 @@ export default function AdminDashboard() {
     }
   }, [])
 
-  // HANDLER API UNTUK TOGGLE SWITCH WA REMINDER (DINAMIS Sesuai Tenant Active)
   const handleToggleWaReminder = async (newStatus: boolean) => {
     if (!tenantCode) {
       alert('Tenant code tidak ditemukan.')
@@ -291,11 +290,10 @@ export default function AdminDashboard() {
       alert(`Gagal mengupdate pengingat WhatsApp: ${error.message}`)
       setAutoWaReminder(previousStatus)
     } finally {
-       setIsUpdatingWaToggle(false)
-     }
+      setIsUpdatingWaToggle(false)
+    }
   }
 
-  // HANDLER API UNTUK TOGGLE FITUR BOOKING (DINAMIS Sesuai Tenant Active)
   const handleToggleBookingSetting = async (field: 'prevent_double_booking' | 'hide_booked_slots', newStatus: boolean) => {
     if (!tenantCode) {
       alert('Tenant code tidak ditemukan.')
@@ -332,9 +330,9 @@ export default function AdminDashboard() {
       alert(`Gagal mengupdate pengaturan booking: ${error.message}`)
       setPreventDoubleBooking(prevDoubleBooking)
       setHideBookedSlots(prevHideSlots)
-      } finally {
+    } finally {
       setIsUpdatingBookingToggle(false)
-      }
+    }
   }
 
   // ============================================================================
@@ -532,7 +530,7 @@ export default function AdminDashboard() {
   }
 
   const handleStatusChange = (item: Reservation, newStatus: string) => {
-    if (newStatus === 'cancelled') {
+    if ((newStatus === 'cancelled' || newStatus === 'cancelled_need_refund') && subscriptionPlan === 'PROFESIONAL') {
       setCancelModalItem(item)
     } else {
       updateStatusInDB(item.id, newStatus)
@@ -962,15 +960,16 @@ export default function AdminDashboard() {
       if (startDate) result = result.filter((item) => item.booking_date >= startDate)
       if (endDate) result = result.filter((item) => item.booking_date <= endDate)
       if (serviceFilter !== 'all') result = result.filter((item) => item.service_name === serviceFilter)
-      if (searchTerm) {
-        const term = searchTerm.toLowerCase()
-        result = result.filter((item) =>
-          item.customer_name?.toLowerCase().includes(term) ||
-          item.whatsapp_number?.includes(term) ||
-          item.service_name?.toLowerCase().includes(term) ||
-          item.staff_name?.toLowerCase().includes(term)
-        )
-      }
+    }
+
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase()
+      result = result.filter((item) =>
+        item.customer_name?.toLowerCase().includes(term) ||
+        item.whatsapp_number?.includes(term) ||
+        item.service_name?.toLowerCase().includes(term) ||
+        item.staff_name?.toLowerCase().includes(term)
+      )
     }
 
     if (statusFilter !== 'all') {
@@ -984,57 +983,60 @@ export default function AdminDashboard() {
 
     if (paymentFilter !== 'all') result = result.filter((item) => (item.payment_method || 'QRIS') === paymentFilter)
 
-    result.sort((a, b) => {
-      let valA: any = ''
-      let valB: any = ''
+    if (subscriptionPlan !== 'BASIC') {
+      result.sort((a, b) => {
+        let valA: any = ''
+        let valB: any = ''
 
-      if (sortField === 'booking_date') {
-        valA = a.booking_date
-        valB = b.booking_date
-      } else if (sortField === 'booking_time') {
-        valA = a.booking_time
-        valB = b.booking_time
-      } else if (sortField === 'customer_name') {
-        valA = (a.customer_name || '').toLowerCase()
-        valB = (b.customer_name || '').toLowerCase()
-      } else if (sortField === 'service_name') {
-        valA = (a.service_name || '').toLowerCase()
-        valB = (b.service_name || '').toLowerCase()
-      } else if (sortField === 'staff_name') {
-        valA = (a.staff_name || '').toLowerCase()
-        valB = (b.staff_name || '').toLowerCase()
-      } else if (sortField === 'price') {
-        valA = getServicePrice(a.service_name)
-        valB = getServicePrice(b.service_name)
-      } else if (sortField === 'payment_method') {
-        valA = (a.payment_method || 'QRIS').toLowerCase()
-        valB = (b.payment_method || 'QRIS').toLowerCase()
-      } else if (sortField === 'status') {
-        valA = (a.status || 'pending').toLowerCase()
-        valB = (b.status || 'pending').toLowerCase()
-      }
+        if (sortField === 'booking_date') {
+          valA = a.booking_date
+          valB = b.booking_date
+        } else if (sortField === 'booking_time') {
+          valA = a.booking_time
+          valB = b.booking_time
+        } else if (sortField === 'customer_name') {
+          valA = (a.customer_name || '').toLowerCase()
+          valB = (b.customer_name || '').toLowerCase()
+        } else if (sortField === 'service_name') {
+          valA = (a.service_name || '').toLowerCase()
+          valB = (b.service_name || '').toLowerCase()
+        } else if (sortField === 'staff_name') {
+          valA = (a.staff_name || '').toLowerCase()
+          valB = (b.staff_name || '').toLowerCase()
+        } else if (sortField === 'price') {
+          valA = getServicePrice(a.service_name)
+          valB = getServicePrice(b.service_name)
+        } else if (sortField === 'payment_method') {
+          valA = (a.payment_method || 'QRIS').toLowerCase()
+          valB = (b.payment_method || 'QRIS').toLowerCase()
+        } else if (sortField === 'status') {
+          valA = (a.status || 'pending').toLowerCase()
+          valB = (b.status || 'pending').toLowerCase()
+        }
 
-      if (valA < valB) return sortOrder === 'asc' ? -1 : 1
-      if (valA > valB) return sortOrder === 'asc' ? 1 : -1
-      return 0
-    })
+        if (valA < valB) return sortOrder === 'asc' ? -1 : 1
+        if (valA > valB) return sortOrder === 'asc' ? 1 : -1
+        return 0
+      })
+    }
 
     setFilteredReservations(result)
     setCurrentPage(1)
   }, [startDate, endDate, statusFilter, serviceFilter, paymentFilter, searchTerm, sortField, sortOrder, reservations, subscriptionPlan])
 
   const totalPages = useMemo(() => {
-    if (limit === 'all') return 1
+    if (limit === 'all' || subscriptionPlan === 'BASIC') return 1
     return Math.ceil(filteredReservations.length / limit) || 1
-  }, [filteredReservations.length, limit])
+  }, [filteredReservations.length, limit, subscriptionPlan])
 
   const displayedReservations = useMemo(() => {
-    if (limit === 'all') return filteredReservations
+    if (limit === 'all' || subscriptionPlan === 'BASIC') return filteredReservations
     const startIndex = (currentPage - 1) * limit
     return filteredReservations.slice(startIndex, startIndex + limit)
-  }, [filteredReservations, currentPage, limit])
+  }, [filteredReservations, currentPage, limit, subscriptionPlan])
 
   const handleSort = (field: SortField) => {
+    if (subscriptionPlan === 'BASIC') return
     if (sortField === field) {
       setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')
     } else {
@@ -1076,15 +1078,17 @@ export default function AdminDashboard() {
   useEffect(() => {
     if (isAuthenticated) {
       fetchReservations()
-      fetchBlockedSlots()
+      if (subscriptionPlan !== 'BASIC') {
+        fetchBlockedSlots()
+      }
     }
-  }, [isAuthenticated, fetchReservations, fetchBlockedSlots])
+  }, [isAuthenticated, fetchReservations, fetchBlockedSlots, subscriptionPlan])
 
   useEffect(() => {
-    if (isAuthenticated && reservations.length > 0) {
+    if (isAuthenticated && reservations.length > 0 && subscriptionPlan !== 'BASIC') {
       syncConfirmedSlotsToBlocked()
     }
-  }, [reservations, isAuthenticated, syncConfirmedSlotsToBlocked])
+  }, [reservations, isAuthenticated, syncConfirmedSlotsToBlocked, subscriptionPlan])
 
   // ============================================================================
   // 14. DYNAMIC THEME SYSTEM COMPUTATION
@@ -1387,7 +1391,9 @@ export default function AdminDashboard() {
               <button
                 onClick={() => {
                   fetchReservations()
-                  fetchBlockedSlots()
+                  if (subscriptionPlan !== 'BASIC') {
+                    fetchBlockedSlots()
+                  }
                 }}
                 className="bg-zinc-900/90 hover:bg-zinc-800 text-zinc-200 border border-zinc-700/80 hover:border-zinc-500 px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl font-bold transition-all text-[11px] sm:text-xs flex items-center gap-1.5 sm:gap-2 shadow-lg active:scale-95"
               >
@@ -1406,89 +1412,90 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* 17.2 FEATURE TOGGLES SECTION */}
-        <div className={`p-4 sm:p-6 rounded-2xl sm:rounded-3xl border transition-all space-y-4 shadow-xl ${themeStyles.cardBg}`}>
-          <div className="border-b border-zinc-800/80 pb-3">
-            <h3 className={`text-sm sm:text-base font-black flex items-center gap-2 ${themeStyles.textAccent}`}>
-              <span>⚙️ Pengaturan Fitur Booking Tenant ({brandTitle})</span>
-            </h3>
-            <p className="text-[11px] text-zinc-300 font-medium">
-              Aktifkan atau nonaktifkan pembatasan booking dan visibilitas jam pada halaman pelanggan secara instan.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* TOGGLE 1: PREVENT DOUBLE BOOKING */}
-            <div className="flex items-center justify-between p-3.5 bg-zinc-950/60 border border-zinc-800/80 rounded-2xl">
-              <div className="pr-2">
-                <h4 className="text-xs font-black text-white uppercase tracking-wider">Batasi Double Booking</h4>
-                <p className="text-[10px] text-zinc-400 font-medium mt-0.5">
-                  Mencegah pelanggan memesan jam & tanggal yang sudah diisi oleh orang lain.
-                </p>
-              </div>
-              <label className="relative inline-flex items-center cursor-pointer shrink-0">
-                <input 
-                  type="checkbox" 
-                  disabled={isUpdatingBookingToggle}
-                  checked={preventDoubleBooking} 
-                  onChange={(e) => handleToggleBookingSetting('prevent_double_booking', e.target.checked)} 
-                  className="sr-only peer"
-                />
-                <div className="w-11 h-6 bg-zinc-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-gradient-to-r peer-checked:from-emerald-500 peer-checked:to-teal-600"></div>
-                <span className="ml-2.5 text-xs font-black text-zinc-200 min-w-[55px]">
-                  {isUpdatingBookingToggle ? '...' : preventDoubleBooking ? 'ON' : 'OFF'}
-                </span>
-              </label>
-            </div>
-
-            {/* TOGGLE 2: HIDE BOOKED SLOTS */}
-            <div className="flex items-center justify-between p-3.5 bg-zinc-950/60 border border-zinc-800/80 rounded-2xl">
-              <div className="pr-2">
-                <h4 className="text-xs font-black text-white uppercase tracking-wider">Sembunyikan Jam Terisi</h4>
-                <p className="text-[10px] text-zinc-400 font-medium mt-0.5">
-                  Sembunyikan jam yang sudah terisi sepenuhnya dari pilihan jadwal pelanggan.
-                </p>
-              </div>
-              <label className="relative inline-flex items-center cursor-pointer shrink-0">
-                <input 
-                  type="checkbox" 
-                  disabled={isUpdatingBookingToggle}
-                  checked={hideBookedSlots} 
-                  onChange={(e) => handleToggleBookingSetting('hide_booked_slots', e.target.checked)} 
-                  className="sr-only peer"
-                />
-                <div className="w-11 h-6 bg-zinc-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-gradient-to-r peer-checked:from-emerald-500 peer-checked:to-teal-600"></div>
-                <span className="ml-2.5 text-xs font-black text-zinc-200 min-w-[55px]">
-                  {isUpdatingBookingToggle ? '...' : hideBookedSlots ? 'ON' : 'OFF'}
-                </span>
-              </label>
-            </div>
-          </div>
-        </div>
-
-        {/* 17.3 WA REMINDER SETTING SECTION */}
+        {/* 17.2 & 17.3 COMBINED SINGLE CONTAINER: FEATURE & WA REMINDER SETTINGS */}
         {isProfesional && (
-          <div className={`p-4 rounded-2xl border transition-all flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xl ${themeStyles.cardBg}`}>
-            <div className="flex items-center gap-3">
-              <span className="text-2xl p-2 rounded-xl bg-purple-500/10 border border-purple-500/20">💬</span>
-              <div>
-                <h4 className="text-xs font-black text-white uppercase tracking-wider">Pengaturan WhatsApp Reminder Otomatis</h4>
-                <p className="text-[11px] text-zinc-300 font-medium">Kirim pengingat otomatis ke WhatsApp pelanggan sebelum jadwal reservasi.</p>
+          <div className={`p-4 sm:p-6 rounded-2xl sm:rounded-3xl border transition-all space-y-4 shadow-xl ${themeStyles.cardBg}`}>
+            <div className="border-b border-zinc-800/80 pb-3">
+              <h3 className={`text-sm sm:text-base font-black flex items-center gap-2 ${themeStyles.textAccent}`}>
+                <span>⚙️ Pengaturan Fitur Booking & Otomasi Tenant ({brandTitle})</span>
+              </h3>
+              <p className="text-[11px] text-zinc-300 font-medium">
+                Atur pembatasan booking, visibilitas jam, dan pengingat WhatsApp otomatis secara terpusat.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* TOGGLE 1: PREVENT DOUBLE BOOKING */}
+              <div className="flex items-center justify-between p-3.5 bg-zinc-950/60 border border-zinc-800/80 rounded-2xl">
+                <div className="pr-2">
+                  <h4 className="text-xs font-black text-white uppercase tracking-wider">Batasi Double Booking</h4>
+                  <p className="text-[10px] text-zinc-400 font-medium mt-0.5">
+                    Mencegah booking pada jam & tanggal terisi.
+                  </p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                  <input 
+                    type="checkbox" 
+                    disabled={isUpdatingBookingToggle}
+                    checked={preventDoubleBooking} 
+                    onChange={(e) => handleToggleBookingSetting('prevent_double_booking', e.target.checked)} 
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-zinc-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-gradient-to-r peer-checked:from-emerald-500 peer-checked:to-teal-600"></div>
+                  <span className="ml-2.5 text-xs font-black text-zinc-200 min-w-[35px]">
+                    {isUpdatingBookingToggle ? '...' : preventDoubleBooking ? 'ON' : 'OFF'}
+                  </span>
+                </label>
+              </div>
+
+              {/* TOGGLE 2: HIDE BOOKED SLOTS */}
+              <div className="flex items-center justify-between p-3.5 bg-zinc-950/60 border border-zinc-800/80 rounded-2xl">
+                <div className="pr-2">
+                  <h4 className="text-xs font-black text-white uppercase tracking-wider">Sembunyikan Jam Terisi</h4>
+                  <p className="text-[10px] text-zinc-400 font-medium mt-0.5">
+                    Sembunyikan jam terisi penuh dari pelanggan.
+                  </p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                  <input 
+                    type="checkbox" 
+                    disabled={isUpdatingBookingToggle}
+                    checked={hideBookedSlots} 
+                    onChange={(e) => handleToggleBookingSetting('hide_booked_slots', e.target.checked)} 
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-zinc-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-gradient-to-r peer-checked:from-emerald-500 peer-checked:to-teal-600"></div>
+                  <span className="ml-2.5 text-xs font-black text-zinc-200 min-w-[35px]">
+                    {isUpdatingBookingToggle ? '...' : hideBookedSlots ? 'ON' : 'OFF'}
+                  </span>
+                </label>
+              </div>
+
+              {/* TOGGLE 3: WA REMINDER */}
+              <div className="flex items-center justify-between p-3.5 bg-zinc-950/60 border border-zinc-800/80 rounded-2xl">
+                <div className="pr-2">
+                  <h4 className="text-xs font-black text-white uppercase tracking-wider flex items-center gap-1">
+                    <span>💬 WA Reminder</span>
+                  </h4>
+                  <p className="text-[10px] text-zinc-400 font-medium mt-0.5">
+                    Kirim pesan pengingat WA ke pelanggan.
+                  </p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                  <input 
+                    type="checkbox" 
+                    disabled={isUpdatingWaToggle}
+                    checked={autoWaReminder} 
+                    onChange={(e) => handleToggleWaReminder(e.target.checked)} 
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-zinc-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-gradient-to-r peer-checked:from-purple-500 peer-checked:to-indigo-600"></div>
+                  <span className="ml-2.5 text-xs font-black text-zinc-200 min-w-[35px]">
+                    {isUpdatingWaToggle ? '...' : autoWaReminder ? 'ON' : 'OFF'}
+                  </span>
+                </label>
               </div>
             </div>
-            <label className="relative inline-flex items-center cursor-pointer shrink-0">
-              <input 
-                type="checkbox" 
-                disabled={isUpdatingWaToggle}
-                checked={autoWaReminder} 
-                onChange={(e) => handleToggleWaReminder(e.target.checked)} 
-                className="sr-only peer"
-              />
-              <div className="w-11 h-6 bg-zinc-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-gradient-to-r peer-checked:from-purple-500 peer-checked:to-indigo-600"></div>
-              <span className="ml-2.5 text-xs font-black text-zinc-200">
-                {isUpdatingWaToggle ? 'PROSES...' : autoWaReminder ? 'AKTIF' : 'NONAKTIF'}
-              </span>
-            </label>
           </div>
         )}
 
@@ -1599,101 +1606,103 @@ export default function AdminDashboard() {
         )}
 
         {/* 17.7 BLOCK SLOT MANAGEMENT SECTION */}
-        <div className={`p-4 sm:p-6 rounded-2xl sm:rounded-3xl shadow-2xl border transition-all space-y-4 ${themeStyles.cardBg}`}>
-          <div className="flex items-center justify-between border-b border-zinc-800/80 pb-3">
-            <div>
-              <h3 className={`text-sm sm:text-base font-black flex items-center gap-2 ${themeStyles.textAccent}`}>
-                <span>🚫 Manajemen Block Slot / Jam Tutup Off (Detail Keterangan)</span>
-              </h3>
-              <p className="text-[11px] text-zinc-300 font-medium">
-                Blokir jam tertentu dengan alasan khusus (Libur Hari Raya, Istirahat, dll) & sinkronisasi otomatis dengan jam yang sudah di-confirm.
-              </p>
-            </div>
-            <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-rose-500/10 text-rose-300 border border-rose-500/30">
-              {blockedSlots.length} Slot Off
-            </span>
-          </div>
-
-          <form onSubmit={handleAddBlockSlot} className="grid grid-cols-1 sm:grid-cols-5 gap-3 items-end">
-            <div>
-              <label className="block text-[11px] font-bold text-zinc-300 mb-1">Tanggal Off:</label>
-              <input 
-                type="date" 
-                required 
-                value={blockDateInput} 
-                onChange={(e) => setBlockDateInput(e.target.value)} 
-                className={`w-full px-3 py-2 bg-zinc-950/80 border border-zinc-800 rounded-xl text-xs text-zinc-100 focus:outline-none ${themeStyles.focusBorder}`}
-              />
-            </div>
-            <div>
-              <label className="block text-[11px] font-bold text-zinc-300 mb-1">Jam Off:</label>
-              <select 
-                value={blockTimeInput} 
-                onChange={(e) => setBlockTimeInput(e.target.value)} 
-                className={`w-full px-3 py-2 bg-zinc-950/80 border border-zinc-800 rounded-xl text-xs text-zinc-100 focus:outline-none cursor-pointer ${themeStyles.focusBorder}`}
-              >
-                {['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00', '20:00', '21:00'].map((time) => (
-                  <option key={time} value={time}>{time} WIB</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-[11px] font-bold text-zinc-300 mb-1">Kategori Keterangan:</label>
-              <select 
-                value={reasonPreset} 
-                onChange={(e) => setReasonPreset(e.target.value)} 
-                className={`w-full px-3 py-2 bg-zinc-950/80 border border-zinc-800 rounded-xl text-xs text-zinc-100 focus:outline-none cursor-pointer ${themeStyles.focusBorder}`}
-              >
-                <option value="Libur Lebaran">🌙 Libur Lebaran</option>
-                <option value="Libur Nasional">🇮🇩 Libur Nasional / Tanggal Merah</option>
-                <option value="Istirahat Staff">☕ Istirahat Staff / Capster</option>
-                <option value="Maintenance Salon">🧹 Maintenance / Sterilisasi</option>
-                <option value="Lainnya">✏️ Lainnya (Tulis Manual)</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-[11px] font-bold text-zinc-300 mb-1">
-                {reasonPreset === 'Lainnya' ? 'Keterangan Detail:' : 'Catatan Tambahan:'}
-              </label>
-              <input 
-                type="text" 
-                placeholder={reasonPreset === 'Lainnya' ? "Misal: Ada Acara Keluar" : "Opsional..."}
-                value={blockReasonInput} 
-                onChange={(e) => setBlockReasonInput(e.target.value)} 
-                className={`w-full px-3 py-2 bg-zinc-950/80 border border-zinc-800 rounded-xl text-xs text-zinc-100 focus:outline-none ${themeStyles.focusBorder}`}
-              />
-            </div>
-            <button 
-              type="submit" 
-              disabled={isBlocking} 
-              className="bg-rose-600 hover:bg-rose-500 text-white font-bold py-2 px-4 rounded-xl text-xs transition-all shadow-md active:scale-95 h-[38px]"
-            >
-              {isBlocking ? 'Memproses...' : '🔒 Block Slot Ini'}
-            </button>
-          </form>
-
-          {blockedSlots.length > 0 && (
-            <div className="mt-4 pt-3 border-t border-zinc-800/60">
-              <p className="text-[11px] font-bold text-zinc-400 mb-2 uppercase tracking-wider">Daftar Slot Ter-block Saat Ini:</p>
-              <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto pr-1">
-                {blockedSlots.map((bs) => (
-                  <div key={bs.id || `${bs.block_date}-${bs.block_time}`} className="flex items-center gap-2 bg-zinc-900 border border-rose-500/30 px-3 py-1.5 rounded-xl text-xs text-rose-300 shadow-sm">
-                    <span className="font-bold">{formatDateID(bs.block_date)} - {bs.block_time} WIB</span>
-                    {bs.reason && <span className="text-[10px] text-zinc-400">({bs.reason})</span>}
-                    <button 
-                      type="button"
-                      onClick={() => handleDeleteBlockSlot(bs.id)} 
-                      className="text-zinc-500 hover:text-white ml-1 font-bold transition-colors" 
-                      title="Buka kembali slot jam ini"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                ))}
+        {subscriptionPlan !== 'BASIC' && (
+          <div className={`p-4 sm:p-6 rounded-2xl sm:rounded-3xl shadow-2xl border transition-all space-y-4 ${themeStyles.cardBg}`}>
+            <div className="flex items-center justify-between border-b border-zinc-800/80 pb-3">
+              <div>
+                <h3 className={`text-sm sm:text-base font-black flex items-center gap-2 ${themeStyles.textAccent}`}>
+                  <span>🚫 Manajemen Block Slot / Jam Tutup Off (Detail Keterangan)</span>
+                </h3>
+                <p className="text-[11px] text-zinc-300 font-medium">
+                  Blokir jam tertentu dengan alasan khusus (Libur Hari Raya, Istirahat, dll) & sinkronisasi otomatis dengan jam yang sudah di-confirm.
+                </p>
               </div>
+              <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-rose-500/10 text-rose-300 border border-rose-500/30">
+                {blockedSlots.length} Slot Off
+              </span>
             </div>
-          )}
-        </div>
+
+            <form onSubmit={handleAddBlockSlot} className="grid grid-cols-1 sm:grid-cols-5 gap-3 items-end">
+              <div>
+                <label className="block text-[11px] font-bold text-zinc-300 mb-1">Tanggal Off:</label>
+                <input 
+                  type="date" 
+                  required 
+                  value={blockDateInput} 
+                  onChange={(e) => setBlockDateInput(e.target.value)} 
+                  className={`w-full px-3 py-2 bg-zinc-950/80 border border-zinc-800 rounded-xl text-xs text-zinc-100 focus:outline-none ${themeStyles.focusBorder}`}
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-zinc-300 mb-1">Jam Off:</label>
+                <select 
+                  value={blockTimeInput} 
+                  onChange={(e) => setBlockTimeInput(e.target.value)} 
+                  className={`w-full px-3 py-2 bg-zinc-950/80 border border-zinc-800 rounded-xl text-xs text-zinc-100 focus:outline-none cursor-pointer ${themeStyles.focusBorder}`}
+                >
+                  {['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '20:00', '21:00'].map((time) => (
+                    <option key={time} value={time}>{time} WIB</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-zinc-300 mb-1">Kategori Keterangan:</label>
+                <select 
+                  value={reasonPreset} 
+                  onChange={(e) => setReasonPreset(e.target.value)} 
+                  className={`w-full px-3 py-2 bg-zinc-950/80 border border-zinc-800 rounded-xl text-xs text-zinc-100 focus:outline-none cursor-pointer ${themeStyles.focusBorder}`}
+                >
+                  <option value="Libur Lebaran">🌙 Libur Lebaran</option>
+                  <option value="Libur Nasional">🇮🇩 Libur Nasional / Tanggal Merah</option>
+                  <option value="Istirahat Staff">☕ Istirahat Staff / Capster</option>
+                  <option value="Maintenance Salon">🧹 Maintenance / Sterilisasi</option>
+                  <option value="Lainnya">✏️ Lainnya (Tulis Manual)</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-zinc-300 mb-1">
+                  {reasonPreset === 'Lainnya' ? 'Keterangan Detail:' : 'Catatan Tambahan:'}
+                </label>
+                <input 
+                  type="text" 
+                  placeholder={reasonPreset === 'Lainnya' ? "Misal: Ada Acara Keluar" : "Opsional..."}
+                  value={blockReasonInput} 
+                  onChange={(e) => setBlockReasonInput(e.target.value)} 
+                  className={`w-full px-3 py-2 bg-zinc-950/80 border border-zinc-800 rounded-xl text-xs text-zinc-100 focus:outline-none ${themeStyles.focusBorder}`}
+                />
+              </div>
+              <button 
+                type="submit" 
+                disabled={isBlocking} 
+                className="bg-rose-600 hover:bg-rose-500 text-white font-bold py-2 px-4 rounded-xl text-xs transition-all shadow-md active:scale-95 h-[38px]"
+              >
+                {isBlocking ? 'Memproses...' : '🔒 Block Slot Ini'}
+              </button>
+            </form>
+
+            {blockedSlots.length > 0 && (
+              <div className="mt-4 pt-3 border-t border-zinc-800/60">
+                <p className="text-[11px] font-bold text-zinc-400 mb-2 uppercase tracking-wider">Daftar Slot Ter-block Saat Ini:</p>
+                <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto pr-1">
+                  {blockedSlots.map((bs) => (
+                    <div key={bs.id || `${bs.block_date}-${bs.block_time}`} className="flex items-center gap-2 bg-zinc-900 border border-rose-500/30 px-3 py-1.5 rounded-xl text-xs text-rose-300 shadow-sm">
+                      <span className="font-bold">{formatDateID(bs.block_date)} - {bs.block_time} WIB</span>
+                      {bs.reason && <span className="text-[10px] text-zinc-400">({bs.reason})</span>}
+                      <button 
+                        type="button"
+                        onClick={() => handleDeleteBlockSlot(bs.id)} 
+                        className="text-zinc-500 hover:text-white ml-1 font-bold transition-colors" 
+                        title="Buka kembali slot jam ini"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* 17.8 FINANCIAL REPORT SECTION */}
         {subscriptionPlan !== 'BASIC' && (
@@ -1845,32 +1854,30 @@ export default function AdminDashboard() {
         {/* 17.9 FILTER & SEARCH BAR SECTION */}
         <div className={`border p-4 sm:p-5 rounded-2xl sm:rounded-3xl shadow-xl transition-all ${themeStyles.cardBg}`}>
           <div className={`grid grid-cols-1 sm:grid-cols-2 ${
-            subscriptionPlan === 'BASIC' ? 'md:grid-cols-3 lg:grid-cols-3' : 'md:grid-cols-3 lg:grid-cols-7'
+            subscriptionPlan === 'BASIC' ? 'md:grid-cols-2 lg:grid-cols-3' : 'md:grid-cols-3 lg:grid-cols-7'
           } gap-3 sm:gap-4 items-end w-full`}>
             
-            {subscriptionPlan !== 'BASIC' && (
-              <div className="w-full lg:col-span-1">
-                <label className="block text-xs font-bold text-zinc-300 mb-1.5">Pencarian Data:</label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    placeholder="Cari nama, WA, atau layanan..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className={`w-full pl-3.5 pr-8 py-2 sm:py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-xl sm:rounded-2xl text-xs text-zinc-200 placeholder-zinc-600 focus:outline-none transition-all shadow-inner ${themeStyles.focusBorder}`}
-                  />
-                  {searchTerm && (
-                    <button
-                      onClick={() => setSearchTerm('')}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white text-xs font-bold w-5 h-5 flex items-center justify-center rounded-full hover:bg-zinc-800 transition-all"
-                      title="Clear Search"
-                    >
-                      ✕
-                    </button>
-                  )}
-                </div>
+            <div className="w-full lg:col-span-1">
+              <label className="block text-xs font-bold text-zinc-300 mb-1.5">Pencarian Data:</label>
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="Cari nama, WA, atau layanan..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className={`w-full pl-3.5 pr-8 py-2 sm:py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-xl sm:rounded-2xl text-xs text-zinc-200 placeholder-zinc-600 focus:outline-none transition-all shadow-inner ${themeStyles.focusBorder}`}
+                />
+                {searchTerm && (
+                  <button
+                    onClick={() => setSearchTerm('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white text-xs font-bold w-5 h-5 flex items-center justify-center rounded-full hover:bg-zinc-800 transition-all"
+                    title="Clear Search"
+                  >
+                    ✕
+                  </button>
+                )}
               </div>
-            )}
+            </div>
 
             {subscriptionPlan !== 'BASIC' && (
               <div className="w-full">
@@ -1930,23 +1937,25 @@ export default function AdminDashboard() {
               </div>
             )}
 
-            <div className="w-full">
-              <label className="block text-xs font-bold text-zinc-300 mb-1.5">Limit Data:</label>
-              <select
-                value={limit}
-                onChange={(e) => {
-                  const val = e.target.value
-                  setLimit(val === 'all' ? 'all' : Number(val))
-                  setCurrentPage(1)
-                }}
-                className={`w-full px-3 py-2 sm:py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-xl sm:rounded-2xl text-xs text-zinc-200 focus:outline-none font-semibold cursor-pointer shadow-inner ${themeStyles.focusBorder}`}
-              >
-                <option value={10}>10 Baris</option>
-                <option value={25}>25 Baris</option>
-                <option value={50}>50 Baris</option>
-                <option value="all">Semua Data</option>
-              </select>
-            </div>
+            {subscriptionPlan !== 'BASIC' && (
+              <div className="w-full">
+                <label className="block text-xs font-bold text-zinc-300 mb-1.5">Limit Data:</label>
+                <select
+                  value={limit}
+                  onChange={(e) => {
+                    const val = e.target.value
+                    setLimit(val === 'all' ? 'all' : Number(val))
+                    setCurrentPage(1)
+                  }}
+                  className={`w-full px-3 py-2 sm:py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-xl sm:rounded-2xl text-xs text-zinc-200 focus:outline-none font-semibold cursor-pointer shadow-inner ${themeStyles.focusBorder}`}
+                >
+                  <option value={10}>10 Baris</option>
+                  <option value={25}>25 Baris</option>
+                  <option value={50}>50 Baris</option>
+                  <option value="all">Semua Data</option>
+                </select>
+              </div>
+            )}
 
             <div className="w-full flex gap-2 items-end">
               <div className="w-full">
@@ -2001,174 +2010,140 @@ export default function AdminDashboard() {
                       <th onClick={() => handleSort('booking_date')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
                         <div className="flex items-center gap-1 whitespace-nowrap">
                           <span>Tanggal</span>
-                          {sortField === 'booking_date' && (sortOrder === 'asc' ? '▲' : '▼')}
+                          {subscriptionPlan !== 'BASIC' && sortField === 'booking_date' && (sortOrder === 'asc' ? '▲' : '▼')}
                         </div>
                       </th>
 
                       <th onClick={() => handleSort('booking_time')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
                         <div className="flex items-center gap-1 whitespace-nowrap">
                           <span>Jam</span>
-                          {sortField === 'booking_time' && (sortOrder === 'asc' ? '▲' : '▼')}
+                          {subscriptionPlan !== 'BASIC' && sortField === 'booking_time' && (sortOrder === 'asc' ? '▲' : '▼')}
                         </div>
                       </th>
 
                       <th onClick={() => handleSort('customer_name')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
                         <div className="flex items-center gap-1 whitespace-nowrap">
                           <span>Pelanggan</span>
-                          {sortField === 'customer_name' && (sortOrder === 'asc' ? '▲' : '▼')}
+                          {subscriptionPlan !== 'BASIC' && sortField === 'customer_name' && (sortOrder === 'asc' ? '▲' : '▼')}
                         </div>
                       </th>
 
                       <th onClick={() => handleSort('service_name')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
                         <div className="flex items-center gap-1 whitespace-nowrap">
                           <span>Layanan</span>
-                          {sortField === 'service_name' && (sortOrder === 'asc' ? '▲' : '▼')}
+                          {subscriptionPlan !== 'BASIC' && sortField === 'service_name' && (sortOrder === 'asc' ? '▲' : '▼')}
                         </div>
                       </th>
 
-                      {(subscriptionPlan === 'PREMIUM' || isProfesional) && (
-                        <th onClick={() => handleSort('staff_name')} className={`py-3.5 px-3 cursor-pointer transition ${themeStyles.textAccent}`}>
-                          <div className="flex items-center gap-1 whitespace-nowrap">
-                            <span>{staffLabel}</span>
-                            {sortField === 'staff_name' && (sortOrder === 'asc' ? '▲' : '▼')}
-                          </div>
-                        </th>
-                      )}
-
-                      <th onClick={() => handleSort('price')} className={`py-3.5 px-3 cursor-pointer transition text-emerald-400 hover:${themeStyles.textAccent}`}>
+                      <th onClick={() => handleSort('staff_name')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
                         <div className="flex items-center gap-1 whitespace-nowrap">
-                          <span>Harga</span>
-                          {sortField === 'price' && (sortOrder === 'asc' ? '▲' : '▼')}
+                          <span>{staffLabel}</span>
+                          {subscriptionPlan !== 'BASIC' && sortField === 'staff_name' && (sortOrder === 'asc' ? '▲' : '▼')}
                         </div>
                       </th>
 
                       <th onClick={() => handleSort('payment_method')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
                         <div className="flex items-center gap-1 whitespace-nowrap">
-                          <span>Metode</span>
-                          {sortField === 'payment_method' && (sortOrder === 'asc' ? '▲' : '▼')}
+                          <span>Bayar</span>
+                          {subscriptionPlan !== 'BASIC' && sortField === 'payment_method' && (sortOrder === 'asc' ? '▲' : '▼')}
                         </div>
                       </th>
 
-                      <th className="py-3.5 px-3 whitespace-nowrap">WhatsApp</th>
+                      <th onClick={() => handleSort('price')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
+                        <div className="flex items-center gap-1 whitespace-nowrap">
+                          <span>Harga</span>
+                          {subscriptionPlan !== 'BASIC' && sortField === 'price' && (sortOrder === 'asc' ? '▲' : '▼')}
+                        </div>
+                      </th>
 
                       <th onClick={() => handleSort('status')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
                         <div className="flex items-center gap-1 whitespace-nowrap">
                           <span>Status</span>
-                          {sortField === 'status' && (sortOrder === 'asc' ? '▲' : '▼')}
+                          {subscriptionPlan !== 'BASIC' && sortField === 'status' && (sortOrder === 'asc' ? '▲' : '▼')}
                         </div>
                       </th>
 
-                      <th className="py-3.5 px-3 pr-4 text-center whitespace-nowrap">Aksi</th>
+                      <th className="py-3.5 px-3 text-right">Aksi</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-zinc-800/40 text-[11px] font-medium">
+                  <tbody className="divide-y divide-zinc-800/50 text-xs font-medium">
                     {displayedReservations.map((item) => {
-                      const currentStatus = item.status || 'pending'
-                      const cleanPhone = item.whatsapp_number ? item.whatsapp_number.replace(/^0/, '62') : ''
-                      const displayBrand = brandTitle || tenantCode || 'BISNIS'
-                      
-                      const refundWaMsg = encodeURIComponent(
-                        `Halo Kak ${item.customer_name}, mohon maaf reservasi Kamu di ${displayBrand} pada tanggal ${formatDateID(item.booking_date)} jam ${item.booking_time} WIB kami batalkan.\n\n` +
-                        `Karena Kakak sudah melakukan pembayaran, mohon infokan Nomor Rekening / E-Wallet Kakak agar dana sebesar Rp ${getServicePrice(item.service_name).toLocaleString('id-ID')} bisa kami refund segera ya. Terima kasih!`
-                      )
+                      const harga = getServicePrice(item.service_name)
+                      const rawStatus = (item.status || 'pending').toLowerCase()
+                      const isNeedRefund = rawStatus === 'cancelled_need_refund'
+                      const isRefunded = rawStatus === 'cancelled_refunded'
 
                       return (
-                        <tr key={item.id} className="hover:bg-zinc-800/40 transition-colors">
-                          <td className="py-3 px-3 font-bold text-zinc-200 whitespace-nowrap">{item.booking_date}</td>
-                          <td className={`py-3 px-3 font-mono font-bold whitespace-nowrap ${themeStyles.textAccent}`}>{item.booking_time} WIB</td>
-                          <td className="py-3 px-3 font-black text-white whitespace-nowrap">
-                            {item.customer_name}
+                        <tr key={item.id} className="hover:bg-zinc-900/50 transition-all">
+                          <td className="py-3 px-3 font-mono text-zinc-300 whitespace-nowrap">{formatDateID(item.booking_date)}</td>
+                          <td className="py-3 px-3 font-mono font-bold text-white whitespace-nowrap">{item.booking_time}</td>
+                          <td className="py-3 px-3">
+                            <div className="font-bold text-white">{item.customer_name}</div>
+                            <div className="text-[10px] text-zinc-400 font-mono mt-0.5">{item.whatsapp_number}</div>
                           </td>
                           <td className="py-3 px-3">
-                            <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border whitespace-nowrap ${themeStyles.badgeBg}`}>
-                              {item.service_name}
+                            <span className="font-semibold text-zinc-200">{item.service_name}</span>
+                          </td>
+                          <td className="py-3 px-3">
+                            <span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold border ${
+                              item.staff_name ? 'bg-zinc-800 text-zinc-300 border-zinc-700' : 'bg-zinc-900 text-zinc-500 border-zinc-800'
+                            }`}>
+                              {item.staff_name || 'Bebas / Siapa Saja'}
                             </span>
                           </td>
-
-                          {(subscriptionPlan === 'PREMIUM' || isProfesional) && (
-                            <td className="py-3 px-3 whitespace-nowrap">
-                              <span className="font-bold text-zinc-300">{item.staff_name || '-'}</span>
-                            </td>
-                          )}
-
-                          <td className="py-3 px-3 font-bold text-emerald-400 whitespace-nowrap">
-                            Rp {getServicePrice(item.service_name).toLocaleString('id-ID')}
-                          </td>
-
-                          <td className="py-3 px-3 whitespace-nowrap font-semibold text-zinc-400">
-                            {item.payment_method || 'QRIS'}
-                          </td>
-
                           <td className="py-3 px-3 whitespace-nowrap">
-                            {cleanPhone ? (
-                              <a
-                                href={`https://wa.me/${cleanPhone}`}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="text-emerald-400 hover:text-emerald-300 font-bold underline flex items-center gap-1"
-                              >
-                                <span>📱</span> {item.whatsapp_number}
-                              </a>
-                            ) : (
-                              '-'
-                            )}
+                            <span className="font-mono text-[11px] text-zinc-300 uppercase font-semibold">
+                              {item.payment_method || 'QRIS'}
+                            </span>
                           </td>
-
+                          <td className="py-3 px-3 font-mono font-bold text-emerald-400 whitespace-nowrap">
+                            Rp {harga.toLocaleString('id-ID')}
+                          </td>
                           <td className="py-3 px-3 whitespace-nowrap">
                             <select
-                              value={currentStatus}
+                              value={item.status || 'pending'}
                               onChange={(e) => handleStatusChange(item, e.target.value)}
-                              className={`px-2.5 py-1 rounded-xl text-[10px] font-black border focus:outline-none cursor-pointer transition-all ${
-                                currentStatus === 'completed' || currentStatus === 'selesai'
-                                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                                  : currentStatus === 'confirmed' || currentStatus === 'dikonfirmasi'
-                                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
-                                  : currentStatus === 'cancelled_need_refund'
+                              className={`px-2.5 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider border focus:outline-none cursor-pointer transition-all ${
+                                isCompleted(item.status)
+                                  ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40'
+                                  : rawStatus === 'confirmed' || rawStatus === 'dikonfirmasi'
+                                  ? 'bg-blue-500/15 text-blue-300 border-blue-500/40'
+                                  : isNeedRefund
                                   ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 animate-pulse'
-                                  : currentStatus.startsWith('cancelled') || currentStatus === 'batal'
-                                  ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
-                                  : 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                                  : isRefunded
+                                  ? 'bg-purple-500/20 text-purple-300 border-purple-500/40'
+                                  : rawStatus.startsWith('cancelled')
+                                  ? 'bg-rose-500/15 text-rose-300 border-rose-500/40'
+                                  : 'bg-amber-500/15 text-amber-300 border-amber-500/40'
                               }`}
                             >
                               <option value="pending" className="bg-zinc-900 text-amber-300">🟡 Pending</option>
-                              <option value="confirmed" className="bg-zinc-900 text-emerald-400">🟢 Confirmed</option>
+                              <option value="confirmed" className="bg-zinc-900 text-blue-300">🟢 Confirmed</option>
                               <option value="completed" className="bg-zinc-900 text-emerald-300">🔵 Completed</option>
                               <option value="cancelled" className="bg-zinc-900 text-rose-300">🔴 Cancelled</option>
-                              <option value="cancelled_need_refund" className="bg-zinc-900 text-amber-300">⚠️ Need Refund</option>
-                              <option value="cancelled_refunded" className="bg-zinc-900 text-zinc-400">✅ Refunded</option>
+                              {isProfesional && <option value="cancelled_need_refund" className="bg-zinc-900 text-amber-300">⚠️ Need Refund</option>}
+                              {isProfesional && <option value="cancelled_refunded" className="bg-zinc-900 text-purple-300">💜 Refunded</option>}
                             </select>
                           </td>
-
-                          <td className="py-3 px-3 pr-4 text-center whitespace-nowrap">
-                            <div className="flex items-center justify-center space-x-2">
-                              {currentStatus === 'cancelled_need_refund' && cleanPhone && (
-                                <a
-                                  href={`https://wa.me/${cleanPhone}?text=${refundWaMsg}`}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 px-2.5 py-1 rounded-lg font-extrabold text-[10px] transition-all flex items-center gap-1 shadow-sm"
-                                  title="Minta Rekening Pelanggan via WA"
-                                >
-                                  <span>💬 WA Refund</span>
-                                </a>
-                              )}
-
-                              {currentStatus === 'cancelled_need_refund' && (
+                          <td className="py-3 px-3 text-right whitespace-nowrap">
+                            <div className="flex items-center justify-end gap-1.5">
+                              {isNeedRefund && (
                                 <button
                                   onClick={() => handleCompleteRefund(item.id)}
-                                  className="bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 px-2.5 py-1 rounded-lg font-extrabold text-[10px] transition-all flex items-center gap-1 shadow-sm"
-                                  title="Tandai Sudah Ditransfer"
+                                  className="bg-amber-500/20 hover:bg-amber-500/40 text-amber-300 border border-amber-500/40 px-2 py-1 rounded-lg text-[10px] font-extrabold transition-all active:scale-95"
+                                  title="Tandai Sudah Transfer Refund"
                                 >
-                                  <span>✅ Selesai Refund</span>
+                                  Proses Refund 💸
                                 </button>
                               )}
-
                               <button
                                 onClick={() => handleDelete(item.id, item.customer_name)}
-                                className="text-zinc-500 hover:text-rose-400 p-1 rounded-lg hover:bg-rose-500/10 transition-colors"
-                                title="Hapus Data Reservasi"
+                                className="bg-rose-500/10 hover:bg-rose-500/30 text-rose-400 hover:text-rose-200 border border-rose-500/20 p-1.5 rounded-lg transition-all active:scale-95"
+                                title="Hapus Data"
                               >
-                                🗑️
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
                               </button>
                             </div>
                           </td>
@@ -2179,22 +2154,37 @@ export default function AdminDashboard() {
                 </table>
               </div>
 
-              {/* 17.11 TABLE PAGINATION CONTROLS */}
+              {/* PAGINATION BAR */}
               {limit !== 'all' && totalPages > 1 && (
-                <div className="p-4 border-t border-zinc-800/80 bg-zinc-950/60 flex items-center justify-between text-xs font-bold text-zinc-400">
-                  <span>Halaman {currentPage} dari {totalPages}</span>
-                  <div className="flex items-center space-x-2">
+                <div className="p-3 sm:p-4 border-t border-zinc-800/80 bg-zinc-950/90 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+                  <span className="text-zinc-400 font-medium">
+                    Menampilkan halaman <strong className="text-white">{currentPage}</strong> dari <strong className="text-white">{totalPages}</strong> ({filteredReservations.length} total data)
+                  </span>
+                  <div className="flex items-center gap-1.5">
                     <button
                       disabled={currentPage === 1}
                       onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
-                      className="px-3 py-1.5 rounded-xl border border-zinc-800 bg-zinc-900 text-zinc-300 disabled:opacity-30 disabled:cursor-not-allowed hover:border-zinc-600 transition-all"
+                      className="px-3 py-1.5 rounded-xl border border-zinc-800 bg-zinc-900 text-zinc-300 hover:bg-zinc-800 disabled:opacity-40 font-bold transition-all"
                     >
                       Sebelumnya
                     </button>
+                    {Array.from({ length: totalPages }, (_, i) => i + 1)
+                      .slice(Math.max(0, currentPage - 3), Math.min(totalPages, currentPage + 2))
+                      .map((pageNum) => (
+                        <button
+                          key={pageNum}
+                          onClick={() => setCurrentPage(pageNum)}
+                          className={`w-8 h-8 rounded-xl text-xs font-black transition-all ${
+                            currentPage === pageNum ? themeStyles.buttonPrimary : 'bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white'
+                          }`}
+                        >
+                          {pageNum}
+                        </button>
+                      ))}
                     <button
                       disabled={currentPage === totalPages}
                       onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
-                      className="px-3 py-1.5 rounded-xl border border-zinc-800 bg-zinc-900 text-zinc-300 disabled:opacity-30 disabled:cursor-not-allowed hover:border-zinc-600 transition-all"
+                      className="px-3 py-1.5 rounded-xl border border-zinc-800 bg-zinc-900 text-zinc-300 hover:bg-zinc-800 disabled:opacity-40 font-bold transition-all"
                     >
                       Selanjutnya
                     </button>
@@ -2205,61 +2195,54 @@ export default function AdminDashboard() {
           )}
         </div>
 
-        {/* 17.12 CANCELLATION MODAL */}
-        {cancelModalItem && (
-          <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className={`max-w-md w-full border rounded-3xl p-6 space-y-5 shadow-2xl animate-in fade-in zoom-in duration-200 ${themeStyles.cardBg}`}>
-              <div className="text-center space-y-2">
-                <span className="text-4xl">⚠️</span>
-                <h3 className="text-lg font-black text-white">Konfirmasi Pembatalan Reservasi</h3>
-                <p className="text-xs text-zinc-400">
-                  Pesanan atas nama <strong className="text-white">{cancelModalItem.customer_name}</strong> akan dibatalkan.
-                </p>
-              </div>
+      </div>
 
-              <div className="bg-zinc-950/80 border border-zinc-800/80 p-4 rounded-2xl space-y-2 text-xs">
-                <div className="flex justify-between text-zinc-400">
-                  <span>Layanan:</span>
-                  <span className="font-bold text-zinc-200">{cancelModalItem.service_name}</span>
-                </div>
-                <div className="flex justify-between text-zinc-400">
-                  <span>Tanggal & Jam:</span>
-                  <span className="font-bold text-zinc-200">{formatDateID(cancelModalItem.booking_date)} - {cancelModalItem.booking_time} WIB</span>
-                </div>
-                <div className="flex justify-between text-zinc-400">
-                  <span>Total Bayar:</span>
-                  <span className="font-bold text-emerald-400">Rp {getServicePrice(cancelModalItem.service_name).toLocaleString('id-ID')}</span>
-                </div>
-              </div>
+      {/* CANCELLATION & REFUND DIALOG MODAL */}
+      {cancelModalItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
+          <div className={`max-w-md w-full border rounded-3xl p-6 space-y-5 shadow-2xl relative ${themeStyles.cardBg}`}>
+            <div className="text-center space-y-1.5">
+              <span className="text-3xl">⚠️</span>
+              <h3 className="text-lg font-black text-white">Konfirmasi Pembatalan Booking</h3>
+              <p className="text-xs text-zinc-300">
+                Reservasi atas nama <strong className="text-white">{cancelModalItem.customer_name}</strong> akan dibatalkan.
+              </p>
+            </div>
 
-              <p className="text-[11px] font-bold text-amber-300 text-center">Apakah pelanggan ini membutuhkan pengembalian dana (refund)?</p>
+            <div className="bg-zinc-950/80 border border-zinc-800 p-3.5 rounded-2xl text-xs space-y-1 font-medium">
+              <p className="text-zinc-400">Metode Bayar: <span className="text-white font-bold">{cancelModalItem.payment_method || 'QRIS'}</span></p>
+              <p className="text-zinc-400">Total Biaya: <span className="text-emerald-400 font-bold">Rp {getServicePrice(cancelModalItem.service_name).toLocaleString('id-ID')}</span></p>
+            </div>
 
-              <div className="grid grid-cols-2 gap-3 pt-2">
-                <button
-                  onClick={() => handleConfirmCancel(true)}
-                  className="bg-amber-500 hover:bg-amber-400 text-zinc-950 font-black py-3 rounded-2xl text-xs transition-all shadow-lg active:scale-95"
-                >
-                  Ya, Perlu Refund 💳
-                </button>
-                <button
-                  onClick={() => handleConfirmCancel(false)}
-                  className="bg-rose-600 hover:bg-rose-500 text-white font-black py-3 rounded-2xl text-xs transition-all shadow-lg active:scale-95"
-                >
-                  Tidak Perlu Refund ❌
-                </button>
-              </div>
+            <p className="text-xs text-zinc-300 font-semibold text-center">
+              Apakah transaksi ini memerlukan pengembalian dana (refund) ke pelanggan?
+            </p>
 
+            <div className="grid grid-cols-2 gap-3 pt-2">
               <button
-                onClick={() => setCancelModalItem(null)}
-                className="w-full text-zinc-400 hover:text-white font-bold text-xs py-2 transition-colors text-center"
+                onClick={() => handleConfirmCancel(false)}
+                className="w-full bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 py-2.5 rounded-xl font-bold text-xs transition-all active:scale-95"
               >
-                Batal
+                Tidak (Batal Tanpa Refund)
+              </button>
+              <button
+                onClick={() => handleConfirmCancel(true)}
+                className="w-full bg-amber-500 hover:bg-amber-400 text-zinc-950 py-2.5 rounded-xl font-black text-xs transition-all active:scale-95 shadow-lg shadow-amber-500/20"
+              >
+                Ya (Perlu Refund 💸)
               </button>
             </div>
-          </div>
-        )}
 
-      </div>
+            <button
+              onClick={() => setCancelModalItem(null)}
+              className="w-full text-center text-xs text-zinc-500 hover:text-zinc-300 font-bold transition-colors pt-1"
+            >
+              Kembali / Batal
+            </button>
+          </div>
+        </div>
+      )}
+
     </div>
   )
 }
