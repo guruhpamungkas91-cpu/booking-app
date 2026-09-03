@@ -1412,15 +1412,15 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* 17.2 & 17.3 COMBINED SINGLE CONTAINER: FEATURE & WA REMINDER SETTINGS */}
+        {/* 17.2 FEATURE TOGGLES SECTION */}
         {isProfesional && (
           <div className={`p-4 sm:p-6 rounded-2xl sm:rounded-3xl border transition-all space-y-4 shadow-xl ${themeStyles.cardBg}`}>
             <div className="border-b border-zinc-800/80 pb-3">
               <h3 className={`text-sm sm:text-base font-black flex items-center gap-2 ${themeStyles.textAccent}`}>
-                <span>⚙️ Pengaturan Fitur Booking & Otomasi Tenant ({brandTitle})</span>
+                <span>⚙️ Pengaturan Fitur Booking Tenant ({brandTitle})</span>
               </h3>
               <p className="text-[11px] text-zinc-300 font-medium">
-                Atur pembatasan booking, visibilitas jam, dan pengingat WhatsApp otomatis secara terpusat.
+                Aktifkan atau nonaktifkan pembatasan booking dan visibilitas jam pada halaman pelanggan secara instan.
               </p>
             </div>
 
@@ -1498,6 +1498,7 @@ export default function AdminDashboard() {
             </div>
           </div>
         )}
+
 
         {/* 17.4 STATS CARDS SECTION */}
         <div className={`grid grid-cols-2 sm:grid-cols-3 ${
@@ -1996,253 +1997,290 @@ export default function AdminDashboard() {
         </div>
 
         {/* 17.10 RESERVATIONS DATA TABLE */}
-        <div className={`border rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden transition-all ${themeStyles.cardBg}`}>
-          {loading ? (
-            <div className="p-12 text-center text-zinc-400 text-xs font-semibold">Memuat data reservasi...</div>
-          ) : filteredReservations.length === 0 ? (
-            <div className="p-12 text-center text-zinc-400 text-xs font-semibold">Belum ada reservasi masuk / sesuai filter.</div>
-          ) : (
-            <>
-              <div className="w-full overflow-x-auto">
-                <table className="w-full text-left border-collapse min-w-full">
-                  <thead>
-                    <tr className="border-b border-zinc-800/80 bg-zinc-950/90 text-[10px] font-black uppercase tracking-widest text-zinc-400 select-none">
-                      <th onClick={() => handleSort('booking_date')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
-                        <div className="flex items-center gap-1 whitespace-nowrap">
-                          <span>Tanggal</span>
-                          {subscriptionPlan !== 'BASIC' && sortField === 'booking_date' && (sortOrder === 'asc' ? '▲' : '▼')}
-                        </div>
-                      </th>
-
-                      <th onClick={() => handleSort('booking_time')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
-                        <div className="flex items-center gap-1 whitespace-nowrap">
-                          <span>Jam</span>
-                          {subscriptionPlan !== 'BASIC' && sortField === 'booking_time' && (sortOrder === 'asc' ? '▲' : '▼')}
-                        </div>
-                      </th>
-
-                      <th onClick={() => handleSort('customer_name')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
-                        <div className="flex items-center gap-1 whitespace-nowrap">
-                          <span>Pelanggan</span>
-                          {subscriptionPlan !== 'BASIC' && sortField === 'customer_name' && (sortOrder === 'asc' ? '▲' : '▼')}
-                        </div>
-                      </th>
-
-                      <th onClick={() => handleSort('service_name')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
-                        <div className="flex items-center gap-1 whitespace-nowrap">
-                          <span>Layanan</span>
-                          {subscriptionPlan !== 'BASIC' && sortField === 'service_name' && (sortOrder === 'asc' ? '▲' : '▼')}
-                        </div>
-                      </th>
-
-                      <th onClick={() => handleSort('staff_name')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
-                        <div className="flex items-center gap-1 whitespace-nowrap">
-                          <span>{staffLabel}</span>
-                          {subscriptionPlan !== 'BASIC' && sortField === 'staff_name' && (sortOrder === 'asc' ? '▲' : '▼')}
-                        </div>
-                      </th>
-
-                      <th onClick={() => handleSort('payment_method')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
-                        <div className="flex items-center gap-1 whitespace-nowrap">
-                          <span>Bayar</span>
-                          {subscriptionPlan !== 'BASIC' && sortField === 'payment_method' && (sortOrder === 'asc' ? '▲' : '▼')}
-                        </div>
-                      </th>
-
-                      <th onClick={() => handleSort('price')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
-                        <div className="flex items-center gap-1 whitespace-nowrap">
-                          <span>Harga</span>
-                          {subscriptionPlan !== 'BASIC' && sortField === 'price' && (sortOrder === 'asc' ? '▲' : '▼')}
-                        </div>
-                      </th>
-
-                      <th onClick={() => handleSort('status')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
-                        <div className="flex items-center gap-1 whitespace-nowrap">
-                          <span>Status</span>
-                          {subscriptionPlan !== 'BASIC' && sortField === 'status' && (sortOrder === 'asc' ? '▲' : '▼')}
-                        </div>
-                      </th>
-
-                      <th className="py-3.5 px-3 text-right">Aksi</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-zinc-800/50 text-xs font-medium">
-                    {displayedReservations.map((item) => {
-                      const harga = getServicePrice(item.service_name)
-                      const rawStatus = (item.status || 'pending').toLowerCase()
-                      const isNeedRefund = rawStatus === 'cancelled_need_refund'
-                      const isRefunded = rawStatus === 'cancelled_refunded'
-
-                      return (
-                        <tr key={item.id} className="hover:bg-zinc-900/50 transition-all">
-                          <td className="py-3 px-3 font-mono text-zinc-300 whitespace-nowrap">{formatDateID(item.booking_date)}</td>
-                          <td className="py-3 px-3 font-mono font-bold text-white whitespace-nowrap">{item.booking_time}</td>
-                          <td className="py-3 px-3">
-                            <div className="font-bold text-white">{item.customer_name}</div>
-                            <div className="text-[10px] text-zinc-400 font-mono mt-0.5">{item.whatsapp_number}</div>
-                          </td>
-                          <td className="py-3 px-3">
-                            <span className="font-semibold text-zinc-200">{item.service_name}</span>
-                          </td>
-                          <td className="py-3 px-3">
-                            <span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold border ${
-                              item.staff_name ? 'bg-zinc-800 text-zinc-300 border-zinc-700' : 'bg-zinc-900 text-zinc-500 border-zinc-800'
-                            }`}>
-                              {item.staff_name || 'Bebas / Siapa Saja'}
-                            </span>
-                          </td>
-                          <td className="py-3 px-3 whitespace-nowrap">
-                            <span className="font-mono text-[11px] text-zinc-300 uppercase font-semibold">
-                              {item.payment_method || 'QRIS'}
-                            </span>
-                          </td>
-                          <td className="py-3 px-3 font-mono font-bold text-emerald-400 whitespace-nowrap">
-                            Rp {harga.toLocaleString('id-ID')}
-                          </td>
-                          <td className="py-3 px-3 whitespace-nowrap">
-                            <select
-                              value={item.status || 'pending'}
-                              onChange={(e) => handleStatusChange(item, e.target.value)}
-                              className={`px-2.5 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider border focus:outline-none cursor-pointer transition-all ${
-                                isCompleted(item.status)
-                                  ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40'
-                                  : rawStatus === 'confirmed' || rawStatus === 'dikonfirmasi'
-                                  ? 'bg-blue-500/15 text-blue-300 border-blue-500/40'
-                                  : isNeedRefund
-                                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 animate-pulse'
-                                  : isRefunded
-                                  ? 'bg-purple-500/20 text-purple-300 border-purple-500/40'
-                                  : rawStatus.startsWith('cancelled')
-                                  ? 'bg-rose-500/15 text-rose-300 border-rose-500/40'
-                                  : 'bg-amber-500/15 text-amber-300 border-amber-500/40'
-                              }`}
-                            >
-                              <option value="pending" className="bg-zinc-900 text-amber-300">🟡 Pending</option>
-                              <option value="confirmed" className="bg-zinc-900 text-blue-300">🟢 Confirmed</option>
-                              <option value="completed" className="bg-zinc-900 text-emerald-300">🔵 Completed</option>
-                              <option value="cancelled" className="bg-zinc-900 text-rose-300">🔴 Cancelled</option>
-                              {isProfesional && <option value="cancelled_need_refund" className="bg-zinc-900 text-amber-300">⚠️ Need Refund</option>}
-                              {isProfesional && <option value="cancelled_refunded" className="bg-zinc-900 text-purple-300">💜 Refunded</option>}
-                            </select>
-                          </td>
-                          <td className="py-3 px-3 text-right whitespace-nowrap">
-                            <div className="flex items-center justify-end gap-1.5">
-                              {isNeedRefund && (
-                                <button
-                                  onClick={() => handleCompleteRefund(item.id)}
-                                  className="bg-amber-500/20 hover:bg-amber-500/40 text-amber-300 border border-amber-500/40 px-2 py-1 rounded-lg text-[10px] font-extrabold transition-all active:scale-95"
-                                  title="Tandai Sudah Transfer Refund"
-                                >
-                                  Proses Refund 💸
-                                </button>
-                              )}
-                              <button
-                                onClick={() => handleDelete(item.id, item.customer_name)}
-                                className="bg-rose-500/10 hover:bg-rose-500/30 text-rose-400 hover:text-rose-200 border border-rose-500/20 p-1.5 rounded-lg transition-all active:scale-95"
-                                title="Hapus Data"
-                              >
-                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                </svg>
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* PAGINATION BAR */}
-              {limit !== 'all' && totalPages > 1 && (
-                <div className="p-3 sm:p-4 border-t border-zinc-800/80 bg-zinc-950/90 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
-                  <span className="text-zinc-400 font-medium">
-                    Menampilkan halaman <strong className="text-white">{currentPage}</strong> dari <strong className="text-white">{totalPages}</strong> ({filteredReservations.length} total data)
-                  </span>
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      disabled={currentPage === 1}
-                      onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
-                      className="px-3 py-1.5 rounded-xl border border-zinc-800 bg-zinc-900 text-zinc-300 hover:bg-zinc-800 disabled:opacity-40 font-bold transition-all"
-                    >
-                      Sebelumnya
-                    </button>
-                    {Array.from({ length: totalPages }, (_, i) => i + 1)
-                      .slice(Math.max(0, currentPage - 3), Math.min(totalPages, currentPage + 2))
-                      .map((pageNum) => (
-                        <button
-                          key={pageNum}
-                          onClick={() => setCurrentPage(pageNum)}
-                          className={`w-8 h-8 rounded-xl text-xs font-black transition-all ${
-                            currentPage === pageNum ? themeStyles.buttonPrimary : 'bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white'
-                          }`}
-                        >
-                          {pageNum}
-                        </button>
-                      ))}
-                    <button
-                      disabled={currentPage === totalPages}
-                      onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
-                      className="px-3 py-1.5 rounded-xl border border-zinc-800 bg-zinc-900 text-zinc-300 hover:bg-zinc-800 disabled:opacity-40 font-bold transition-all"
-                    >
-                      Selanjutnya
-                    </button>
-                  </div>
+<div className={`border rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden transition-all ${themeStyles.cardBg}`}>
+  {loading ? (
+    <div className="p-12 text-center text-zinc-400 text-xs font-semibold">Memuat data reservasi...</div>
+  ) : filteredReservations.length === 0 ? (
+    <div className="p-12 text-center text-zinc-400 text-xs font-semibold">Belum ada reservasi masuk / sesuai filter.</div>
+  ) : (
+    <>
+      <div className="w-full overflow-x-auto">
+        <table className="w-full text-left border-collapse min-w-full">
+          <thead>
+            <tr className="border-b border-zinc-800/80 bg-zinc-950/90 text-[10px] font-black uppercase tracking-widest text-zinc-400 select-none">
+              <th onClick={() => handleSort('booking_date')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
+                <div className="flex items-center gap-1 whitespace-nowrap">
+                  <span>Tanggal</span>
+                  {subscriptionPlan !== 'BASIC' && sortField === 'booking_date' && (sortOrder === 'asc' ? '▲' : '▼')}
                 </div>
-              )}
-            </>
-          )}
-        </div>
+              </th>
 
+              <th onClick={() => handleSort('booking_time')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
+                <div className="flex items-center gap-1 whitespace-nowrap">
+                  <span>Jam</span>
+                  {subscriptionPlan !== 'BASIC' && sortField === 'booking_time' && (sortOrder === 'asc' ? '▲' : '▼')}
+                </div>
+              </th>
+
+              <th onClick={() => handleSort('customer_name')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
+                <div className="flex items-center gap-1 whitespace-nowrap">
+                  <span>Pelanggan</span>
+                  {subscriptionPlan !== 'BASIC' && sortField === 'customer_name' && (sortOrder === 'asc' ? '▲' : '▼')}
+                </div>
+              </th>
+
+              <th onClick={() => handleSort('service_name')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
+                <div className="flex items-center gap-1 whitespace-nowrap">
+                  <span>Layanan</span>
+                  {subscriptionPlan !== 'BASIC' && sortField === 'service_name' && (sortOrder === 'asc' ? '▲' : '▼')}
+                </div>
+              </th>
+
+              <th onClick={() => handleSort('staff_name')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
+                <div className="flex items-center gap-1 whitespace-nowrap">
+                  <span>{staffLabel}</span>
+                  {subscriptionPlan !== 'BASIC' && sortField === 'staff_name' && (sortOrder === 'asc' ? '▲' : '▼')}
+                </div>
+              </th>
+
+              <th onClick={() => handleSort('payment_method')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
+                <div className="flex items-center gap-1 whitespace-nowrap">
+                  <span>Bayar</span>
+                  {subscriptionPlan !== 'BASIC' && sortField === 'payment_method' && (sortOrder === 'asc' ? '▲' : '▼')}
+                </div>
+              </th>
+
+              <th onClick={() => handleSort('price')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
+                <div className="flex items-center gap-1 whitespace-nowrap">
+                  <span>Harga</span>
+                  {subscriptionPlan !== 'BASIC' && sortField === 'price' && (sortOrder === 'asc' ? '▲' : '▼')}
+                </div>
+              </th>
+
+              <th onClick={() => handleSort('status')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
+                <div className="flex items-center gap-1 whitespace-nowrap">
+                  <span>Status</span>
+                  {subscriptionPlan !== 'BASIC' && sortField === 'status' && (sortOrder === 'asc' ? '▲' : '▼')}
+                </div>
+              </th>
+
+              <th className="py-3.5 px-3 text-center">
+                <span className="whitespace-nowrap">Aksi</span>
+              </th>
+            </tr>
+          </thead>
+
+          <tbody className="divide-y divide-zinc-800/50 text-xs">
+            {displayedReservations.map((item) => {
+              const rawStatus = (item.status || 'pending').toLowerCase()
+              const cleanWa = item.whatsapp_number ? item.whatsapp_number.replace(/[^0-9]/g, '') : ''
+              const price = getServicePrice(item.service_name)
+
+              // Text & Link WA Umum
+              const waText = `Halo Kak ${item.customer_name}, kami dari ${brandTitle || 'Salon/Barbershop'}. Mau konfirmasi reservasi kamu tanggal ${formatDateID(item.booking_date)} jam ${item.booking_time} WIB untuk layanan ${item.service_name}. Terima kasih!`
+              const waUrl = `https://wa.me/${cleanWa}?text=${encodeURIComponent(waText)}`
+
+              // Text & Link WA Khusus Refund
+              const refundWaText = `Halo Kak ${item.customer_name}, terkait pembatalan reservasi tanggal ${formatDateID(item.booking_date)}, mohon kirimkan nomor rekening / e-wallet Anda untuk proses refund. Terima kasih!`
+              const refundWaUrl = `https://wa.me/${cleanWa}?text=${encodeURIComponent(refundWaText)}`
+
+              return (
+                <tr key={item.id} className="hover:bg-zinc-900/60 transition-all">
+                  <td className="py-3 px-3 font-semibold whitespace-nowrap text-zinc-300">
+                    {formatDateID(item.booking_date)}
+                  </td>
+
+                  <td className="py-3 px-3 font-bold whitespace-nowrap text-zinc-100">
+                    {item.booking_time}
+                  </td>
+
+                  <td className="py-3 px-3">
+                    <div className="font-bold text-white whitespace-nowrap">{item.customer_name}</div>
+                    <div className="text-[10px] text-zinc-400 font-mono mt-0.5">{item.whatsapp_number || '-'}</div>
+                  </td>
+
+                  <td className="py-3 px-3 font-medium text-zinc-200">
+                    <span className="line-clamp-2">{item.service_name}</span>
+                  </td>
+
+                  <td className="py-3 px-3 font-medium text-zinc-300 whitespace-nowrap">
+                    {item.staff_name || '-'}
+                  </td>
+
+                  <td className="py-3 px-3 font-semibold text-zinc-300 whitespace-nowrap">
+                    <span className="px-2 py-0.5 rounded-lg bg-zinc-900 border border-zinc-800 text-[10px]">
+                      💳 {item.payment_method || 'QRIS'}
+                    </span>
+                  </td>
+
+                  <td className="py-3 px-3 font-bold text-zinc-100 whitespace-nowrap">
+                    Rp {price.toLocaleString('id-ID')}
+                  </td>
+
+                  {/* KOLOM STATUS */}
+                  <td className="py-3 px-3 whitespace-nowrap">
+                    <select
+                      value={rawStatus}
+                      onChange={(e) => handleStatusChange(item, e.target.value)}
+                      className={`px-2.5 py-1.5 rounded-xl text-[11px] font-extrabold border cursor-pointer focus:outline-none transition-all shadow-sm ${
+                        rawStatus === 'confirmed' || rawStatus === 'dikonfirmasi'
+                          ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
+                          : isCompleted(rawStatus)
+                          ? 'bg-blue-500/15 border-blue-500/40 text-blue-300'
+                          : rawStatus === 'cancelled_need_refund'
+                          ? 'bg-amber-500/15 border-amber-500/40 text-amber-300'
+                          : rawStatus === 'cancelled_refunded'
+                          ? 'bg-purple-500/15 border-purple-500/40 text-purple-300'
+                          : rawStatus.startsWith('cancelled') || rawStatus === 'batal'
+                          ? 'bg-rose-500/15 border-rose-500/40 text-rose-300'
+                          : 'bg-amber-500/15 border-amber-500/40 text-amber-300'
+                      }`}
+                    >
+                      <option value="pending" className="bg-zinc-900 text-amber-300 font-bold">🟡 Pending</option>
+                      <option value="confirmed" className="bg-zinc-900 text-emerald-300 font-bold">🟢 Confirmed</option>
+                      <option value="completed" className="bg-zinc-900 text-blue-300 font-bold">🔵 Completed</option>
+                      <option value="cancelled" className="bg-zinc-900 text-rose-300 font-bold">🔴 Cancelled</option>
+                      
+                      {/* DIHIDDEN AGAR TIDAK BISA DIPILIH MANUAL OLEH USER */}
+                      <option value="cancelled_need_refund" hidden className="bg-zinc-900 text-amber-300 font-bold">🟠 Need Refund</option>
+                      <option value="cancelled_refunded" hidden className="bg-zinc-900 text-purple-300 font-bold">💸 Refunded</option>
+                    </select>
+                  </td>
+
+                  {/* KOLOM AKSI */}
+                  <td className="py-3 px-3 text-center whitespace-nowrap">
+                    <div className="flex items-center justify-center space-x-2">
+                      {/* Tombol WA (Biasa / Refund) */}
+                      {cleanWa ? (
+                        <a
+                          href={rawStatus === 'cancelled_need_refund' ? refundWaUrl : waUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={`p-2 rounded-xl transition-all font-bold text-[11px] flex items-center justify-center active:scale-95 shadow-sm ${
+                            rawStatus === 'cancelled_need_refund'
+                              ? 'bg-amber-500/20 hover:bg-amber-500/40 text-amber-300 border border-amber-500/40 animate-pulse'
+                              : 'bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-300 border border-emerald-500/30'
+                          }`}
+                          title={rawStatus === 'cancelled_need_refund' ? 'WA Refund Pelanggan' : 'Konfirmasi via WhatsApp'}
+                        >
+                          💬
+                        </a>
+                      ) : (
+                        <span className="text-zinc-600 p-2 text-xs">-</span>
+                      )}
+
+                      {/* Tombol "✓ Refunded" di Aksi (Muncul Khusus Saat Need Refund) */}
+                      {rawStatus === 'cancelled_need_refund' && isProfesional && (
+                        <button
+                          onClick={() => handleCompleteRefund(item.id)}
+                          className="bg-amber-500/20 hover:bg-amber-500/40 text-amber-300 border border-amber-500/40 px-2.5 py-1.5 rounded-xl transition-all font-extrabold text-[10px] shadow-sm active:scale-95 whitespace-nowrap"
+                          title="Tandai Sudah Refund"
+                        >
+                          ✓ Refunded
+                        </button>
+                      )}
+
+                      {/* Tombol Hapus (Selalu Tampil) */}
+                      <button
+                        onClick={() => handleDelete(item.id, item.customer_name)}
+                        className="bg-rose-500/15 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 p-2 rounded-xl transition-all font-bold text-[11px] flex items-center justify-center active:scale-95 shadow-sm"
+                        title="Hapus Data Reservasi"
+                      >
+                        🗑️
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
       </div>
 
-      {/* CANCELLATION & REFUND DIALOG MODAL */}
-      {cancelModalItem && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
-          <div className={`max-w-md w-full border rounded-3xl p-6 space-y-5 shadow-2xl relative ${themeStyles.cardBg}`}>
-            <div className="text-center space-y-1.5">
-              <span className="text-3xl">⚠️</span>
-              <h3 className="text-lg font-black text-white">Konfirmasi Pembatalan Booking</h3>
-              <p className="text-xs text-zinc-300">
-                Reservasi atas nama <strong className="text-white">{cancelModalItem.customer_name}</strong> akan dibatalkan.
-              </p>
-            </div>
-
-            <div className="bg-zinc-950/80 border border-zinc-800 p-3.5 rounded-2xl text-xs space-y-1 font-medium">
-              <p className="text-zinc-400">Metode Bayar: <span className="text-white font-bold">{cancelModalItem.payment_method || 'QRIS'}</span></p>
-              <p className="text-zinc-400">Total Biaya: <span className="text-emerald-400 font-bold">Rp {getServicePrice(cancelModalItem.service_name).toLocaleString('id-ID')}</span></p>
-            </div>
-
-            <p className="text-xs text-zinc-300 font-semibold text-center">
-              Apakah transaksi ini memerlukan pengembalian dana (refund) ke pelanggan?
-            </p>
-
-            <div className="grid grid-cols-2 gap-3 pt-2">
-              <button
-                onClick={() => handleConfirmCancel(false)}
-                className="w-full bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 py-2.5 rounded-xl font-bold text-xs transition-all active:scale-95"
-              >
-                Tidak (Batal Tanpa Refund)
-              </button>
-              <button
-                onClick={() => handleConfirmCancel(true)}
-                className="w-full bg-amber-500 hover:bg-amber-400 text-zinc-950 py-2.5 rounded-xl font-black text-xs transition-all active:scale-95 shadow-lg shadow-amber-500/20"
-              >
-                Ya (Perlu Refund 💸)
-              </button>
-            </div>
-
+      {/* 17.11 PAGINATION FOOTER */}
+      {totalPages > 1 && (
+        <div className="p-3.5 sm:p-4 bg-zinc-950/90 border-t border-zinc-800/80 flex items-center justify-between text-xs">
+          <span className="text-zinc-400 font-medium">
+            Halaman <strong className="text-white">{currentPage}</strong> dari <strong className="text-white">{totalPages}</strong>
+          </span>
+          <div className="flex space-x-2">
             <button
-              onClick={() => setCancelModalItem(null)}
-              className="w-full text-center text-xs text-zinc-500 hover:text-zinc-300 font-bold transition-colors pt-1"
+              disabled={currentPage === 1}
+              onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
+              className="px-3 py-1.5 bg-zinc-900 border border-zinc-800 rounded-xl disabled:opacity-40 font-bold hover:bg-zinc-800 transition text-zinc-200"
             >
-              Kembali / Batal
+              Sebelumnya
+            </button>
+            <button
+              disabled={currentPage === totalPages}
+              onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
+              className="px-3 py-1.5 bg-zinc-900 border border-zinc-800 rounded-xl disabled:opacity-40 font-bold hover:bg-zinc-800 transition text-zinc-200"
+            >
+              Selanjutnya
             </button>
           </div>
         </div>
       )}
+    </>
+  )}
+</div>
 
-    </div>
+</div>
+
+{/* REQUEST 3: MODAL REFUND HANYA BERLAKU UNTUK PAKET PROFESIONAL */}
+{cancelModalItem && (
+          <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className={`max-w-md w-full border rounded-3xl p-6 space-y-5 shadow-2xl animate-in fade-in zoom-in duration-200 ${themeStyles.cardBg}`}>
+              <div className="text-center space-y-2">
+                <span className="text-4xl">⚠️</span>
+                <h3 className="text-lg font-black text-white">Konfirmasi Pembatalan Reservasi</h3>
+                <p className="text-xs text-zinc-400">
+                  Pesanan atas nama <strong className="text-white">{cancelModalItem.customer_name}</strong> akan dibatalkan.
+                </p>
+              </div>
+
+              <div className="bg-zinc-950/80 border border-zinc-800/80 p-4 rounded-2xl space-y-2 text-xs">
+                <div className="flex justify-between text-zinc-400">
+                  <span>Layanan:</span>
+                  <span className="font-bold text-zinc-200">{cancelModalItem.service_name}</span>
+                </div>
+                <div className="flex justify-between text-zinc-400">
+                  <span>Tanggal & Jam:</span>
+                  <span className="font-bold text-zinc-200">{formatDateID(cancelModalItem.booking_date)} - {cancelModalItem.booking_time} WIB</span>
+                </div>
+                <div className="flex justify-between text-zinc-400">
+                  <span>Total Bayar:</span>
+                  <span className="font-bold text-emerald-400">Rp {getServicePrice(cancelModalItem.service_name).toLocaleString('id-ID')}</span>
+                </div>
+              </div>
+
+              <p className="text-[11px] font-bold text-amber-300 text-center">Apakah pelanggan ini membutuhkan pengembalian dana (refund)?</p>
+
+              <div className="grid grid-cols-2 gap-3 pt-2">
+                <button
+                  onClick={() => handleConfirmCancel(true)}
+                  className="bg-amber-500 hover:bg-amber-400 text-zinc-950 font-black py-3 rounded-2xl text-xs transition-all shadow-lg active:scale-95"
+                >
+                  Ya, Perlu Refund 💳
+                </button>
+                <button
+                  onClick={() => handleConfirmCancel(false)}
+                  className="bg-rose-600 hover:bg-rose-500 text-white font-black py-3 rounded-2xl text-xs transition-all shadow-lg active:scale-95"
+                >
+                  Tidak Perlu Refund ❌
+                </button>
+              </div>
+
+              <button
+                onClick={() => setCancelModalItem(null)}
+                className="w-full text-zinc-400 hover:text-white font-bold text-xs py-2 transition-colors text-center"
+              >
+                Batal
+              </button>
+            </div>
+          </div>
+        )}
+
+      </div>
   )
 }
