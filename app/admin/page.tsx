@@ -1,3 +1,6 @@
+// ============================================================================
+// 1. IMPORTS & INITIALIZATION
+// ============================================================================
 'use client'
 
 export const dynamic = 'force-dynamic'
@@ -5,6 +8,9 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useState, useMemo, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 
+// ============================================================================
+// 2. TYPES & INTERFACES
+// ============================================================================
 interface Reservation {
   id: number
   created_at: string
@@ -36,6 +42,9 @@ type SubscriptionPlanType = 'BASIC' | 'PREMIUM' | 'PROFESIONAL'
 type BusinessType = 'eyelash' | 'barber'
 type ThemeMode = 'purple' | 'pink' | 'amber' | 'emerald' | 'blue'
 
+// ============================================================================
+// 3. HELPER FUNCTIONS & CONSTANTS
+// ============================================================================
 const detectBrandFromHostname = (): { brand: string; type: BusinessType } => {
   if (typeof window !== 'undefined') {
     const host = window.location.hostname.toLowerCase()
@@ -50,6 +59,23 @@ const detectBrandFromHostname = (): { brand: string; type: BusinessType } => {
   return { brand: 'DASHBOARD ADMIN', type: 'barber' }
 }
 
+const SERVICE_PRICES: Record<string, number> = {
+  'Potong Rambut': 50000,
+  'Coloring': 120000,
+  'Creambath': 75000,
+  'Shaving': 35000,
+  'Natural Eyelash': 120000,
+  'Single Lash Extension': 135000,
+  'Russian Volume': 180000,
+  'Cat Eye Style': 160000,
+  'Lash Lift & Tint': 100000,
+  'Retouch Eyelash': 75000,
+  'Remove Eyelash': 40000,
+}
+
+// ============================================================================
+// 4. MAIN DASHBOARD COMPONENT & STATES
+// ============================================================================
 export default function AdminDashboard() {
   const [isInitializing, setIsInitializing] = useState<boolean>(true)
 
@@ -110,6 +136,9 @@ export default function AdminDashboard() {
   const [reportStartDate, setReportStartDate] = useState('')
   const [reportEndDate, setReportEndDate] = useState('')
 
+  // ============================================================================
+  // 5. AUXILIARY UTILITY FUNCTIONS
+  // ============================================================================
   const sanitizeClientCode = (code?: string) => {
     if (!code) return ''
     return code.replace(/[^a-zA-Z0-9]/g, '').toLowerCase()
@@ -123,6 +152,50 @@ export default function AdminDashboard() {
     return 'barber'
   }
 
+  const getServicePrice = (serviceName?: string): number => {
+    if (!serviceName) return businessType === 'eyelash' ? 120000 : 50000
+    if (serviceName.includes(',')) {
+      const parts = serviceName.split(',').map((s) => s.trim())
+      return parts.reduce((acc, curr) => acc + (SERVICE_PRICES[curr] || (businessType === 'eyelash' ? 120000 : 50000)), 0)
+    }
+    return SERVICE_PRICES[serviceName] ?? (businessType === 'eyelash' ? 120000 : 50000)
+  }
+
+  const formatDateID = (dateStr: string) => {
+    if (!dateStr) return ''
+    const [y, m, d] = dateStr.split('-')
+    return `${d}/${m}/${y}`
+  }
+
+  const isCompleted = (status?: string) => {
+    const s = (status || '').toString().trim().toLowerCase()
+    return s === 'completed' || s === 'selesai'
+  }
+
+  const getWeekRangeFromStart = (startDateString: string) => {
+    if (!startDateString) return { startStr: '', endStr: '' }
+    const [year, month, day] = startDateString.split('-').map(Number)
+    const startDateObj = new Date(year, month - 1, day)
+
+    const endDateObj = new Date(startDateObj)
+    endDateObj.setDate(startDateObj.getDate() + 6)
+
+    const formatYMD = (d: Date) => {
+      const y = d.getFullYear()
+      const m = String(d.getMonth() + 1).padStart(2, '0')
+      const date = String(d.getDate()).padStart(2, '0')
+      return `${y}-${m}-${date}`
+    }
+
+    return {
+      startStr: formatYMD(startDateObj),
+      endStr: formatYMD(endDateObj),
+    }
+  }
+
+  // ============================================================================
+  // 6. API FETCHERS & TOGGLE HANDLERS
+  // ============================================================================
   const fetchTenantDetail = useCallback(async (cleanCode: string, detectedBrandHint: string = '') => {
     try {
       let tenantData = null
@@ -264,6 +337,9 @@ export default function AdminDashboard() {
       }
   }
 
+  // ============================================================================
+  // 7. AUTHENTICATION HANDLERS
+  // ============================================================================
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
@@ -296,6 +372,9 @@ export default function AdminDashboard() {
     setIsAuthenticated(false)
   }
 
+  // ============================================================================
+  // 8. BLOCKED SLOTS MANAGEMENT
+  // ============================================================================
   const fetchBlockedSlots = useCallback(async () => {
     if (!tenantCode) return
     const { data, error } = await supabase
@@ -365,6 +444,9 @@ export default function AdminDashboard() {
     }
   }
 
+  // ============================================================================
+  // 9. RESERVATION DATA OPERATIONS
+  // ============================================================================
   const fetchReservations = useCallback(async () => {
     setLoading(true)
     const { data: { user } } = await supabase.auth.getUser()
@@ -490,61 +572,9 @@ export default function AdminDashboard() {
     }
   }
 
-  const SERVICE_PRICES: Record<string, number> = {
-    'Potong Rambut': 50000,
-    'Coloring': 120000,
-    'Creambath': 75000,
-    'Shaving': 35000,
-    'Natural Eyelash': 120000,
-    'Single Lash Extension': 135000,
-    'Russian Volume': 180000,
-    'Cat Eye Style': 160000,
-    'Lash Lift & Tint': 100000,
-    'Retouch Eyelash': 75000,
-    'Remove Eyelash': 40000,
-  }
-
-  const getServicePrice = (serviceName?: string): number => {
-    if (!serviceName) return businessType === 'eyelash' ? 120000 : 50000
-    if (serviceName.includes(',')) {
-      const parts = serviceName.split(',').map((s) => s.trim())
-      return parts.reduce((acc, curr) => acc + (SERVICE_PRICES[curr] || (businessType === 'eyelash' ? 120000 : 50000)), 0)
-    }
-    return SERVICE_PRICES[serviceName] ?? (businessType === 'eyelash' ? 120000 : 50000)
-  }
-
-  const formatDateID = (dateStr: string) => {
-    if (!dateStr) return ''
-    const [y, m, d] = dateStr.split('-')
-    return `${d}/${m}/${y}`
-  }
-
-  const isCompleted = (status?: string) => {
-    const s = (status || '').toString().trim().toLowerCase()
-    return s === 'completed' || s === 'selesai'
-  }
-
-  const getWeekRangeFromStart = (startDateString: string) => {
-    if (!startDateString) return { startStr: '', endStr: '' }
-    const [year, month, day] = startDateString.split('-').map(Number)
-    const startDateObj = new Date(year, month - 1, day)
-
-    const endDateObj = new Date(startDateObj)
-    endDateObj.setDate(startDateObj.getDate() + 6)
-
-    const formatYMD = (d: Date) => {
-      const y = d.getFullYear()
-      const m = String(d.getMonth() + 1).padStart(2, '0')
-      const date = String(d.getDate()).padStart(2, '0')
-      return `${y}-${m}-${date}`
-    }
-
-    return {
-      startStr: formatYMD(startDateObj),
-      endStr: formatYMD(endDateObj),
-    }
-  }
-
+  // ============================================================================
+  // 10. STATS & REPORT CALCULATIONS
+  // ============================================================================
   const stats = useMemo(() => {
     const totalBookings = reservations.length
 
@@ -661,6 +691,9 @@ export default function AdminDashboard() {
     }
   }, [reservations, reportPeriod, reportDate, reportStartDate, reportEndDate, businessType])
 
+  // ============================================================================
+  // 11. EXPORT & PRINT HANDLERS
+  // ============================================================================
   const exportReportToCSV = () => {
     if (subscriptionPlan === 'BASIC') {
       alert('Fitur Penarikan Laporan Excel hanya tersedia untuk Paket Premium & Profesional.')
@@ -909,6 +942,9 @@ export default function AdminDashboard() {
     printWindow.document.close()
   }
 
+  // ============================================================================
+  // 12. FILTERING, SORTING & PAGINATION LOGIC
+  // ============================================================================
   const uniqueServices = useMemo(() => {
     const list = new Set(reservations.map((r) => r.service_name).filter(Boolean))
     return Array.from(list)
@@ -1007,6 +1043,9 @@ export default function AdminDashboard() {
     }
   }
 
+  // ============================================================================
+  // 13. LIFECYCLE EFFECTS
+  // ============================================================================
   useEffect(() => {
     const initSession = async () => {
       setIsInitializing(true)
@@ -1047,6 +1086,9 @@ export default function AdminDashboard() {
     }
   }, [reservations, isAuthenticated, syncConfirmedSlotsToBlocked])
 
+  // ============================================================================
+  // 14. DYNAMIC THEME SYSTEM COMPUTATION
+  // ============================================================================
   const themeStyles = useMemo(() => {
     if (subscriptionPlan === 'BASIC') {
       return {
@@ -1171,6 +1213,9 @@ export default function AdminDashboard() {
     }
   }, [selectedTheme, subscriptionPlan])
 
+  // ============================================================================
+  // 15. INITIAL LOADING UI STATE
+  // ============================================================================
   if (isInitializing) {
     return (
       <main className="min-h-screen bg-[#06040A] flex items-center justify-center font-sans text-zinc-400">
@@ -1182,6 +1227,9 @@ export default function AdminDashboard() {
     )
   }
 
+  // ============================================================================
+  // 16. LOGIN FORM UI STATE (UNAUTHENTICATED)
+  // ============================================================================
   if (!isAuthenticated) {
     const isEyelash = businessType === 'eyelash'
 
@@ -1261,6 +1309,9 @@ export default function AdminDashboard() {
   const isEyelash = businessType === 'eyelash'
   const isProfesional = subscriptionPlan === 'PROFESIONAL'
 
+  // ============================================================================
+  // 17. MAIN DASHBOARD UI (AUTHENTICATED)
+  // ============================================================================
   return (
     <div className={`min-h-screen p-3 sm:p-6 md:p-8 text-zinc-100 font-sans relative transition-colors duration-700 ${themeStyles.mainBg}`}>
       {isProfesional && (
@@ -1272,6 +1323,7 @@ export default function AdminDashboard() {
 
       <div className="w-full max-w-[1400px] mx-auto space-y-4 sm:space-y-6 relative z-10">
 
+        {/* 17.1 HEADER SECTION */}
         <div className={`flex flex-col md:flex-row justify-between items-start md:items-center p-4 sm:p-6 md:p-7 rounded-2xl sm:rounded-3xl transition-all duration-300 gap-4 ${themeStyles.headerGradient}`}>
           <div>
             <div className="flex items-center space-x-3 flex-wrap gap-y-2">
@@ -1354,7 +1406,7 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* KARTU PENGATURAN FITUR BOOKING */}
+        {/* 17.2 FEATURE TOGGLES SECTION */}
         <div className={`p-4 sm:p-6 rounded-2xl sm:rounded-3xl border transition-all space-y-4 shadow-xl ${themeStyles.cardBg}`}>
           <div className="border-b border-zinc-800/80 pb-3">
             <h3 className={`text-sm sm:text-base font-black flex items-center gap-2 ${themeStyles.textAccent}`}>
@@ -1414,6 +1466,7 @@ export default function AdminDashboard() {
           </div>
         </div>
 
+        {/* 17.3 WA REMINDER SETTING SECTION */}
         {isProfesional && (
           <div className={`p-4 rounded-2xl border transition-all flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xl ${themeStyles.cardBg}`}>
             <div className="flex items-center gap-3">
@@ -1439,6 +1492,7 @@ export default function AdminDashboard() {
           </div>
         )}
 
+        {/* 17.4 STATS CARDS SECTION */}
         <div className={`grid grid-cols-2 sm:grid-cols-3 ${
           subscriptionPlan === 'BASIC' ? 'lg:grid-cols-4' : 'lg:grid-cols-5'
         } gap-3 sm:gap-4`}>
@@ -1505,6 +1559,7 @@ export default function AdminDashboard() {
 
         </div>
 
+        {/* 17.5 TOP STAFF PERFORMANCE SECTION */}
         {isProfesional && (
           <div className={`border p-4 sm:p-5 rounded-2xl sm:rounded-3xl transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 relative overflow-hidden ${themeStyles.cardBg}`}>
             <div className="flex items-center space-x-3 sm:space-x-4">
@@ -1529,6 +1584,7 @@ export default function AdminDashboard() {
           </div>
         )}
 
+        {/* 17.6 BASIC PLAN UPGRADE BANNER */}
         {subscriptionPlan === 'BASIC' && (
           <div className={`p-4 sm:p-6 rounded-2xl sm:rounded-3xl border shadow-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4 bg-zinc-950/80 ${themeStyles.borderAccent}`}>
             <div className="space-y-1">
@@ -1542,7 +1598,7 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* KOMPONEN UI BLOCK SLOT */}
+        {/* 17.7 BLOCK SLOT MANAGEMENT SECTION */}
         <div className={`p-4 sm:p-6 rounded-2xl sm:rounded-3xl shadow-2xl border transition-all space-y-4 ${themeStyles.cardBg}`}>
           <div className="flex items-center justify-between border-b border-zinc-800/80 pb-3">
             <div>
@@ -1639,6 +1695,7 @@ export default function AdminDashboard() {
           )}
         </div>
 
+        {/* 17.8 FINANCIAL REPORT SECTION */}
         {subscriptionPlan !== 'BASIC' && (
           <div className={`p-4 sm:p-6 md:p-7 rounded-2xl sm:rounded-3xl shadow-2xl space-y-4 sm:space-y-5 border transition-all ${themeStyles.cardBg}`}>
             <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-zinc-800/80 pb-4 gap-2">
@@ -1785,6 +1842,7 @@ export default function AdminDashboard() {
           </div>
         )}
 
+        {/* 17.9 FILTER & SEARCH BAR SECTION */}
         <div className={`border p-4 sm:p-5 rounded-2xl sm:rounded-3xl shadow-xl transition-all ${themeStyles.cardBg}`}>
           <div className={`grid grid-cols-1 sm:grid-cols-2 ${
             subscriptionPlan === 'BASIC' ? 'md:grid-cols-3 lg:grid-cols-3' : 'md:grid-cols-3 lg:grid-cols-7'
@@ -1928,6 +1986,7 @@ export default function AdminDashboard() {
           </div>
         </div>
 
+        {/* 17.10 RESERVATIONS DATA TABLE */}
         <div className={`border rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden transition-all ${themeStyles.cardBg}`}>
           {loading ? (
             <div className="p-12 text-center text-zinc-400 text-xs font-semibold">Memuat data reservasi...</div>
@@ -2021,31 +2080,23 @@ export default function AdminDashboard() {
                             {item.customer_name}
                           </td>
                           <td className="py-3 px-3">
-                            <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold inline-block whitespace-nowrap border ${themeStyles.badgeBg}`}>
+                            <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border whitespace-nowrap ${themeStyles.badgeBg}`}>
                               {item.service_name}
                             </span>
                           </td>
 
                           {(subscriptionPlan === 'PREMIUM' || isProfesional) && (
-                            <td className="py-3 px-3 font-bold text-zinc-200">
-                              {item.staff_name ? (
-                                <span className="px-2.5 py-1 rounded-lg text-[10px] font-bold inline-block bg-zinc-800 border border-zinc-700">
-                                  👤 {item.staff_name}
-                                </span>
-                              ) : (
-                                <span className="text-zinc-500 italic text-[10px]">Belum Dipilih</span>
-                              )}
+                            <td className="py-3 px-3 whitespace-nowrap">
+                              <span className="font-bold text-zinc-300">{item.staff_name || '-'}</span>
                             </td>
                           )}
 
-                          <td className="py-3 px-3 font-black text-emerald-400 whitespace-nowrap">
+                          <td className="py-3 px-3 font-bold text-emerald-400 whitespace-nowrap">
                             Rp {getServicePrice(item.service_name).toLocaleString('id-ID')}
                           </td>
 
-                          <td className="py-3 px-3 font-semibold text-zinc-300 whitespace-nowrap">
-                            <span className="px-2 py-0.5 rounded bg-zinc-800 border border-zinc-700 text-[10px]">
-                              💳 {item.payment_method || 'QRIS'}
-                            </span>
+                          <td className="py-3 px-3 whitespace-nowrap font-semibold text-zinc-400">
+                            {item.payment_method || 'QRIS'}
                           </td>
 
                           <td className="py-3 px-3 whitespace-nowrap">
@@ -2054,12 +2105,12 @@ export default function AdminDashboard() {
                                 href={`https://wa.me/${cleanPhone}`}
                                 target="_blank"
                                 rel="noreferrer"
-                                className="text-emerald-400 hover:text-emerald-300 font-mono font-bold flex items-center gap-1 hover:underline"
+                                className="text-emerald-400 hover:text-emerald-300 font-bold underline flex items-center gap-1"
                               >
-                                <span>💬</span> {item.whatsapp_number}
+                                <span>📱</span> {item.whatsapp_number}
                               </a>
                             ) : (
-                              <span className="text-zinc-600">-</span>
+                              '-'
                             )}
                           </td>
 
@@ -2067,21 +2118,21 @@ export default function AdminDashboard() {
                             <select
                               value={currentStatus}
                               onChange={(e) => handleStatusChange(item, e.target.value)}
-                              className={`px-2.5 py-1 rounded-lg text-[10px] font-black border cursor-pointer focus:outline-none transition-all ${
-                                currentStatus === 'confirmed'
+                              className={`px-2.5 py-1 rounded-xl text-[10px] font-black border focus:outline-none cursor-pointer transition-all ${
+                                currentStatus === 'completed' || currentStatus === 'selesai'
                                   ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                                  : isCompleted(currentStatus)
-                                  ? 'bg-blue-500/20 text-blue-300 border-blue-500/40'
+                                  : currentStatus === 'confirmed' || currentStatus === 'dikonfirmasi'
+                                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
                                   : currentStatus === 'cancelled_need_refund'
-                                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 animate-pulse'
-                                  : currentStatus.startsWith('cancelled')
+                                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 animate-pulse'
+                                  : currentStatus.startsWith('cancelled') || currentStatus === 'batal'
                                   ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
                                   : 'bg-amber-500/20 text-amber-300 border-amber-500/40'
                               }`}
                             >
                               <option value="pending" className="bg-zinc-900 text-amber-300">🟡 Pending</option>
-                              <option value="confirmed" className="bg-zinc-900 text-emerald-300">🟢 Confirmed</option>
-                              <option value="completed" className="bg-zinc-900 text-blue-300">🔵 Completed</option>
+                              <option value="confirmed" className="bg-zinc-900 text-emerald-400">🟢 Confirmed</option>
+                              <option value="completed" className="bg-zinc-900 text-emerald-300">🔵 Completed</option>
                               <option value="cancelled" className="bg-zinc-900 text-rose-300">🔴 Cancelled</option>
                               <option value="cancelled_need_refund" className="bg-zinc-900 text-amber-300">⚠️ Need Refund</option>
                               <option value="cancelled_refunded" className="bg-zinc-900 text-zinc-400">✅ Refunded</option>
@@ -2089,36 +2140,35 @@ export default function AdminDashboard() {
                           </td>
 
                           <td className="py-3 px-3 pr-4 text-center whitespace-nowrap">
-                            <div className="flex items-center justify-center gap-1.5">
+                            <div className="flex items-center justify-center space-x-2">
+                              {currentStatus === 'cancelled_need_refund' && cleanPhone && (
+                                <a
+                                  href={`https://wa.me/${cleanPhone}?text=${refundWaMsg}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 px-2.5 py-1 rounded-lg font-extrabold text-[10px] transition-all flex items-center gap-1 shadow-sm"
+                                  title="Minta Rekening Pelanggan via WA"
+                                >
+                                  <span>💬 WA Refund</span>
+                                </a>
+                              )}
+
                               {currentStatus === 'cancelled_need_refund' && (
-                                <>
-                                  <a
-                                    href={`https://wa.me/${cleanPhone}?text=${refundWaMsg}`}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="bg-amber-500/20 hover:bg-amber-500/40 text-amber-300 border border-amber-500/40 px-2 py-1 rounded-lg font-bold text-[10px] transition-all flex items-center gap-1"
-                                    title="Minta Rekening Pelanggan via WA"
-                                  >
-                                    <span>💬 WA Refund</span>
-                                  </a>
-                                  <button
-                                    onClick={() => handleCompleteRefund(item.id)}
-                                    className="bg-emerald-500/20 hover:bg-emerald-500/40 text-emerald-300 border border-emerald-500/40 px-2 py-1 rounded-lg font-bold text-[10px] transition-all"
-                                    title="Tandai Refund Selesai"
-                                  >
-                                    Selesai Refund
-                                  </button>
-                                </>
+                                <button
+                                  onClick={() => handleCompleteRefund(item.id)}
+                                  className="bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 px-2.5 py-1 rounded-lg font-extrabold text-[10px] transition-all flex items-center gap-1 shadow-sm"
+                                  title="Tandai Sudah Ditransfer"
+                                >
+                                  <span>✅ Selesai Refund</span>
+                                </button>
                               )}
 
                               <button
                                 onClick={() => handleDelete(item.id, item.customer_name)}
-                                className="text-zinc-500 hover:text-rose-400 p-1.5 rounded-lg hover:bg-rose-500/10 transition-all"
+                                className="text-zinc-500 hover:text-rose-400 p-1 rounded-lg hover:bg-rose-500/10 transition-colors"
                                 title="Hapus Data Reservasi"
                               >
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                </svg>
+                                🗑️
                               </button>
                             </div>
                           </td>
@@ -2129,42 +2179,22 @@ export default function AdminDashboard() {
                 </table>
               </div>
 
-              {/* PAGINATION CONTROLS */}
+              {/* 17.11 TABLE PAGINATION CONTROLS */}
               {limit !== 'all' && totalPages > 1 && (
-                <div className="p-3 sm:p-4 border-t border-zinc-800/80 bg-zinc-950/60 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
-                  <span className="text-zinc-400 font-medium">
-                    Menampilkan <strong className="text-zinc-200">{(currentPage - 1) * limit + 1}</strong> - <strong className="text-zinc-200">{Math.min(currentPage * limit, filteredReservations.length)}</strong> dari <strong className="text-zinc-200">{filteredReservations.length}</strong> reservasi
-                  </span>
-
-                  <div className="flex items-center gap-1.5">
+                <div className="p-4 border-t border-zinc-800/80 bg-zinc-950/60 flex items-center justify-between text-xs font-bold text-zinc-400">
+                  <span>Halaman {currentPage} dari {totalPages}</span>
+                  <div className="flex items-center space-x-2">
                     <button
                       disabled={currentPage === 1}
                       onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
-                      className="px-3 py-1.5 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-300 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-zinc-800 transition-all font-bold"
+                      className="px-3 py-1.5 rounded-xl border border-zinc-800 bg-zinc-900 text-zinc-300 disabled:opacity-30 disabled:cursor-not-allowed hover:border-zinc-600 transition-all"
                     >
                       Sebelumnya
                     </button>
-
-                    <div className="flex items-center gap-1 px-2">
-                      {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
-                        <button
-                          key={pageNum}
-                          onClick={() => setCurrentPage(pageNum)}
-                          className={`w-7 h-7 rounded-lg text-xs font-bold transition-all ${
-                            currentPage === pageNum
-                              ? `${themeStyles.buttonPrimary}`
-                              : 'bg-zinc-900 text-zinc-400 hover:text-white hover:bg-zinc-800'
-                          }`}
-                        >
-                          {pageNum}
-                        </button>
-                      ))}
-                    </div>
-
                     <button
                       disabled={currentPage === totalPages}
                       onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
-                      className="px-3 py-1.5 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-300 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-zinc-800 transition-all font-bold"
+                      className="px-3 py-1.5 rounded-xl border border-zinc-800 bg-zinc-900 text-zinc-300 disabled:opacity-30 disabled:cursor-not-allowed hover:border-zinc-600 transition-all"
                     >
                       Selanjutnya
                     </button>
@@ -2175,45 +2205,61 @@ export default function AdminDashboard() {
           )}
         </div>
 
-      </div>
+        {/* 17.12 CANCELLATION MODAL */}
+        {cancelModalItem && (
+          <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className={`max-w-md w-full border rounded-3xl p-6 space-y-5 shadow-2xl animate-in fade-in zoom-in duration-200 ${themeStyles.cardBg}`}>
+              <div className="text-center space-y-2">
+                <span className="text-4xl">⚠️</span>
+                <h3 className="text-lg font-black text-white">Konfirmasi Pembatalan Reservasi</h3>
+                <p className="text-xs text-zinc-400">
+                  Pesanan atas nama <strong className="text-white">{cancelModalItem.customer_name}</strong> akan dibatalkan.
+                </p>
+              </div>
 
-      {/* MODAL CANCEL CONFIRMATION */}
-      {cancelModalItem && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 max-w-md w-full space-y-4 shadow-2xl">
-            <h3 className="text-base font-black text-white flex items-center gap-2">
-              <span className="text-rose-400">⚠️</span> Konfirmasi Pembatalan
-            </h3>
-            <p className="text-xs text-zinc-300 leading-relaxed">
-              Kamu akan membatalkan pesanan atas nama <strong className="text-white">{cancelModalItem.customer_name}</strong>.
-              Apakah pelanggan ini membutuhkan pengembalian dana (refund)?
-            </p>
+              <div className="bg-zinc-950/80 border border-zinc-800/80 p-4 rounded-2xl space-y-2 text-xs">
+                <div className="flex justify-between text-zinc-400">
+                  <span>Layanan:</span>
+                  <span className="font-bold text-zinc-200">{cancelModalItem.service_name}</span>
+                </div>
+                <div className="flex justify-between text-zinc-400">
+                  <span>Tanggal & Jam:</span>
+                  <span className="font-bold text-zinc-200">{formatDateID(cancelModalItem.booking_date)} - {cancelModalItem.booking_time} WIB</span>
+                </div>
+                <div className="flex justify-between text-zinc-400">
+                  <span>Total Bayar:</span>
+                  <span className="font-bold text-emerald-400">Rp {getServicePrice(cancelModalItem.service_name).toLocaleString('id-ID')}</span>
+                </div>
+              </div>
 
-            <div className="grid grid-cols-2 gap-3 pt-2">
+              <p className="text-[11px] font-bold text-amber-300 text-center">Apakah pelanggan ini membutuhkan pengembalian dana (refund)?</p>
+
+              <div className="grid grid-cols-2 gap-3 pt-2">
+                <button
+                  onClick={() => handleConfirmCancel(true)}
+                  className="bg-amber-500 hover:bg-amber-400 text-zinc-950 font-black py-3 rounded-2xl text-xs transition-all shadow-lg active:scale-95"
+                >
+                  Ya, Perlu Refund 💳
+                </button>
+                <button
+                  onClick={() => handleConfirmCancel(false)}
+                  className="bg-rose-600 hover:bg-rose-500 text-white font-black py-3 rounded-2xl text-xs transition-all shadow-lg active:scale-95"
+                >
+                  Tidak Perlu Refund ❌
+                </button>
+              </div>
+
               <button
-                onClick={() => handleConfirmCancel(true)}
-                className="bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 font-bold py-2.5 px-3 rounded-2xl text-xs transition-all"
+                onClick={() => setCancelModalItem(null)}
+                className="w-full text-zinc-400 hover:text-white font-bold text-xs py-2 transition-colors text-center"
               >
-                Ya, Perlu Refund ⚠️
-              </button>
-              <button
-                onClick={() => handleConfirmCancel(false)}
-                className="bg-rose-600 hover:bg-rose-500 text-white font-bold py-2.5 px-3 rounded-2xl text-xs transition-all shadow-md"
-              >
-                Tidak Perlu Refund 🚫
+                Batal
               </button>
             </div>
-
-            <button
-              onClick={() => setCancelModalItem(null)}
-              className="w-full text-center text-xs text-zinc-500 hover:text-zinc-300 font-bold pt-2 transition-colors"
-            >
-              Batal
-            </button>
           </div>
-        </div>
-      )}
+        )}
 
+      </div>
     </div>
   )
 }

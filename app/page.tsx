@@ -2,9 +2,15 @@
 
 export const dynamic = 'force-dynamic'
 
+// ============================================================================
+// 1. IMPORTS & DEPENDENCIES
+// ============================================================================
 import { useState, useEffect, Suspense } from 'react'
 import { supabase } from '@/lib/supabase'
 
+// ============================================================================
+// 2. TYPE DEFINITIONS & INTERFACES
+// ============================================================================
 interface ServiceItem {
   id: number
   tenant_slug: string
@@ -52,6 +58,9 @@ interface TimeSlot {
   bookedCount: number
 }
 
+// ============================================================================
+// 3. UTILITY / HELPER FUNCTIONS
+// ============================================================================
 const formatWaNumber = (phone: string) => {
   let cleaned = phone.replace(/\D/g, '')
   if (cleaned.startsWith('0')) {
@@ -60,7 +69,13 @@ const formatWaNumber = (phone: string) => {
   return cleaned
 }
 
+// ============================================================================
+// 4. MAIN BOOKING FORM COMPONENT
+// ============================================================================
 function BookingFormContent() {
+  // --------------------------------------------------------------------------
+  // 4.1 State Management (Steps & Tenant Configuration)
+  // --------------------------------------------------------------------------
   const [step, setStep] = useState(1)
 
   const [tenant, setTenant] = useState<TenantData>({
@@ -86,6 +101,9 @@ function BookingFormContent() {
     hideBookedSlots: false
   })
 
+  // --------------------------------------------------------------------------
+  // 4.2 State Management (Services, Staff, Modal & Payments)
+  // --------------------------------------------------------------------------
   const [services, setServices] = useState<ServiceItem[]>([])
   const [staffList, setStaffList] = useState<StaffItem[]>([])
   const [fetchingServices, setFetchingServices] = useState(true)
@@ -94,6 +112,9 @@ function BookingFormContent() {
   const [qrisData, setQrisData] = useState<{ qrUrl?: string; qrString?: string; snapToken?: string } | null>(null)
   const [loadingQris, setLoadingQris] = useState(false)
 
+  // --------------------------------------------------------------------------
+  // 4.3 State Management (Availability & Slots)
+  // --------------------------------------------------------------------------
   const [blockedSlots, setBlockedSlots] = useState<{ block_date: string; block_time: string }[]>([])
   const [blockedTimes, setBlockedTimes] = useState<string[]>([])
   const [bookedTimes, setBookedTimes] = useState<string[]>([])
@@ -112,6 +133,9 @@ function BookingFormContent() {
     { time: '20:00', maxQuota: 1, bookedCount: 0 }
   ])
 
+  // --------------------------------------------------------------------------
+  // 4.4 State Management (User Form Inputs)
+  // --------------------------------------------------------------------------
   const [formData, setFormData] = useState({
     customer_name: '',
     whatsapp_number: '',
@@ -129,10 +153,15 @@ function BookingFormContent() {
   })
   const [loading, setLoading] = useState(false)
 
+  // --------------------------------------------------------------------------
+  // 4.5 Derived Flags & Configurations
+  // --------------------------------------------------------------------------
   const isWizard = tenant.layoutType === 'STEP_WIZARD'
   const isBasic = tenant.subscriptionPlan === 'BASIC'
+  const isPremium = tenant.subscriptionPlan === 'PREMIUM'
   const isPro = tenant.subscriptionPlan === 'PROFESIONAL'
 
+  // Dynamic Theme Styling Generator
   const getThemeClasses = (color: string) => {
     switch (color) {
       case 'rose':
@@ -184,6 +213,9 @@ function BookingFormContent() {
 
   const theme = getThemeClasses(tenant.themeColor)
 
+  // --------------------------------------------------------------------------
+  // 4.6 Calculations (Pricing, DP & Payment Methods)
+  // --------------------------------------------------------------------------
   const parsePrice = (priceStr: string) => {
     const numeric = priceStr.replace(/[^0-9]/g, '')
     return numeric ? parseInt(numeric, 10) : 0
@@ -229,6 +261,9 @@ function BookingFormContent() {
         { id: 'Bayar di Tempat', label: 'Cash' },
       ]
 
+  // --------------------------------------------------------------------------
+  // 4.7 Effects: Load Tenant Data, Services, Staff & Initial Blocked Slots
+  // --------------------------------------------------------------------------
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const hostname = window.location.hostname
@@ -288,7 +323,7 @@ function BookingFormContent() {
 
           setTenant(activeTenant)
 
-          // 1. Fetch Services
+          // Fetch Services
           const { data: serviceData } = await supabase
             .from('Services')
             .select('*')
@@ -301,7 +336,7 @@ function BookingFormContent() {
             setServices([])
           }
 
-          // 2. Fetch Staff
+          // Fetch Staff
           if (activeTenant.subscriptionPlan !== 'BASIC') {
             const { data: staffData } = await supabase
               .from('Staff')
@@ -319,7 +354,7 @@ function BookingFormContent() {
             setStaffList([])
           }
 
-          // 3. Fetch Blocked Slots
+          // Fetch Blocked Slots
           const { data: blockedData, error: blockedErr } = await supabase
             .from('blocked_slots')
             .select('date, start_time')
@@ -359,6 +394,9 @@ function BookingFormContent() {
     }
   }, [])
 
+  // --------------------------------------------------------------------------
+  // 4.8 Effects: Dynamic Slot Availability Check
+  // --------------------------------------------------------------------------
   useEffect(() => {
     if (!formData.booking_date || !tenant?.tenantSlug) return
 
@@ -386,6 +424,9 @@ function BookingFormContent() {
     fetchAvailability()
   }, [formData.booking_date, tenant?.tenantSlug])
 
+  // --------------------------------------------------------------------------
+  // 4.9 Effects: Generate Dynamic QRIS Payment
+  // --------------------------------------------------------------------------
   const generateDynamicQris = async () => {
     setLoadingQris(true)
     try {
@@ -412,12 +453,15 @@ function BookingFormContent() {
     }
   }
 
-useEffect(() => {
-  if (formData.payment_method === 'QRIS' && payableAmount > 0) {
-    generateDynamicQris()
-  }
-}, [formData.payment_method, payableAmount, tenant?.qrisUrl])
+  useEffect(() => {
+    if (formData.payment_method === 'QRIS' && payableAmount > 0) {
+      generateDynamicQris()
+    }
+  }, [formData.payment_method, payableAmount, tenant?.qrisUrl])
 
+  // --------------------------------------------------------------------------
+  // 4.10 Form Handlers & Slot Logic
+  // --------------------------------------------------------------------------
   const handleServiceSelect = (serviceName: string) => {
     if (isBasic) {
       setFormData((prev) => ({ ...prev, selected_services: [serviceName] }))
@@ -471,6 +515,9 @@ useEffect(() => {
     return false
   }
 
+  // --------------------------------------------------------------------------
+  // 4.11 Sub-component: TimePicker
+  // --------------------------------------------------------------------------
   const TimePicker = ({
     availableSlots,
     selectedTime,
@@ -515,6 +562,7 @@ useEffect(() => {
     )
   }
 
+  // Step Wizard Controls
   const handleNextStep = () => {
     if (step === 1) {
       if (!formData.customer_name || !formData.whatsapp_number) {
@@ -547,6 +595,9 @@ useEffect(() => {
     setStep((prev) => Math.max(prev - 1, 1))
   }
 
+  // --------------------------------------------------------------------------
+  // 4.12 Submit Handler (Create Reservation & Trigger WhatsApp)
+  // --------------------------------------------------------------------------
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
@@ -689,11 +740,14 @@ useEffect(() => {
     }
   }
 
-      const renderQrisSection = () => {
-      // Hanya ambil dari API dinamis (qrisData) ATAU dari database Supabase (tenant.qrisUrl)
-      const qrisSrc = qrisData?.qrUrl || tenant?.qrisUrl
+  // --------------------------------------------------------------------------
+  // 4.13 Sub-component: QRIS Section
+  // --------------------------------------------------------------------------
+  const renderQrisSection = () => {
+    // Hanya ambil dari API dinamis (qrisData) ATAU dari database Supabase (tenant.qrisUrl)
+    const qrisSrc = qrisData?.qrUrl || tenant?.qrisUrl
 
-      return (
+    return (
       <div className="p-4 bg-zinc-950/80 border border-zinc-800/80 rounded-2xl text-center space-y-3 shadow-inner">
         <p className={`text-xs font-bold ${theme.accentText} tracking-wide`}>
           Scan QRIS Pembayaran (Rp {payableAmount.toLocaleString('id-ID')})
@@ -726,6 +780,9 @@ useEffect(() => {
     )
   }
 
+  // --------------------------------------------------------------------------
+  // 4.14 Loading View
+  // --------------------------------------------------------------------------
   if (fetchingServices) {
     return (
       <main className="min-h-screen bg-[#09090b] text-white flex items-center justify-center font-sans">
@@ -737,10 +794,14 @@ useEffect(() => {
     )
   }
 
+  // --------------------------------------------------------------------------
+  // 4.15 Main JSX Render Area
+  // --------------------------------------------------------------------------
   return (
     <main className="min-h-screen bg-[#09090b] bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(120,119,198,0.15),rgba(255,255,255,0))] text-zinc-100 flex items-center justify-center p-3 sm:p-6 font-sans">
       <div className="max-w-md w-full bg-zinc-900/90 border border-zinc-800/80 rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.7)] overflow-hidden backdrop-blur-xl">
         
+        {/* HEADER SECTION */}
         <div className="relative p-6 text-center bg-gradient-to-b from-zinc-800/40 via-zinc-900/60 to-zinc-900 border-b border-zinc-800/60">
           <div className={`inline-flex items-center justify-center w-12 h-12 rounded-2xl mb-3 border ${theme.iconBg} backdrop-blur-md shadow-lg transform transition-transform hover:scale-105 duration-300`}>
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -750,6 +811,7 @@ useEffect(() => {
           <h1 className="text-2xl font-black tracking-tight text-white uppercase drop-shadow-sm">{tenant.name}</h1>
           <p className={`text-[11px] font-bold uppercase tracking-[0.2em] mt-1 ${theme.accentText}`}>{tenant.category}</p>
 
+          {/* Step Indicator (If Step Wizard Layout) */}
           {isWizard && (
             <div className="flex items-center justify-center space-x-2 mt-5">
               {[1, 2, 3].map((s) => (
@@ -764,8 +826,10 @@ useEffect(() => {
           )}
         </div>
 
+        {/* FORM CONTENT */}
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
           
+          {/* LAYOUT A: BASIC SINGLE PAGE */}
           {!isWizard && (
             <div className="space-y-4">
               <div>
@@ -987,8 +1051,10 @@ useEffect(() => {
             </div>
           )}
 
+          {/* LAYOUT B: STEP WIZARD */}
           {isWizard && (
             <>
+              {/* STEP 1: USER DATA */}
               {step === 1 && (
                 <div className="space-y-4 animate-fadeIn">
                   <div className="flex items-center justify-between">
@@ -1131,6 +1197,7 @@ useEffect(() => {
                 </div>
               )}
 
+              {/* STEP 2: SERVICES & SCHEDULE */}
               {step === 2 && (
                 <div className="space-y-4 animate-fadeIn">
                   <h2 className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest">Langkah 2 dari 3: Layanan & Jadwal</h2>
@@ -1281,6 +1348,7 @@ useEffect(() => {
                 </div>
               )}
 
+              {/* STEP 3: PAYMENT SUMMARY & SELECTION */}
               {step === 3 && (
                 <div className="space-y-4 animate-fadeIn">
                   <h2 className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest">Langkah 3 dari 3: Pembayaran</h2>
@@ -1373,6 +1441,7 @@ useEffect(() => {
         </form>
       </div>
 
+      {/* SERVICE DETAIL MODAL (PRO PLAN) */}
       {selectedServiceDetail && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
           <div className="bg-zinc-900 border border-zinc-800 rounded-3xl max-w-sm w-full overflow-hidden shadow-2xl relative">
@@ -1442,6 +1511,9 @@ useEffect(() => {
   )
 }
 
+// ============================================================================
+// 5. ROOT COMPONENT WITH SUSPENSE BOUNDARY
+// ============================================================================
 export default function Home() {
   return (
     <Suspense fallback={<div className="min-h-screen bg-[#09090b] text-white flex items-center justify-center">Loading...</div>}>
