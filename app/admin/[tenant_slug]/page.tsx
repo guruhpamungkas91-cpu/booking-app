@@ -7,7 +7,6 @@ export const dynamic = 'force-dynamic'
 
 import { useEffect, useState, useMemo, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
-import { useParams, notFound } from 'next/navigation'
 
 // ============================================================================
 // 2. TYPES & INTERFACES
@@ -40,12 +39,26 @@ interface BlockedSlot {
 type SortField = 'booking_date' | 'booking_time' | 'customer_name' | 'service_name' | 'staff_name' | 'price' | 'payment_method' | 'status'
 type SortOrder = 'asc' | 'desc'
 type SubscriptionPlanType = 'BASIC' | 'PREMIUM' | 'PROFESIONAL'
-type BusinessType = 'barbershop' | 'eyelash' | 'Skincare & Aesthetic' | string
+type BusinessType = 'eyelash' | 'barber'
 type ThemeMode = 'purple' | 'pink' | 'amber' | 'emerald' | 'blue'
 
 // ============================================================================
 // 3. HELPER FUNCTIONS & CONSTANTS
 // ============================================================================
+const detectBrandFromHostname = (): { brand: string; type: BusinessType } => {
+  if (typeof window !== 'undefined') {
+    const host = window.location.hostname.toLowerCase()
+    if (host.includes('sem')) return { brand: 'SEM BARBERSHOP', type: 'barber' }
+    if (host.includes('fitrifeb') || host.includes('lashes') || host.includes('eyelash')) {
+      return { brand: 'FITRIFEB', type: 'eyelash' }
+    }
+    if (host.includes('mcut') || host.includes('barber')) {
+      return { brand: 'MCUT', type: 'barber' }
+    }
+  }
+  return { brand: 'DASHBOARD ADMIN', type: 'barber' }
+}
+
 const SERVICE_PRICES: Record<string, number> = {
   'Potong Rambut': 50000,
   'Coloring': 120000,
@@ -63,23 +76,22 @@ const SERVICE_PRICES: Record<string, number> = {
 // ============================================================================
 // 4. MAIN DASHBOARD COMPONENT & STATES
 // ============================================================================
-
 export default function AdminDashboard() {
-  const params = useParams() 
-  const tenantSlugFromUrl = (params?.slug || params?.tenant_slug || '') as string
-
   const [isInitializing, setIsInitializing] = useState<boolean>(true)
-  const [isInvalidDomain, setIsInvalidDomain] = useState<boolean>(false)
 
-  // Neutralize default state agar tidak ada data tenant lama yang bocor saat render awal
-  const [tenantCode, setTenantCode] = useState<string>('')
-  const [brandTitle, setBrandTitle] = useState<string>('')
-  const [businessType, setBusinessType] = useState<BusinessType>('barbershop')
-  const [staffLabel, setStaffLabel] = useState<string>('')
-  const [selectedTheme, setSelectedTheme] = useState<ThemeMode>('purple')
+  const [brandTitle, setBrandTitle] = useState<string>(() => detectBrandFromHostname().brand)
+  const [businessType, setBusinessType] = useState<BusinessType>(() => detectBrandFromHostname().type)
+  const [staffLabel, setStaffLabel] = useState<string>(() => 
+    detectBrandFromHostname().type === 'eyelash' ? 'Lash Artist' : 'Capster / Staff'
+  )
+
+  const [selectedTheme, setSelectedTheme] = useState<ThemeMode>(() => 
+    detectBrandFromHostname().type === 'eyelash' ? 'pink' : 'purple'
+  )
 
   const [isAuthenticated, setIsAuthenticated] = useState(false)
-  const [subscriptionPlan, setSubscriptionPlan] = useState<SubscriptionPlanType>('BASIC')
+  const [tenantCode, setTenantCode] = useState<string>('')
+  const [subscriptionPlan, setSubscriptionPlan] = useState<SubscriptionPlanType>('PROFESIONAL')
 
   const [emailInput, setEmailInput] = useState('')
   const [passwordInput, setPasswordInput] = useState('')
@@ -129,36 +141,25 @@ export default function AdminDashboard() {
   // ============================================================================
   const sanitizeClientCode = (code?: string) => {
     if (!code) return ''
-    return code.replace(/[^a-zA-Z0-9\-_]/g, '').toLowerCase()
+    return code.replace(/[^a-zA-Z0-9]/g, '').toLowerCase()
   }
 
   const determineCategory = (slugOrEmail: string): BusinessType => {
-  const text = slugOrEmail.toLowerCase()
-  
-  // Hanya tangkap kategori yang benar-benar spesifik
-  if (text.includes('lash') || text.includes('eyelash')) {
-    return 'eyelash'
+    const text = slugOrEmail.toLowerCase()
+    if (text.includes('fitri') || text.includes('lash') || text.includes('eyelash')) {
+      return 'eyelash'
+    }
+    return 'barber'
   }
-  if (text.includes('barber')) {
-    return 'barbershop'
-  }
-  if (text.includes('skincare') || text.includes('clinic-aesthetic') || text.includes('aesthetic')) {
-    return 'Skincare & Aesthetic'
-  }
-  
-  // Jika emailnya seperti admin@glowclinic.com atau dari URL /admin/glow, 
-  // jangan paksa masuk kategori bisnis, tapi arahkan dengan aman ke pusat kontrol utama.
-  return 'main_dashboard' as any // atau sesuaikan dengan tipe BusinessType jika main_dashboard sudah didaftarkan
-}
 
-  const getServicePrice = useCallback((serviceName?: string): number => {
+  const getServicePrice = (serviceName?: string): number => {
     if (!serviceName) return businessType === 'eyelash' ? 120000 : 50000
     if (serviceName.includes(',')) {
       const parts = serviceName.split(',').map((s) => s.trim())
       return parts.reduce((acc, curr) => acc + (SERVICE_PRICES[curr] || (businessType === 'eyelash' ? 120000 : 50000)), 0)
     }
     return SERVICE_PRICES[serviceName] ?? (businessType === 'eyelash' ? 120000 : 50000)
-  }, [businessType])
+  }
 
   const formatDateID = (dateStr: string) => {
     if (!dateStr) return ''
@@ -193,127 +194,70 @@ export default function AdminDashboard() {
   }
 
   // ============================================================================
-  // 6. API FETCHERS & HANDLERS (AUTOMATIC DOMAIN VALIDATION VIA DB)
+  // 6. API FETCHERS & TOGGLE HANDLERS
   // ============================================================================
-  const fetchTenantDetail = useCallback(async (slugToFind: string) => {
-    if (!slugToFind) return false
-
+  const fetchTenantDetail = useCallback(async (cleanCode: string, detectedBrandHint: string = '') => {
     try {
-      // 1. TAMBAHKAN 'category' DI DALAM .select()
-      const { data: tenantData, error } = await supabase
-        .from('Tenants')
-        .select('subscription_plan, staff_label, tenant_slug, category, auto_wa_reminder, prevent_double_booking, hide_booked_slots, domain_url')
-        .eq('tenant_slug', slugToFind)
-        .maybeSingle()
+      let tenantData = null
 
-      if (error || !tenantData) {
-        return false
+      if (cleanCode) {
+        const { data } = await supabase
+          .from('Tenants')
+          .select('subscription_plan, staff_label, tenant_slug, auto_wa_reminder, prevent_double_booking, hide_booked_slots')
+          .ilike('tenant_slug', `%${cleanCode}%`)
+          .maybeSingle()
+        tenantData = data
       }
 
-      // VALIDASI DOMAIN OTOMATIS DARI SUPABASE
-      if (typeof window !== 'undefined') {
-        const currentHost = window.location.hostname.toLowerCase().trim()
+      if (!tenantData && detectedBrandHint) {
+        const { data } = await supabase
+          .from('Tenants')
+          .select('subscription_plan, staff_label, tenant_slug, auto_wa_reminder, prevent_double_booking, hide_booked_slots')
+          .ilike('tenant_slug', `%${detectedBrandHint.toLowerCase()}%`)
+          .maybeSingle()
+        tenantData = data
+      }
 
-        if (currentHost !== 'localhost' && !currentHost.includes('127.0.0.1')) {
-          const dbDomain = (tenantData.domain_url || '').toLowerCase().trim()
+      if (tenantData) {
+        const rawPlan = String(tenantData.subscription_plan || '').trim().toUpperCase()
 
-          if (dbDomain && dbDomain !== currentHost) {
-            return false
-          }
+        if (rawPlan.includes('PROFESIONAL') || rawPlan.includes('PROFESSIONAL') || rawPlan.includes('PRO')) {
+          setSubscriptionPlan('PROFESIONAL')
+        } else if (rawPlan.includes('PREMIUM')) {
+          setSubscriptionPlan('PREMIUM')
+        } else {
+          setSubscriptionPlan('BASIC')
         }
-      }
 
-      const rawPlan = String(tenantData.subscription_plan || '').trim().toUpperCase()
+        const category = determineCategory(tenantData.tenant_slug || cleanCode || detectedBrandHint)
+        setBusinessType(category)
 
-      if (rawPlan.includes('PROFESIONAL') || rawPlan.includes('PROFESSIONAL') || rawPlan.includes('PRO')) {
-        setSubscriptionPlan('PROFESIONAL')
-      } else if (rawPlan.includes('PREMIUM')) {
-        setSubscriptionPlan('PREMIUM')
-      } else {
-        setSubscriptionPlan('BASIC')
-      }
+        if (tenantData.staff_label) {
+          setStaffLabel(tenantData.staff_label)
+        } else {
+          setStaffLabel(category === 'eyelash' ? 'Lash Artist' : 'Capster / Staff')
+        }
 
-      // 2. AMBIL KATEGORI ASLI DARI DATABASE, GUNAKAN FALLBACK KE SLUG JIKA KOSONG
-      const rawCategoryFromDb = tenantData.category || tenantData.tenant_slug
-      const category = determineCategory(rawCategoryFromDb)
-      setBusinessType(category)
+        if (tenantData.tenant_slug) {
+          setBrandTitle(tenantData.tenant_slug.toUpperCase())
+          setTenantCode(tenantData.tenant_slug)
+        }
 
-      if (tenantData.staff_label) {
-        setStaffLabel(tenantData.staff_label)
-      } else {
-        setStaffLabel(category === 'eyelash' ? 'Lash Artist' : 'Capster / Staff')
-      }
-
-      setBrandTitle(tenantData.tenant_slug.toUpperCase())
-      setTenantCode(tenantData.tenant_slug)
-
-      if (typeof tenantData.auto_wa_reminder === 'boolean') setAutoWaReminder(tenantData.auto_wa_reminder)
-      if (typeof tenantData.prevent_double_booking === 'boolean') setPreventDoubleBooking(tenantData.prevent_double_booking)
-      if (typeof tenantData.hide_booked_slots === 'boolean') setHideBookedSlots(tenantData.hide_booked_slots)
-
-      return true
+        if (typeof tenantData.auto_wa_reminder === 'boolean') {
+          setAutoWaReminder(tenantData.auto_wa_reminder)
+        }
+        if (typeof tenantData.prevent_double_booking === 'boolean') {
+          setPreventDoubleBooking(tenantData.prevent_double_booking)
+        }
+        if (typeof tenantData.hide_booked_slots === 'boolean') {
+          setHideBookedSlots(tenantData.hide_booked_slots)
+        }
+      }     
     } catch (err) {
       console.error('Error fetching tenant details:', err)
-      return false
     }
   }, [])
 
-  // ============================================================================
-  // 7. INITIALIZATION EFFECT
-  // ============================================================================
-  useEffect(() => {
-    const initTenantAndSession = async () => {
-      setIsInitializing(true)
-      setIsInvalidDomain(false)
-      
-      setReservations([])
-      setFilteredReservations([])
-      setBlockedSlots([])
-
-      let activeSlug = tenantSlugFromUrl
-      if (!activeSlug && typeof window !== 'undefined') {
-        const pathSegments = window.location.pathname.split('/')
-        const adminIndex = pathSegments.indexOf('admin')
-        if (adminIndex !== -1 && pathSegments[adminIndex + 1]) {
-          activeSlug = pathSegments[adminIndex + 1]
-        }
-      }
-
-      const cleanSlug = sanitizeClientCode(activeSlug)
-
-      if (cleanSlug) {
-        const isValid = await fetchTenantDetail(cleanSlug)
-        if (!isValid) {
-          setIsInvalidDomain(true)
-          setIsInitializing(false)
-          return
-        }
-      } else {
-        setBrandTitle('DASHBOARD ADMIN')
-      }
-
-      const { data } = await supabase.auth.getSession()
-      if (data?.session) {
-        setIsAuthenticated(true)
-        if (!cleanSlug) {
-          const rawCode = data.session.user.app_metadata?.client_code || data.session.user.app_metadata?.tenant_slug || data.session.user.email || ''
-          const userCode = sanitizeClientCode(rawCode)
-          setTenantCode(userCode)
-          await fetchTenantDetail(userCode)
-        }
-      } else {
-        setIsAuthenticated(false)
-      }
-
-      setIsInitializing(false)
-    }
-
-    initTenantAndSession()
-  }, [tenantSlugFromUrl, fetchTenantDetail])
-
-  // ============================================================================
-  // 8. TOGGLE HANDLERS
-  // ============================================================================
   const handleToggleWaReminder = async (newStatus: boolean) => {
     if (!tenantCode) {
       alert('Tenant code tidak ditemukan.')
@@ -392,7 +336,7 @@ export default function AdminDashboard() {
   }
 
   // ============================================================================
-  // 9. AUTHENTICATION HANDLERS
+  // 7. AUTHENTICATION HANDLERS
   // ============================================================================
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -413,19 +357,9 @@ export default function AdminDashboard() {
 
       const category = determineCategory(emailInput || cleanCode)
       setBusinessType(category)
+      setStaffLabel(category === 'eyelash' ? 'Lash Artist' : 'Capster / Staff')
+      if (category === 'eyelash') setSelectedTheme('pink')
 
-      // PERBAIKAN: Tangani label dan tema berdasarkan kategori, termasuk untuk main_dashboard
-      if (category === 'eyelash') {
-        setStaffLabel('Lash Artist')
-        setSelectedTheme('pink')
-      } else if (category === 'barbershop') {
-        setStaffLabel('Capster / Staff')
-        setSelectedTheme('purple')
-      } else {
-        // Pengaturan untuk Pusat Kontrol Utama / Admin Pusat (gunakan tema netral yang valid)
-        setStaffLabel('Staff / Admin')
-        setSelectedTheme('blue') // Ganti dengan salah satu tema valid yang tersedia di app lu
-      }
       await fetchTenantDetail(cleanCode)
     }
     setLoading(false)
@@ -437,7 +371,7 @@ export default function AdminDashboard() {
   }
 
   // ============================================================================
-  // 10. BLOCKED SLOTS MANAGEMENT
+  // 8. BLOCKED SLOTS MANAGEMENT
   // ============================================================================
   const fetchBlockedSlots = useCallback(async () => {
     if (!tenantCode) return
@@ -509,46 +443,45 @@ export default function AdminDashboard() {
   }
 
   // ============================================================================
-  // 11. RESERVATION DATA OPERATIONS
+  // 9. RESERVATION DATA OPERATIONS
   // ============================================================================
   const fetchReservations = useCallback(async () => {
-    setLoading(true);
+    setLoading(true)
+    const { data: { user } } = await supabase.auth.getUser()
 
-    const activeSlug = tenantSlugFromUrl || tenantCode
-    if (!activeSlug) {
+    if (!user) {
       setLoading(false)
       return
     }
 
-    const { data: tenantData, error: tenantError } = await supabase
+    const { data: tenantData } = await supabase
       .from('Tenants')
-      .select('id, client_code, tenant_slug, business_name')
-      .eq('tenant_slug', activeSlug)
-      .maybeSingle();
+      .select('client_code, tenant_slug')
+      .or(`admin_email.eq.${user.email},client_code.eq.${tenantCode},tenant_slug.eq.${tenantCode}`)
+      .maybeSingle()
 
-    if (tenantError || !tenantData) {
-      alert('Tenant tidak ditemukan!');
-      setLoading(false);
-      return;
+    const activeClientCode = tenantData?.client_code || user?.app_metadata?.client_code || tenantCode
+    const activeTenantSlug = tenantData?.tenant_slug || user?.app_metadata?.tenant_slug || tenantCode
+
+    if (activeClientCode || activeTenantSlug) {
+      await fetchTenantDetail(activeClientCode || activeTenantSlug)
     }
 
-    setTenantCode(tenantData.tenant_slug);
-    await fetchTenantDetail(tenantData.tenant_slug);
-
-    const { data, error } = await supabase
-      .from('Reservations')
-      .select('*')
-      .eq('tenant_id', tenantData.id)
-      .order('created_at', { ascending: false });
+    let query = supabase.from('Reservations').select('*')
+    if (activeClientCode || activeTenantSlug) {
+      query = query.or(`client_code.eq.${activeClientCode},tenant_slug.eq.${activeTenantSlug},client_code.ilike.%${activeClientCode}%`)
+    }
+    
+    const { data, error } = await query.order('created_at', { ascending: false })
 
     if (error) {
-      alert('Gagal mengambil data: ' + error.message);
+      alert('Gagal mengambil data: ' + error.message)
     } else {
-      setReservations(data || []);
-      setFilteredReservations(data || []);
+      setReservations(data || [])
+      setFilteredReservations(data || [])
     }
-    setLoading(false);
-  }, [tenantSlugFromUrl, tenantCode, fetchTenantDetail]);
+    setLoading(false)
+  }, [tenantCode, fetchTenantDetail])
 
   const syncConfirmedSlotsToBlocked = useCallback(async () => {
     if (!tenantCode) return
@@ -638,7 +571,7 @@ export default function AdminDashboard() {
   }
 
   // ============================================================================
-  // 12. STATS & REPORT CALCULATIONS
+  // 10. STATS & REPORT CALCULATIONS
   // ============================================================================
   const stats = useMemo(() => {
     const totalBookings = reservations.length
@@ -687,11 +620,6 @@ export default function AdminDashboard() {
       }
     })
 
-    const staffChartData = Object.entries(staffPerformance).map(([name, count]) => ({
-      name,
-      count
-    }))
-
     return {
       totalBookings,
       pendingCount,
@@ -704,9 +632,8 @@ export default function AdminDashboard() {
       totalRevenue,
       topStaffName,
       topStaffCount,
-      staffChartData,
     }
-  }, [reservations, getServicePrice])
+  }, [reservations, businessType])
 
   const reportData = useMemo(() => {
     let weekInfo = { startStr: '', endStr: '' }
@@ -760,10 +687,10 @@ export default function AdminDashboard() {
       count: financialItems.length,
       weekInfo: reportPeriod === 'weekly' ? getWeekRangeFromStart(reportDate) : null,
     }
-  }, [reservations, reportPeriod, reportDate, reportStartDate, reportEndDate, getServicePrice])
+  }, [reservations, reportPeriod, reportDate, reportStartDate, reportEndDate, businessType])
 
   // ============================================================================
-  // 13. EXPORT & PRINT HANDLERS
+  // 11. EXPORT & PRINT HANDLERS
   // ============================================================================
   const exportReportToCSV = () => {
     if (subscriptionPlan === 'BASIC') {
@@ -1014,7 +941,7 @@ export default function AdminDashboard() {
   }
 
   // ============================================================================
-  // 14. FILTERING, SORTING & PAGINATION LOGIC
+  // 12. FILTERING, SORTING & PAGINATION LOGIC
   // ============================================================================
   const uniqueServices = useMemo(() => {
     const list = new Set(reservations.map((r) => r.service_name).filter(Boolean))
@@ -1095,7 +1022,7 @@ export default function AdminDashboard() {
 
     setFilteredReservations(result)
     setCurrentPage(1)
-  }, [startDate, endDate, statusFilter, serviceFilter, paymentFilter, searchTerm, sortField, sortOrder, reservations, subscriptionPlan, getServicePrice])
+  }, [startDate, endDate, statusFilter, serviceFilter, paymentFilter, searchTerm, sortField, sortOrder, reservations, subscriptionPlan])
 
   const totalPages = useMemo(() => {
     if (limit === 'all' || subscriptionPlan === 'BASIC') return 1
@@ -1119,8 +1046,35 @@ export default function AdminDashboard() {
   }
 
   // ============================================================================
-  // 15. LIFECYCLE EFFECTS
+  // 13. LIFECYCLE EFFECTS
   // ============================================================================
+  useEffect(() => {
+    const initSession = async () => {
+      setIsInitializing(true)
+      const info = detectBrandFromHostname()
+      const { data } = await supabase.auth.getSession()
+      
+      if (data?.session) {
+        setIsAuthenticated(true)
+        const rawCode = data.session.user.app_metadata?.client_code || data.session.user.app_metadata?.tenant_slug || data.session.user.email || ''
+        const cleanCode = sanitizeClientCode(rawCode)
+        setTenantCode(cleanCode)
+
+        const category = determineCategory(data.session.user.email || cleanCode)
+        setBusinessType(category)
+        setStaffLabel(category === 'eyelash' ? 'Lash Artist' : 'Capster / Staff')
+        if (category === 'eyelash') setSelectedTheme('pink')
+
+        await fetchTenantDetail(cleanCode, info.brand)
+      } else {
+        await fetchTenantDetail('', info.brand)
+      }
+      setIsInitializing(false)
+    }
+
+    initSession()
+  }, [fetchTenantDetail])
+
   useEffect(() => {
     if (isAuthenticated) {
       fetchReservations()
@@ -1137,7 +1091,7 @@ export default function AdminDashboard() {
   }, [reservations, isAuthenticated, syncConfirmedSlotsToBlocked, subscriptionPlan])
 
   // ============================================================================
-  // 16. DYNAMIC THEME SYSTEM COMPUTATION
+  // 14. DYNAMIC THEME SYSTEM COMPUTATION
   // ============================================================================
   const themeStyles = useMemo(() => {
     if (subscriptionPlan === 'BASIC') {
@@ -1158,113 +1112,113 @@ export default function AdminDashboard() {
 
     const isPro = subscriptionPlan === 'PROFESIONAL'
 
-  switch (selectedTheme) {
-    case 'pink':
-      return {
-        mainBg: isPro ? 'bg-[#0f040b]' : 'bg-[#0b0510]',
-        bgGlow: isPro ? 'bg-pink-600/30' : 'hidden', // <-- Diubah jadi hidden
-        bgGlowSecondary: isPro ? 'bg-rose-500/20' : 'hidden',
-        cardBg: isPro 
-          ? 'bg-gradient-to-b from-pink-950/30 via-zinc-950/80 to-zinc-950/90 backdrop-blur-3xl border-pink-500/30 shadow-[0_8px_32px_0_rgba(236,72,153,0.15)] ring-1 ring-pink-500/20' 
-          : 'bg-zinc-950/70 border-pink-500/30',
-        textAccent: 'text-pink-400',
-        borderAccent: isPro ? 'border-pink-500/40 shadow-pink-950/50' : 'border-pink-500/30',
-        focusBorder: 'focus:border-pink-500 focus:ring-2 focus:ring-pink-500/20',
-        badgeBg: 'bg-pink-500/15 text-pink-300 border-pink-500/40 shadow-sm shadow-pink-500/20',
-        buttonPrimary: isPro 
-          ? 'bg-gradient-to-r from-pink-500 via-rose-500 to-pink-600 hover:from-pink-400 hover:to-rose-400 text-white font-black shadow-lg shadow-pink-500/30 hover:shadow-pink-500/50' 
-          : 'bg-pink-600 hover:bg-pink-500 text-white',
-        btnActivePeriod: 'bg-gradient-to-r from-pink-500 to-rose-600 text-white shadow-md shadow-pink-500/30',
-        headerGradient: isPro 
-          ? 'bg-gradient-to-r from-pink-950/90 via-zinc-950/90 to-rose-950/70 border-pink-500/50 shadow-2xl shadow-pink-950/50 ring-1 ring-pink-500/30' 
-          : 'bg-gradient-to-r from-pink-950/40 via-zinc-950/90 to-rose-950/20 border-pink-500/30',
-      }
-    case 'amber':
-      return {
-        mainBg: isPro ? 'bg-[#0d0a03]' : 'bg-[#090702]',
-        bgGlow: isPro ? 'bg-amber-500/25' : 'hidden', // <-- Diubah jadi hidden
-        bgGlowSecondary: isPro ? 'bg-yellow-600/15' : 'hidden',
-        cardBg: isPro 
-          ? 'bg-gradient-to-b from-amber-950/30 via-zinc-950/80 to-zinc-950/90 backdrop-blur-3xl border-amber-500/30 shadow-[0_8px_32px_0_rgba(245,158,11,0.15)] ring-1 ring-amber-500/20' 
-          : 'bg-zinc-950/70 border-amber-500/30',
-        textAccent: 'text-amber-400',
-        borderAccent: isPro ? 'border-amber-500/40 shadow-amber-950/50' : 'border-amber-500/30',
-        focusBorder: 'focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20',
-        badgeBg: 'bg-amber-500/15 text-amber-300 border-amber-500/40 shadow-sm shadow-amber-500/20',
-        buttonPrimary: isPro 
-          ? 'bg-gradient-to-r from-amber-400 via-amber-500 to-yellow-500 hover:from-amber-300 hover:to-yellow-400 text-zinc-950 font-black shadow-lg shadow-amber-500/30 hover:shadow-amber-500/50' 
-          : 'bg-amber-500 hover:bg-amber-400 text-zinc-950',
-        btnActivePeriod: 'bg-gradient-to-r from-amber-400 to-yellow-500 text-zinc-950 font-extrabold shadow-md shadow-amber-500/30',
-        headerGradient: isPro 
-          ? 'bg-gradient-to-r from-amber-950/90 via-zinc-950/90 to-yellow-950/70 border-amber-500/50 shadow-2xl shadow-amber-950/50 ring-1 ring-amber-500/30' 
-          : 'bg-gradient-to-r from-amber-950/40 via-zinc-950/90 to-amber-950/20 border-amber-500/30',
-      }
-    case 'emerald':
-      return {
-        mainBg: isPro ? 'bg-[#020d08]' : 'bg-[#020805]',
-        bgGlow: isPro ? 'bg-emerald-500/25' : 'hidden', // <-- Diubah jadi hidden
-        bgGlowSecondary: isPro ? 'bg-teal-600/15' : 'hidden',
-        cardBg: isPro 
-          ? 'bg-gradient-to-b from-emerald-950/30 via-zinc-950/80 to-zinc-950/90 backdrop-blur-3xl border-emerald-500/30 shadow-[0_8px_32px_0_rgba(16,185,129,0.15)] ring-1 ring-emerald-500/20' 
-          : 'bg-zinc-950/70 border-emerald-500/30',
-        textAccent: 'text-emerald-400',
-        borderAccent: isPro ? 'border-emerald-500/40 shadow-emerald-950/50' : 'border-emerald-500/30',
-        focusBorder: 'focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20',
-        badgeBg: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40 shadow-sm shadow-emerald-500/20',
-        buttonPrimary: isPro 
-          ? 'bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 hover:from-emerald-400 hover:to-teal-400 text-white font-black shadow-lg shadow-emerald-500/30 hover:shadow-emerald-500/50' 
-          : 'bg-emerald-600 hover:bg-emerald-500 text-white',
-        btnActivePeriod: 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-md shadow-emerald-500/30',
-        headerGradient: isPro 
-          ? 'bg-gradient-to-r from-emerald-950/90 via-zinc-950/90 to-teal-950/70 border-emerald-500/50 shadow-2xl shadow-emerald-950/50 ring-1 ring-emerald-500/30' 
-          : 'bg-gradient-to-r from-emerald-950/40 via-zinc-950/90 to-teal-950/20 border-emerald-500/30',
-      }
-    case 'blue':
-      return {
-        mainBg: isPro ? 'bg-[#030914]' : 'bg-[#02050b]',
-        bgGlow: isPro ? 'bg-blue-600/30' : 'hidden', // <-- Diubah jadi hidden
-        bgGlowSecondary: isPro ? 'bg-indigo-600/20' : 'hidden',
-        cardBg: isPro 
-          ? 'bg-gradient-to-b from-blue-950/30 via-zinc-950/80 to-zinc-950/90 backdrop-blur-3xl border-blue-500/30 shadow-[0_8px_32px_0_rgba(59,130,246,0.15)] ring-1 ring-blue-500/20' 
-          : 'bg-zinc-950/70 border-blue-500/30',
-        textAccent: 'text-blue-400',
-        borderAccent: isPro ? 'border-blue-500/40 shadow-blue-950/50' : 'border-blue-500/30',
-        focusBorder: 'focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20',
-        badgeBg: 'bg-blue-500/15 text-blue-300 border-blue-500/40 shadow-sm shadow-blue-500/20',
-        buttonPrimary: isPro 
-          ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-500 hover:to-indigo-500 text-white font-black shadow-lg shadow-blue-600/30 hover:shadow-blue-600/50' 
-          : 'bg-blue-600 hover:bg-blue-500 text-white',
-        btnActivePeriod: 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-600/30',
-        headerGradient: isPro 
-          ? 'bg-gradient-to-r from-blue-950/90 via-zinc-950/90 to-indigo-950/70 border-blue-500/50 shadow-2xl shadow-blue-950/50 ring-1 ring-blue-950/30' 
-          : 'bg-gradient-to-r from-blue-950/40 via-zinc-950/90 to-indigo-950/20 border-blue-500/30',
-      }
-    case 'purple':
-    default:
-      return {
-        mainBg: isPro ? 'bg-[#09040e]' : 'bg-[#06040a]',
-        bgGlow: isPro ? 'bg-purple-600/30' : 'hidden', // <-- Diubah jadi hidden
-        bgGlowSecondary: isPro ? 'bg-indigo-600/20' : 'hidden',
-        cardBg: isPro 
-          ? 'bg-gradient-to-b from-purple-950/30 via-zinc-950/80 to-zinc-950/90 backdrop-blur-3xl border-purple-500/30 shadow-[0_8px_32px_0_rgba(168,85,247,0.15)] ring-1 ring-purple-500/20' 
-          : 'bg-zinc-950/70 border-purple-500/30',
-        textAccent: 'text-purple-300',
-        borderAccent: isPro ? 'border-purple-500/40 shadow-purple-950/50' : 'border-purple-500/30',
-        focusBorder: 'focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20',
-        badgeBg: 'bg-purple-500/20 text-purple-200 border-purple-400/50 shadow-sm shadow-purple-500/20',
-        buttonPrimary: isPro 
-          ? 'bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-700 hover:from-purple-500 hover:to-indigo-500 text-white font-black shadow-lg shadow-purple-600/40 hover:shadow-purple-600/60' 
-          : 'bg-purple-600 hover:bg-purple-500 text-white',
-        btnActivePeriod: 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md shadow-purple-600/30',
-        headerGradient: isPro 
-          ? 'bg-gradient-to-r from-purple-950/90 via-zinc-950/90 to-indigo-950/70 border-purple-500/50 shadow-2xl shadow-purple-950/50 ring-1 ring-purple-500/30' 
-          : 'bg-gradient-to-r from-purple-950/40 via-zinc-950/90 to-indigo-950/20 border-purple-500/30',
-      }
-  }
-}, [selectedTheme, subscriptionPlan])
+    switch (selectedTheme) {
+      case 'pink':
+        return {
+          mainBg: isPro ? 'bg-[#0f040b]' : 'bg-[#0b0510]',
+          bgGlow: isPro ? 'bg-pink-600/30' : 'bg-pink-600/10',
+          bgGlowSecondary: isPro ? 'bg-rose-500/20' : 'hidden',
+          cardBg: isPro 
+            ? 'bg-gradient-to-b from-pink-950/30 via-zinc-950/80 to-zinc-950/90 backdrop-blur-3xl border-pink-500/30 shadow-[0_8px_32px_0_rgba(236,72,153,0.15)] ring-1 ring-pink-500/20' 
+            : 'bg-zinc-950/70 border-pink-500/30',
+          textAccent: 'text-pink-400',
+          borderAccent: isPro ? 'border-pink-500/40 shadow-pink-950/50' : 'border-pink-500/30',
+          focusBorder: 'focus:border-pink-500 focus:ring-2 focus:ring-pink-500/20',
+          badgeBg: 'bg-pink-500/15 text-pink-300 border-pink-500/40 shadow-sm shadow-pink-500/20',
+          buttonPrimary: isPro 
+            ? 'bg-gradient-to-r from-pink-500 via-rose-500 to-pink-600 hover:from-pink-400 hover:to-rose-400 text-white font-black shadow-lg shadow-pink-500/30 hover:shadow-pink-500/50' 
+            : 'bg-pink-600 hover:bg-pink-500 text-white',
+          btnActivePeriod: 'bg-gradient-to-r from-pink-500 to-rose-600 text-white shadow-md shadow-pink-500/30',
+          headerGradient: isPro 
+            ? 'bg-gradient-to-r from-pink-950/90 via-zinc-950/90 to-rose-950/70 border-pink-500/50 shadow-2xl shadow-pink-950/50 ring-1 ring-pink-500/30' 
+            : 'bg-gradient-to-r from-pink-950/40 via-zinc-950/90 to-rose-950/20 border-pink-500/30',
+        }
+      case 'amber':
+        return {
+          mainBg: isPro ? 'bg-[#0d0a03]' : 'bg-[#090702]',
+          bgGlow: isPro ? 'bg-amber-500/25' : 'bg-amber-600/10',
+          bgGlowSecondary: isPro ? 'bg-yellow-600/15' : 'hidden',
+          cardBg: isPro 
+            ? 'bg-gradient-to-b from-amber-950/30 via-zinc-950/80 to-zinc-950/90 backdrop-blur-3xl border-amber-500/30 shadow-[0_8px_32px_0_rgba(245,158,11,0.15)] ring-1 ring-amber-500/20' 
+            : 'bg-zinc-950/70 border-amber-500/30',
+          textAccent: 'text-amber-400',
+          borderAccent: isPro ? 'border-amber-500/40 shadow-amber-950/50' : 'border-amber-500/30',
+          focusBorder: 'focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20',
+          badgeBg: 'bg-amber-500/15 text-amber-300 border-amber-500/40 shadow-sm shadow-amber-500/20',
+          buttonPrimary: isPro 
+            ? 'bg-gradient-to-r from-amber-400 via-amber-500 to-yellow-500 hover:from-amber-300 hover:to-yellow-400 text-zinc-950 font-black shadow-lg shadow-amber-500/30 hover:shadow-amber-500/50' 
+            : 'bg-amber-500 hover:bg-amber-400 text-zinc-950',
+          btnActivePeriod: 'bg-gradient-to-r from-amber-400 to-yellow-500 text-zinc-950 font-extrabold shadow-md shadow-amber-500/30',
+          headerGradient: isPro 
+            ? 'bg-gradient-to-r from-amber-950/90 via-zinc-950/90 to-yellow-950/70 border-amber-500/50 shadow-2xl shadow-amber-950/50 ring-1 ring-amber-500/30' 
+            : 'bg-gradient-to-r from-amber-950/40 via-zinc-950/90 to-amber-950/20 border-amber-500/30',
+        }
+      case 'emerald':
+        return {
+          mainBg: isPro ? 'bg-[#020d08]' : 'bg-[#020805]',
+          bgGlow: isPro ? 'bg-emerald-500/25' : 'bg-emerald-600/10',
+          bgGlowSecondary: isPro ? 'bg-teal-600/15' : 'hidden',
+          cardBg: isPro 
+            ? 'bg-gradient-to-b from-emerald-950/30 via-zinc-950/80 to-zinc-950/90 backdrop-blur-3xl border-emerald-500/30 shadow-[0_8px_32px_0_rgba(16,185,129,0.15)] ring-1 ring-emerald-500/20' 
+            : 'bg-zinc-950/70 border-emerald-500/30',
+          textAccent: 'text-emerald-400',
+          borderAccent: isPro ? 'border-emerald-500/40 shadow-emerald-950/50' : 'border-emerald-500/30',
+          focusBorder: 'focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20',
+          badgeBg: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40 shadow-sm shadow-emerald-500/20',
+          buttonPrimary: isPro 
+            ? 'bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 hover:from-emerald-400 hover:to-teal-400 text-white font-black shadow-lg shadow-emerald-500/30 hover:shadow-emerald-500/50' 
+            : 'bg-emerald-600 hover:bg-emerald-500 text-white',
+          btnActivePeriod: 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-md shadow-emerald-500/30',
+          headerGradient: isPro 
+            ? 'bg-gradient-to-r from-emerald-950/90 via-zinc-950/90 to-teal-950/70 border-emerald-500/50 shadow-2xl shadow-emerald-950/50 ring-1 ring-emerald-500/30' 
+            : 'bg-gradient-to-r from-emerald-950/40 via-zinc-950/90 to-teal-950/20 border-emerald-500/30',
+        }
+      case 'blue':
+        return {
+          mainBg: isPro ? 'bg-[#030914]' : 'bg-[#02050b]',
+          bgGlow: isPro ? 'bg-blue-600/30' : 'bg-blue-600/10',
+          bgGlowSecondary: isPro ? 'bg-indigo-600/20' : 'hidden',
+          cardBg: isPro 
+            ? 'bg-gradient-to-b from-blue-950/30 via-zinc-950/80 to-zinc-950/90 backdrop-blur-3xl border-blue-500/30 shadow-[0_8px_32px_0_rgba(59,130,246,0.15)] ring-1 ring-blue-500/20' 
+            : 'bg-zinc-950/70 border-blue-500/30',
+          textAccent: 'text-blue-400',
+          borderAccent: isPro ? 'border-blue-500/40 shadow-blue-950/50' : 'border-blue-500/30',
+          focusBorder: 'focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20',
+          badgeBg: 'bg-blue-500/15 text-blue-300 border-blue-500/40 shadow-sm shadow-blue-500/20',
+          buttonPrimary: isPro 
+            ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-500 hover:to-indigo-500 text-white font-black shadow-lg shadow-blue-600/30 hover:shadow-blue-600/50' 
+            : 'bg-blue-600 hover:bg-blue-500 text-white',
+          btnActivePeriod: 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-600/30',
+          headerGradient: isPro 
+            ? 'bg-gradient-to-r from-blue-950/90 via-zinc-950/90 to-indigo-950/70 border-blue-500/50 shadow-2xl shadow-blue-950/50 ring-1 ring-blue-950/30' 
+            : 'bg-gradient-to-r from-blue-950/40 via-zinc-950/90 to-indigo-950/20 border-blue-500/30',
+        }
+      case 'purple':
+      default:
+        return {
+          mainBg: isPro ? 'bg-[#09040e]' : 'bg-[#06040a]',
+          bgGlow: isPro ? 'bg-purple-600/30' : 'bg-purple-600/10',
+          bgGlowSecondary: isPro ? 'bg-indigo-600/20' : 'hidden',
+          cardBg: isPro 
+            ? 'bg-gradient-to-b from-purple-950/30 via-zinc-950/80 to-zinc-950/90 backdrop-blur-3xl border-purple-500/30 shadow-[0_8px_32px_0_rgba(168,85,247,0.15)] ring-1 ring-purple-500/20' 
+            : 'bg-zinc-950/70 border-purple-500/30',
+          textAccent: 'text-purple-300',
+          borderAccent: isPro ? 'border-purple-500/40 shadow-purple-950/50' : 'border-purple-500/30',
+          focusBorder: 'focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20',
+          badgeBg: 'bg-purple-500/20 text-purple-200 border-purple-400/50 shadow-sm shadow-purple-500/20',
+          buttonPrimary: isPro 
+            ? 'bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-700 hover:from-purple-500 hover:to-indigo-500 text-white font-black shadow-lg shadow-purple-600/40 hover:shadow-purple-600/60' 
+            : 'bg-purple-600 hover:bg-purple-500 text-white',
+          btnActivePeriod: 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md shadow-purple-600/30',
+          headerGradient: isPro 
+            ? 'bg-gradient-to-r from-purple-950/90 via-zinc-950/90 to-indigo-950/70 border-purple-500/50 shadow-2xl shadow-purple-950/50 ring-1 ring-purple-500/30' 
+            : 'bg-gradient-to-r from-purple-950/40 via-zinc-950/90 to-indigo-950/20 border-purple-500/30',
+        }
+    }
+  }, [selectedTheme, subscriptionPlan])
 
   // ============================================================================
-  // 17. INITIAL LOADING UI STATE (PROTEKSI GATEWAY VISUAL)
+  // 15. INITIAL LOADING UI STATE
   // ============================================================================
   if (isInitializing) {
     return (
@@ -1277,130 +1231,90 @@ export default function AdminDashboard() {
     )
   }
 
-// ============================================================================
-// 18. LOGIN FORM UI STATE (UNAUTHENTICATED)
-// ============================================================================
-if (!isAuthenticated) {
-  // 1. Ambil slug dari URL dengan pembersihan yang lebih aman (mendukung subpath & query params)
-  const currentSlug = typeof window !== 'undefined' 
-    ? (window.location.pathname.split('/').filter(Boolean).pop() || window.location.hostname.split('.')[0])?.toLowerCase() 
-    : ''
+  // ============================================================================
+  // 16. LOGIN FORM UI STATE (UNAUTHENTICATED)
+  // ============================================================================
+  if (!isAuthenticated) {
+    const isEyelash = businessType === 'eyelash'
 
-  // 2. Kategori Aktif (Prioritas: Data Supabase -> Slug URL -> Fallback Empty String)
-  const activeCategory = (businessType || currentSlug || '').toLowerCase()
-
-  // 3. Tentukan Tema Visual (Ditambahkan keyword database: 'skincare', 'aesthetic')
-  const isPinkTheme = ['eyelash', 'beauty', 'clinic', 'glow', 'skincare', 'aesthetic', 'spa'].some(k => activeCategory.includes(k))
-
-  // 4. Format Nama Kategori secara Otomatis
-  const getCategoryLabel = (category: string) => {
-    if (!category) return 'Admin'
-    if (category.includes('clinic') || category.includes('glow') || category.includes('skincare') || category.includes('aesthetic')) return 'Clinic'
-    if (category.includes('eyelash') || category.includes('lash')) return 'Eyelash'
-    if (category.includes('barber')) return 'Barber'
-    if (category.includes('beauty') || category.includes('salon')) return 'Beauty'
-    if (category.includes('dental') || category.includes('gigi')) return 'Dental'
-    if (category.includes('pet') || category.includes('vet')) return 'Pet'
-    return category.charAt(0).toUpperCase() + category.slice(1)
-  }
-
-  const categoryLabel = getCategoryLabel(activeCategory)
-
-  // 5. Ikon Otomatis Berdasarkan Keyword / Default
-  const getCategoryIcon = (categoryType?: string | null) => {
-    const t = categoryType?.toLowerCase() || ''
-    if (t.includes('eyelash') || t.includes('lash')) return '✨'
-    if (t.includes('barber')) return '💈'
-    if (t.includes('clinic') || t.includes('glow') || t.includes('skincare') || t.includes('aesthetic')) return '🩺'
-    if (t.includes('beauty') || t.includes('salon') || t.includes('spa')) return '💄'
-    if (t.includes('dental') || t.includes('gigi')) return '🦷'
-    if (t.includes('pet') || t.includes('vet')) return '🐾'
-    return '⚡' // Fallback universal jika kategori belum terdaftar
-  }
-
-  const categoryIcon = getCategoryIcon(activeCategory)
-
-  return (
-    <main className={`min-h-screen flex items-center justify-center p-4 font-sans text-zinc-100 relative overflow-hidden transition-colors duration-500 ${
-      isPinkTheme ? 'bg-[#0b0510]' : 'bg-[#06040a]'
-    }`}>
-      <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-80 sm:w-96 h-80 sm:h-96 rounded-full blur-3xl pointer-events-none transition-all duration-500 ${
-        isPinkTheme ? 'bg-pink-500/15' : 'bg-purple-600/15'
-      }`}></div>
-
-      <div className={`max-w-md w-full backdrop-blur-2xl border rounded-3xl shadow-2xl p-6 sm:p-8 space-y-6 relative z-10 transition-all duration-300 ${
-        isPinkTheme 
-          ? 'bg-pink-950/20 border-pink-500/30 shadow-pink-950/30' 
-          : 'bg-zinc-900/60 border-purple-500/30 shadow-purple-950/40'
+    return (
+      <main className={`min-h-screen flex items-center justify-center p-4 font-sans text-zinc-100 relative overflow-hidden transition-colors duration-500 ${
+        isEyelash ? 'bg-[#0b0510]' : 'bg-[#06040a]'
       }`}>
-        <div className="text-center space-y-2">
-          {/* BADGE DINAMIS BERDASARKAN KATEGORI SUPABASE / SLUG */}
-          <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black border tracking-widest uppercase shadow-inner ${
-            isPinkTheme 
-              ? 'bg-gradient-to-r from-pink-500/20 to-rose-600/10 text-pink-300 border-pink-500/30' 
-              : 'bg-gradient-to-r from-purple-500/20 via-indigo-500/20 to-purple-600/10 text-purple-300 border-purple-500/30'
-          }`}>
-            <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${isPinkTheme ? 'bg-pink-400' : 'bg-purple-400'}`}></span>
-            {categoryIcon} {categoryLabel} Control Center
-          </span>
+        <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-80 sm:w-96 h-80 sm:h-96 rounded-full blur-3xl pointer-events-none transition-all duration-500 ${
+          isEyelash ? 'bg-pink-500/15' : 'bg-purple-600/15'
+        }`}></div>
 
-          {/* JUDUL BRAND DINAMIS */}
-          <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight uppercase bg-gradient-to-b from-white via-zinc-200 to-purple-200/60 bg-clip-text text-transparent mt-2">
-            {brandTitle || `${categoryLabel} Portal`}
-          </h1>
-          <p className="text-xs text-zinc-400 font-medium">Masuk untuk mengakses dasbor manajemen reservasi</p>
+        <div className={`max-w-md w-full backdrop-blur-2xl border rounded-3xl shadow-2xl p-6 sm:p-8 space-y-6 relative z-10 transition-all duration-300 ${
+          isEyelash 
+            ? 'bg-pink-950/20 border-pink-500/30 shadow-pink-950/30' 
+            : 'bg-zinc-900/60 border-purple-500/30 shadow-purple-950/40'
+        }`}>
+          <div className="text-center space-y-2">
+            <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black border tracking-widest uppercase shadow-inner ${
+              isEyelash 
+                ? 'bg-gradient-to-r from-pink-500/20 to-rose-600/10 text-pink-300 border-pink-500/30' 
+                : 'bg-gradient-to-r from-purple-500/20 via-indigo-500/20 to-purple-600/10 text-purple-300 border-purple-500/30'
+            }`}>
+              <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${isEyelash ? 'bg-pink-400' : 'bg-purple-400'}`}></span>
+              {isEyelash ? '✨ Eyelash Control Center' : '💈 Barber Control Center'}
+            </span>
+            <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight uppercase bg-gradient-to-b from-white via-zinc-200 to-purple-200/60 bg-clip-text text-transparent mt-2">
+              {brandTitle || (isEyelash ? 'Eyelash Salon' : 'Barbershop Portal')}
+            </h1>
+            <p className="text-xs text-zinc-400 font-medium">Masuk untuk mengakses dasbor manajemen reservasi</p>
+          </div>
+
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div>
+              <label className="block text-xs font-semibold text-zinc-300 mb-1.5">Email Admin</label>
+              <input
+                type="email"
+                required
+                placeholder="admin@bisnis.com"
+                className={`w-full px-4 py-3 bg-zinc-950/80 border rounded-2xl text-xs text-zinc-100 placeholder-zinc-600 focus:outline-none transition-all shadow-inner ${
+                  isEyelash ? 'border-pink-900/50 focus:border-pink-500 focus:ring-2 focus:ring-pink-500/20' : 'border-zinc-800 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20'
+                }`}
+                value={emailInput}
+                onChange={(e) => setEmailInput(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-zinc-300 mb-1.5">Password</label>
+              <input
+                type="password"
+                required
+                placeholder="••••••••"
+                className={`w-full px-4 py-3 bg-zinc-950/80 border rounded-2xl text-xs text-zinc-100 placeholder-zinc-600 focus:outline-none transition-all shadow-inner ${
+                  isEyelash ? 'border-pink-900/50 focus:border-pink-500 focus:ring-2 focus:ring-pink-500/20' : 'border-zinc-800 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20'
+                }`}
+                value={passwordInput}
+                onChange={(e) => setPasswordInput(e.target.value)}
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className={`w-full font-black py-3.5 rounded-2xl transition-all text-xs tracking-wide shadow-lg active:scale-[0.98] disabled:opacity-50 mt-2 ${
+                isEyelash 
+                  ? 'bg-gradient-to-r from-pink-500 to-rose-600 hover:from-pink-400 hover:to-rose-500 text-white shadow-pink-500/20' 
+                  : 'bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-700 hover:from-purple-500 hover:to-indigo-500 text-white shadow-purple-600/30'
+              }`}
+            >
+              {loading ? 'Memproses Authentikasi...' : 'MASUK DASHBOARD'}
+            </button>
+          </form>
         </div>
+      </main>
+    )
+  }
 
-        <form onSubmit={handleLogin} className="space-y-4">
-          <div>
-            <label className="block text-xs font-semibold text-zinc-300 mb-1.5">Email Admin</label>
-            <input
-              type="email"
-              required
-              placeholder="admin@bisnis.com"
-              className={`w-full px-4 py-3 bg-zinc-950/80 border rounded-2xl text-xs text-zinc-100 placeholder-zinc-600 focus:outline-none transition-all shadow-inner ${
-                isPinkTheme ? 'border-pink-900/50 focus:border-pink-500 focus:ring-2 focus:ring-pink-500/20' : 'border-zinc-800 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20'
-              }`}
-              value={emailInput}
-              onChange={(e) => setEmailInput(e.target.value)}
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-zinc-300 mb-1.5">Password</label>
-            <input
-              type="password"
-              required
-              placeholder="••••••••"
-              className={`w-full px-4 py-3 bg-zinc-950/80 border rounded-2xl text-xs text-zinc-100 placeholder-zinc-600 focus:outline-none transition-all shadow-inner ${
-                isPinkTheme ? 'border-pink-900/50 focus:border-pink-500 focus:ring-2 focus:ring-pink-500/20' : 'border-zinc-800 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20'
-              }`}
-              value={passwordInput}
-              onChange={(e) => setPasswordInput(e.target.value)}
-            />
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className={`w-full font-black py-3.5 rounded-2xl transition-all text-xs tracking-wide shadow-lg active:scale-[0.98] disabled:opacity-50 mt-2 ${
-              isPinkTheme 
-                ? 'bg-gradient-to-r from-pink-500 to-rose-600 hover:from-pink-400 hover:to-rose-500 text-white shadow-pink-500/20' 
-                : 'bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-700 hover:from-purple-500 hover:to-indigo-500 text-white shadow-purple-600/30'
-            }`}
-          >
-            {loading ? 'Memproses Authentikasi...' : 'MASUK DASHBOARD'}
-          </button>
-        </form>
-      </div>
-    </main>
-  )
-}
-
-const isEyelash = businessType === 'eyelash'
-const isProfesional = subscriptionPlan === 'PROFESIONAL'
+  const isEyelash = businessType === 'eyelash'
+  const isProfesional = subscriptionPlan === 'PROFESIONAL'
 
   // ============================================================================
-  // 19. MAIN DASHBOARD UI (AUTHENTICATED)
+  // 17. MAIN DASHBOARD UI (AUTHENTICATED)
   // ============================================================================
   return (
     <div className={`min-h-screen p-3 sm:p-6 md:p-8 text-zinc-100 font-sans relative transition-colors duration-700 ${themeStyles.mainBg}`}>
@@ -1413,14 +1327,13 @@ const isProfesional = subscriptionPlan === 'PROFESIONAL'
 
       <div className="w-full max-w-[1400px] mx-auto space-y-4 sm:space-y-6 relative z-10">
 
-        {/* 19.1 HEADER SECTION */}
+        {/* 17.1 HEADER SECTION */}
         <div className={`flex flex-col md:flex-row justify-between items-start md:items-center p-4 sm:p-6 md:p-7 rounded-2xl sm:rounded-3xl transition-all duration-300 gap-4 ${themeStyles.headerGradient}`}>
           <div>
             <div className="flex items-center space-x-3 flex-wrap gap-y-2">
-              {/* Gunakan fungsi ikon dinamis */}
-              <span className="text-xl sm:text-2xl">{categoryIcon}</span>
+              <span className="text-xl sm:text-2xl">{isEyelash ? '✨' : '💈'}</span>
               <h1 className="text-xl sm:text-2xl md:text-3xl font-black text-white tracking-tight uppercase bg-gradient-to-r from-white via-zinc-200 to-zinc-400 bg-clip-text text-transparent">
-                {brandTitle || tenantCode || `${categoryLabel} Portal`}
+                {brandTitle || tenantCode || (isEyelash ? 'EYELASH SALON' : 'BARBERSHOP')}
               </h1>
               
               <span className={`text-[9px] sm:text-[10px] font-black px-3.5 py-1.5 rounded-full border tracking-widest transition-all uppercase flex items-center gap-1.5 ${
@@ -1436,12 +1349,11 @@ const isProfesional = subscriptionPlan === 'PROFESIONAL'
               </span>
             </div>
             <p className="text-[11px] sm:text-xs text-zinc-300 mt-1 font-medium">
-              Kelola dan pantau pesanan masuk secara real-time untuk {categoryLabel}
+              {isEyelash ? 'Kelola janji temu eyelash & beauty salon secara real-time' : 'Kelola dan pantau pesanan masuk secara real-time'}
             </p>
           </div>
-          
+
           <div className="flex flex-wrap items-center justify-between md:justify-end gap-3 w-full md:w-auto">
-            
             {subscriptionPlan !== 'BASIC' && (
               <div className="flex items-center gap-2 bg-zinc-950/80 border border-zinc-700/80 p-1.5 px-3 rounded-2xl shadow-inner backdrop-blur-xl">
                 <span className="text-[10px] font-black text-zinc-300 uppercase tracking-wider hidden sm:inline">Theme:</span>
@@ -1500,7 +1412,7 @@ const isProfesional = subscriptionPlan === 'PROFESIONAL'
           </div>
         </div>
 
-        {/* 19.2 FEATURE TOGGLES SECTION */}
+        {/* 17.2 FEATURE TOGGLES SECTION */}
         {isProfesional && (
           <div className={`p-4 sm:p-6 rounded-2xl sm:rounded-3xl border transition-all space-y-4 shadow-xl ${themeStyles.cardBg}`}>
             <div className="border-b border-zinc-800/80 pb-3">
@@ -1587,7 +1499,8 @@ const isProfesional = subscriptionPlan === 'PROFESIONAL'
           </div>
         )}
 
-        {/* 19.3 STATS CARDS SECTION */}
+
+        {/* 17.4 STATS CARDS SECTION */}
         <div className={`grid grid-cols-2 sm:grid-cols-3 ${
           subscriptionPlan === 'BASIC' ? 'lg:grid-cols-4' : 'lg:grid-cols-5'
         } gap-3 sm:gap-4`}>
@@ -1654,56 +1567,32 @@ const isProfesional = subscriptionPlan === 'PROFESIONAL'
 
         </div>
 
-        {/* 19.4 TOP STAFF PERFORMANCE SECTION */}
+        {/* 17.5 TOP STAFF PERFORMANCE SECTION */}
         {isProfesional && (
-          <div className={`border p-5 sm:p-6 rounded-2xl sm:rounded-3xl transition-all space-y-5 relative overflow-hidden ${themeStyles.cardBg}`}>
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-zinc-800/80">
-              <div className="flex items-center space-x-3 sm:space-x-4">
-                <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl border border-amber-400/50 bg-amber-500/20 flex items-center justify-center text-xl sm:text-2xl shrink-0 shadow-lg shadow-amber-500/20">
-                  👑
-                </div>
-                <div className="min-w-0">
-                  <span className={`text-[9px] sm:text-[10px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-full border ${themeStyles.badgeBg}`}>
-                    Performa Staff Terbaik ({staffLabel})
-                  </span>
-                  <h3 className="text-lg sm:text-xl font-black text-white mt-1 truncate">
-                    {stats.topStaffName !== '-' ? stats.topStaffName : 'Belum Ada Data'}
-                  </h3>
-                </div>
+          <div className={`border p-4 sm:p-5 rounded-2xl sm:rounded-3xl transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 relative overflow-hidden ${themeStyles.cardBg}`}>
+            <div className="flex items-center space-x-3 sm:space-x-4">
+              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl border border-amber-400/50 bg-amber-500/20 flex items-center justify-center text-xl sm:text-2xl shrink-0 shadow-lg shadow-amber-500/20">
+                👑
               </div>
-              <div className="flex sm:flex-col items-center sm:items-end justify-between border-t border-zinc-800 sm:border-t-0 pt-2 sm:pt-0">
-                <span className={`text-xl sm:text-2xl font-black font-mono ${themeStyles.textAccent}`}>
-                  {stats.topStaffCount}
+              <div className="min-w-0">
+                <span className={`text-[9px] sm:text-[10px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-full border ${themeStyles.badgeBg}`}>
+                  Performa Staff Terbaik ({staffLabel})
                 </span>
-                <p className="text-[10px] sm:text-[11px] text-zinc-300 font-bold uppercase tracking-wider">Transaksi Selesai</p>
+                <h3 className="text-lg sm:text-xl font-black text-white mt-1 truncate">
+                  {stats.topStaffName !== '-' ? stats.topStaffName : 'Belum Ada Data'}
+                </h3>
               </div>
             </div>
-
-            <div className="space-y-2.5">
-              {stats.staffChartData.map((staff) => {
-                const maxVal = Math.max(...stats.staffChartData.map(s => s.count), 1)
-                const percentage = Math.round((staff.count / maxVal) * 100)
-
-                return (
-                  <div key={staff.name} className="space-y-1">
-                    <div className="flex justify-between text-xs font-semibold">
-                      <span className="text-zinc-200">{staff.name}</span>
-                      <span className={`font-mono font-bold ${themeStyles.textAccent}`}>{staff.count} Pesanan Selesai</span>
-                    </div>
-                    <div className="w-full bg-zinc-950/80 rounded-full h-3 border border-zinc-800/80 p-0.5 overflow-hidden">
-                      <div 
-                        className={`h-full rounded-full transition-all duration-500 ${themeStyles.buttonPrimary}`}
-                        style={{ width: `${percentage}%` }}
-                      />
-                    </div>
-                  </div>
-                )
-              })}
+            <div className="flex sm:flex-col items-center sm:items-end justify-between border-t border-zinc-800 sm:border-t-0 pt-2 sm:pt-0">
+              <span className={`text-xl sm:text-2xl font-black font-mono ${themeStyles.textAccent}`}>
+                {stats.topStaffCount}
+              </span>
+              <p className="text-[10px] sm:text-[11px] text-zinc-300 font-bold uppercase tracking-wider">Transaksi Selesai</p>
             </div>
           </div>
         )}
 
-        {/* 19.5 BASIC PLAN UPGRADE BANNER */}
+        {/* 17.6 BASIC PLAN UPGRADE BANNER */}
         {subscriptionPlan === 'BASIC' && (
           <div className={`p-4 sm:p-6 rounded-2xl sm:rounded-3xl border shadow-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4 bg-zinc-950/80 ${themeStyles.borderAccent}`}>
             <div className="space-y-1">
@@ -1717,7 +1606,7 @@ const isProfesional = subscriptionPlan === 'PROFESIONAL'
           </div>
         )}
 
-        {/* 19.6 BLOCK SLOT MANAGEMENT SECTION */}
+        {/* 17.7 BLOCK SLOT MANAGEMENT SECTION */}
         {subscriptionPlan !== 'BASIC' && (
           <div className={`p-4 sm:p-6 rounded-2xl sm:rounded-3xl shadow-2xl border transition-all space-y-4 ${themeStyles.cardBg}`}>
             <div className="flex items-center justify-between border-b border-zinc-800/80 pb-3">
@@ -1816,7 +1705,7 @@ const isProfesional = subscriptionPlan === 'PROFESIONAL'
           </div>
         )}
 
-        {/* 19.7 FINANCIAL REPORT SECTION */}
+        {/* 17.8 FINANCIAL REPORT SECTION */}
         {subscriptionPlan !== 'BASIC' && (
           <div className={`p-4 sm:p-6 md:p-7 rounded-2xl sm:rounded-3xl shadow-2xl space-y-4 sm:space-y-5 border transition-all ${themeStyles.cardBg}`}>
             <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-zinc-800/80 pb-4 gap-2">
@@ -1963,7 +1852,7 @@ const isProfesional = subscriptionPlan === 'PROFESIONAL'
           </div>
         )}
 
-        {/* 19.8 FILTER & SEARCH BAR SECTION */}
+        {/* 17.9 FILTER & SEARCH BAR SECTION */}
         <div className={`border p-4 sm:p-5 rounded-2xl sm:rounded-3xl shadow-xl transition-all ${themeStyles.cardBg}`}>
           <div className={`grid grid-cols-1 sm:grid-cols-2 ${
             subscriptionPlan === 'BASIC' ? 'md:grid-cols-2 lg:grid-cols-3' : 'md:grid-cols-3 lg:grid-cols-7'
@@ -2020,14 +1909,14 @@ const isProfesional = subscriptionPlan === 'PROFESIONAL'
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className={`w-full px-3 py-2 sm:py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-xl sm:rounded-2xl text-xs text-zinc-200 focus:outline-none shadow-inner cursor-pointer ${themeStyles.focusBorder}`}
+                className={`w-full px-3 py-2 sm:py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-xl sm:rounded-2xl text-xs text-zinc-200 focus:outline-none font-semibold cursor-pointer shadow-inner ${themeStyles.focusBorder}`}
               >
                 <option value="all">Semua Status</option>
-                <option value="pending">Menunggu</option>
-                <option value="confirmed">Dikonfirmasi</option>
-                <option value="completed">Selesai</option>
-                <option value="cancelled">Dibatalkan</option>
-                <option value="cancelled_need_refund">Butuh Refund</option>
+                <option value="pending">🟡 Pending</option>
+                <option value="confirmed">🟢 Confirmed</option>
+                <option value="completed">🔵 Completed</option>
+                <option value="cancelled">🔴 Cancelled</option>
+                <option value="cancelled_need_refund">⚠️ Need Refund</option>
               </select>
             </div>
 
@@ -2037,313 +1926,361 @@ const isProfesional = subscriptionPlan === 'PROFESIONAL'
                 <select
                   value={serviceFilter}
                   onChange={(e) => setServiceFilter(e.target.value)}
-                  className={`w-full px-3 py-2 sm:py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-xl sm:rounded-2xl text-xs text-zinc-200 focus:outline-none shadow-inner cursor-pointer ${themeStyles.focusBorder}`}
+                  className={`w-full px-3 py-2 sm:py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-xl sm:rounded-2xl text-xs text-zinc-200 focus:outline-none font-semibold cursor-pointer shadow-inner ${themeStyles.focusBorder}`}
                 >
                   <option value="all">Semua Layanan</option>
-                  {uniqueServices.map((service) => (
-                    <option key={service} value={service}>{service}</option>
+                  {uniqueServices.map((svc) => (
+                    <option key={svc} value={svc}>
+                      {isEyelash ? '💅' : '✂️'} {svc}
+                    </option>
                   ))}
                 </select>
               </div>
             )}
 
-            <div className="w-full">
-              <label className="block text-xs font-bold text-zinc-300 mb-1.5">Bayar:</label>
-              <select
-                value={paymentFilter}
-                onChange={(e) => setPaymentFilter(e.target.value)}
-                className={`w-full px-3 py-2 sm:py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-xl sm:rounded-2xl text-xs text-zinc-200 focus:outline-none shadow-inner cursor-pointer ${themeStyles.focusBorder}`}
-              >
-                <option value="all">Semua Bayar</option>
-                {uniquePayments.map((p) => (
-                  <option key={p} value={p}>{p}</option>
-                ))}
-              </select>
-            </div>
+            {subscriptionPlan !== 'BASIC' && (
+              <div className="w-full">
+                <label className="block text-xs font-bold text-zinc-300 mb-1.5">Limit Data:</label>
+                <select
+                  value={limit}
+                  onChange={(e) => {
+                    const val = e.target.value
+                    setLimit(val === 'all' ? 'all' : Number(val))
+                    setCurrentPage(1)
+                  }}
+                  className={`w-full px-3 py-2 sm:py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-xl sm:rounded-2xl text-xs text-zinc-200 focus:outline-none font-semibold cursor-pointer shadow-inner ${themeStyles.focusBorder}`}
+                >
+                  <option value={10}>10 Baris</option>
+                  <option value={25}>25 Baris</option>
+                  <option value={50}>50 Baris</option>
+                  <option value="all">Semua Data</option>
+                </select>
+              </div>
+            )}
 
-            <div className="w-full flex items-center justify-end">
-              <button
-                onClick={() => {
-                  setStartDate('')
-                  setEndDate('')
-                  setSearchTerm('')
-                  setStatusFilter('all')
-                  setServiceFilter('all')
-                  setPaymentFilter('all')
-                }}
-                className="w-full py-2 sm:py-2.5 px-3 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white border border-zinc-800 rounded-xl sm:rounded-2xl text-xs font-bold transition-all shadow-md active:scale-95"
-              >
-                Reset
-              </button>
+            <div className="w-full flex gap-2 items-end">
+              <div className="w-full">
+                <label className="block text-xs font-bold text-zinc-300 mb-1.5">Metode Bayar:</label>
+                <select
+                  value={paymentFilter}
+                  onChange={(e) => setPaymentFilter(e.target.value)}
+                  className={`w-full px-3 py-2 sm:py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-xl sm:rounded-2xl text-xs text-zinc-200 focus:outline-none font-semibold cursor-pointer shadow-inner ${themeStyles.focusBorder}`}
+                >
+                  <option value="all">Semua Metode</option>
+                  {uniquePayments.map((pay) => (
+                    <option key={pay} value={pay}>
+                      💳 {pay}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {(startDate || endDate || statusFilter !== 'all' || serviceFilter !== 'all' || paymentFilter !== 'all' || searchTerm || limit !== 10) && (
+                <button
+                  onClick={() => {
+                    setStartDate('')
+                    setEndDate('')
+                    setStatusFilter('all')
+                    setServiceFilter('all')
+                    setPaymentFilter('all')
+                    setSearchTerm('')
+                    setLimit(10)
+                  }}
+                  className="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700/80 px-3 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl text-xs font-bold transition-all whitespace-nowrap h-[38px] sm:h-[42px]"
+                >
+                  Reset
+                </button>
+              )}
             </div>
 
           </div>
         </div>
 
-        {/* 19.9 RESERVATIONS DATA TABLE */}
-      <div className={`border rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden transition-all ${themeStyles.cardBg}`}>
-        {loading ? (
-          <div className="p-12 text-center text-zinc-400 text-xs font-semibold">Memuat data reservasi...</div>
-        ) : filteredReservations.length === 0 ? (
-          <div className="p-12 text-center text-zinc-400 text-xs font-semibold">Belum ada reservasi masuk / sesuai filter.</div>
-        ) : (
-          <>
-            <div className="w-full overflow-x-auto">
-              <table className="w-full text-left border-collapse min-w-full">
-                <thead>
-                  <tr className="border-b border-zinc-800/80 bg-zinc-950/90 text-[10px] font-black uppercase tracking-widest text-zinc-400 select-none">
-                    <th onClick={() => handleSort('booking_date')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
-                      <div className="flex items-center gap-1 whitespace-nowrap">
-                        <span>Tanggal</span>
-                        {subscriptionPlan !== 'BASIC' && sortField === 'booking_date' && (sortOrder === 'asc' ? '▲' : '▼')}
-                      </div>
-                    </th>
-                    <th onClick={() => handleSort('booking_time')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
-                      <div className="flex items-center gap-1 whitespace-nowrap">
-                        <span>Jam</span>
-                        {subscriptionPlan !== 'BASIC' && sortField === 'booking_time' && (sortOrder === 'asc' ? '▲' : '▼')}
-                      </div>
-                    </th>
-                    <th onClick={() => handleSort('customer_name')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
-                      <div className="flex items-center gap-1 whitespace-nowrap">
-                        <span>Pelanggan</span>
-                        {subscriptionPlan !== 'BASIC' && sortField === 'customer_name' && (sortOrder === 'asc' ? '▲' : '▼')}
-                      </div>
-                    </th>
-                    <th onClick={() => handleSort('service_name')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
-                      <div className="flex items-center gap-1 whitespace-nowrap">
-                        <span>Layanan</span>
-                        {subscriptionPlan !== 'BASIC' && sortField === 'service_name' && (sortOrder === 'asc' ? '▲' : '▼')}
-                      </div>
-                    </th>
-                    <th onClick={() => handleSort('staff_name')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
-                      <div className="flex items-center gap-1 whitespace-nowrap">
-                        <span>{staffLabel}</span>
-                        {subscriptionPlan !== 'BASIC' && sortField === 'staff_name' && (sortOrder === 'asc' ? '▲' : '▼')}
-                      </div>
-                    </th>
-                    <th onClick={() => handleSort('payment_method')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
-                      <div className="flex items-center gap-1 whitespace-nowrap">
-                        <span>Bayar</span>
-                        {subscriptionPlan !== 'BASIC' && sortField === 'payment_method' && (sortOrder === 'asc' ? '▲' : '▼')}
-                      </div>
-                    </th>
-                    <th onClick={() => handleSort('price')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
-                      <div className="flex items-center gap-1 whitespace-nowrap">
-                        <span>Harga</span>
-                        {subscriptionPlan !== 'BASIC' && sortField === 'price' && (sortOrder === 'asc' ? '▲' : '▼')}
-                      </div>
-                    </th>
-                    <th onClick={() => handleSort('status')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
-                      <div className="flex items-center gap-1 whitespace-nowrap">
-                        <span>Status</span>
-                        {subscriptionPlan !== 'BASIC' && sortField === 'status' && (sortOrder === 'asc' ? '▲' : '▼')}
-                      </div>
-                    </th>
-                    <th className="py-3.5 px-3 text-center">
-                      <span className="whitespace-nowrap">Aksi</span>
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-zinc-800/50 text-xs">
-                  {displayedReservations.map((item) => {
-                    const rawStatus = (item.status || 'pending').toLowerCase()
-                    const cleanWa = item.whatsapp_number ? item.whatsapp_number.replace(/[^0-9]/g, '') : ''
-                    const price = getServicePrice(item.service_name)
-
-                    // Text & Link WA Umum
-                    const waText = `Halo Kak ${item.customer_name}, kami dari ${brandTitle || 'Salon/Barbershop'}. Mau konfirmasi reservasi kamu tanggal ${formatDateID(item.booking_date)} jam ${item.booking_time} WIB untuk layanan ${item.service_name}. Terima kasih!`
-                    const waUrl = `https://wa.me/${cleanWa}?text=${encodeURIComponent(waText)}`
-
-                    // Text & Link WA Khusus Refund
-                    const refundWaText = `Halo Kak ${item.customer_name}, terkait pembatalan reservasi tanggal ${formatDateID(item.booking_date)}, mohon kirimkan nomor rekening / e-wallet Anda untuk proses refund. Terima kasih!`
-                    const refundWaUrl = `https://wa.me/${cleanWa}?text=${encodeURIComponent(refundWaText)}`
-
-                    return (
-                      <tr key={item.id} className="hover:bg-zinc-900/60 transition-all">
-                        <td className="py-3 px-3 font-semibold whitespace-nowrap text-zinc-300">
-                          {formatDateID(item.booking_date)}
-                        </td>
-
-                        <td className="py-3 px-3 font-bold whitespace-nowrap text-zinc-100">
-                          {item.booking_time}
-                        </td>
-                        <td className="py-3 px-3">
-                          <div className="font-bold text-white whitespace-nowrap">{item.customer_name}</div>
-                          <div className="text-[10px] text-zinc-400 font-mono mt-0.5">{item.whatsapp_number || '-'}</div>
-                        </td>
-
-                        <td className="py-3 px-3 font-medium text-zinc-200">
-                          <span className="line-clamp-2">{item.service_name}</span>
-                        </td>
-                        <td className="py-3 px-3 font-medium text-zinc-300 whitespace-nowrap">
-                          {item.staff_name || '-'}
-                        </td>
-                        <td className="py-3 px-3 font-semibold text-zinc-300 whitespace-nowrap">
-                          <span className="px-2 py-0.5 rounded-lg bg-zinc-900 border border-zinc-800 text-[10px]">
-                            💳 {item.payment_method || 'QRIS'}
-                          </span>
-                        </td>
-
-                        <td className="py-3 px-3 font-bold text-zinc-100 whitespace-nowrap">
-                          Rp {price.toLocaleString('id-ID')}
-                        </td>
-                        {/* KOLOM STATUS */}
-                        <td className="py-3 px-3 whitespace-nowrap">
-                          <select
-                            value={rawStatus}
-                            onChange={(e) => handleStatusChange(item, e.target.value)}
-                            className={`px-2.5 py-1.5 rounded-xl text-[11px] font-extrabold border cursor-pointer focus:outline-none transition-all shadow-sm ${
-                              rawStatus === 'confirmed' || rawStatus === 'dikonfirmasi'
-                                ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
-                                : isCompleted(rawStatus)
-                                ? 'bg-blue-500/15 border-blue-500/40 text-blue-300'
-                                : rawStatus === 'cancelled_need_refund'
-                                ? 'bg-amber-500/15 border-amber-500/40 text-amber-300'
-                                : rawStatus === 'cancelled_refunded'
-                                ? 'bg-purple-500/15 border-purple-500/40 text-purple-300'
-                                : rawStatus.startsWith('cancelled') || rawStatus === 'batal'
-                                ? 'bg-rose-500/15 border-rose-500/40 text-rose-300'
-                                : 'bg-amber-500/15 border-amber-500/40 text-amber-300'
-                            }`}
-                          >
-                            <option value="pending" className="bg-zinc-900 text-amber-300 font-bold">🟡 Pending</option>
-                            <option value="confirmed" className="bg-zinc-900 text-emerald-300 font-bold">🟢 Confirmed</option>
-                            <option value="completed" className="bg-zinc-900 text-blue-300 font-bold">🔵 Completed</option>
-                            <option value="cancelled" className="bg-zinc-900 text-rose-300 font-bold">🔴 Cancelled</option>
-                            
-                            {/* DIHIDDEN AGAR TIDAK BISA DIPILIH MANUAL OLEH USER */}
-                            <option value="cancelled_need_refund" hidden className="bg-zinc-900 text-amber-300 font-bold">🟠 Need Refund</option>
-                            <option value="cancelled_refunded" hidden className="bg-zinc-900 text-purple-300 font-bold">💸 Refunded</option>
-                          </select>
-                        </td>
-                        {/* KOLOM AKSI */}
-                        <td className="py-3 px-3 text-center whitespace-nowrap">
-                          <div className="flex items-center justify-center space-x-2">
-                            {/* Tombol WA (Biasa / Refund) */}
-                            {cleanWa ? (
-                              <a
-                                href={rawStatus === 'cancelled_need_refund' ? refundWaUrl : waUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className={`p-2 rounded-xl transition-all font-bold text-[11px] flex items-center justify-center active:scale-95 shadow-sm ${
-                                  rawStatus === 'cancelled_need_refund'
-                                    ? 'bg-amber-500/20 hover:bg-amber-500/40 text-amber-300 border border-amber-500/40 animate-pulse'
-                                    : 'bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-300 border border-emerald-500/30'
-                                }`}
-                                title={rawStatus === 'cancelled_need_refund' ? 'WA Refund Pelanggan' : 'Konfirmasi via WhatsApp'}
-                              >
-                                💬
-                              </a>
-                            ) : (
-                              <span className="text-zinc-600 p-2 text-xs">-</span>
-                            )}
-
-                            {/* Tombol "✓ Refunded" di Aksi (Muncul Khusus Saat Need Refund) */}
-                            {rawStatus === 'cancelled_need_refund' && isProfesional && (
-                              <button
-                                onClick={() => handleCompleteRefund(item.id)}
-                                className="bg-amber-500/20 hover:bg-amber-500/40 text-amber-300 border border-amber-500/40 px-2.5 py-1.5 rounded-xl transition-all font-extrabold text-[10px] shadow-sm active:scale-95 whitespace-nowrap"
-                                title="Tandai Sudah Refund"
-                              >
-                                ✓ Refunded
-                              </button>
-                            )}
-
-                            {/* Tombol Hapus (Selalu Tampil) */}
-                            <button
-                              onClick={() => handleDelete(item.id, item.customer_name)}
-                              className="bg-rose-500/15 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 p-2 rounded-xl transition-all font-bold text-[11px] flex items-center justify-center active:scale-95 shadow-sm"
-                              title="Hapus Data Reservasi"
-                            >
-                              🗑️
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-            {/* PAGINATION CONTROLS */}
-            {totalPages > 1 && subscriptionPlan !== 'BASIC' && (
-              <div className="flex items-center justify-between p-4 border-t border-zinc-800/80 bg-zinc-950/60 text-xs">
-                <span className="text-zinc-400 font-medium">
-                  Halaman <strong className="text-white">{currentPage}</strong> dari <strong className="text-white">{totalPages}</strong> (Total {filteredReservations.length} Data)
-                </span>
-                <div className="flex items-center gap-1.5">
-                  <button
-                    onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
-                    disabled={currentPage === 1}
-                    className="px-3 py-1.5 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-300 font-bold disabled:opacity-40 hover:bg-zinc-800 transition-all"
-                  >
-                    Prev
-                  </button>
-                  <button
-                    onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
-                    disabled={currentPage === totalPages}
-                    className="px-3 py-1.5 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-300 font-bold disabled:opacity-40 hover:bg-zinc-800 transition-all"
-                  >
-                    Next
-                  </button>
+        {/* 17.10 RESERVATIONS DATA TABLE */}
+<div className={`border rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden transition-all ${themeStyles.cardBg}`}>
+  {loading ? (
+    <div className="p-12 text-center text-zinc-400 text-xs font-semibold">Memuat data reservasi...</div>
+  ) : filteredReservations.length === 0 ? (
+    <div className="p-12 text-center text-zinc-400 text-xs font-semibold">Belum ada reservasi masuk / sesuai filter.</div>
+  ) : (
+    <>
+      <div className="w-full overflow-x-auto">
+        <table className="w-full text-left border-collapse min-w-full">
+          <thead>
+            <tr className="border-b border-zinc-800/80 bg-zinc-950/90 text-[10px] font-black uppercase tracking-widest text-zinc-400 select-none">
+              <th onClick={() => handleSort('booking_date')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
+                <div className="flex items-center gap-1 whitespace-nowrap">
+                  <span>Tanggal</span>
+                  {subscriptionPlan !== 'BASIC' && sortField === 'booking_date' && (sortOrder === 'asc' ? '▲' : '▼')}
                 </div>
-              </div>
-            )}
-          </>
-        )}
+              </th>
+
+              <th onClick={() => handleSort('booking_time')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
+                <div className="flex items-center gap-1 whitespace-nowrap">
+                  <span>Jam</span>
+                  {subscriptionPlan !== 'BASIC' && sortField === 'booking_time' && (sortOrder === 'asc' ? '▲' : '▼')}
+                </div>
+              </th>
+
+              <th onClick={() => handleSort('customer_name')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
+                <div className="flex items-center gap-1 whitespace-nowrap">
+                  <span>Pelanggan</span>
+                  {subscriptionPlan !== 'BASIC' && sortField === 'customer_name' && (sortOrder === 'asc' ? '▲' : '▼')}
+                </div>
+              </th>
+
+              <th onClick={() => handleSort('service_name')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
+                <div className="flex items-center gap-1 whitespace-nowrap">
+                  <span>Layanan</span>
+                  {subscriptionPlan !== 'BASIC' && sortField === 'service_name' && (sortOrder === 'asc' ? '▲' : '▼')}
+                </div>
+              </th>
+
+              <th onClick={() => handleSort('staff_name')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
+                <div className="flex items-center gap-1 whitespace-nowrap">
+                  <span>{staffLabel}</span>
+                  {subscriptionPlan !== 'BASIC' && sortField === 'staff_name' && (sortOrder === 'asc' ? '▲' : '▼')}
+                </div>
+              </th>
+
+              <th onClick={() => handleSort('payment_method')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
+                <div className="flex items-center gap-1 whitespace-nowrap">
+                  <span>Bayar</span>
+                  {subscriptionPlan !== 'BASIC' && sortField === 'payment_method' && (sortOrder === 'asc' ? '▲' : '▼')}
+                </div>
+              </th>
+
+              <th onClick={() => handleSort('price')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
+                <div className="flex items-center gap-1 whitespace-nowrap">
+                  <span>Harga</span>
+                  {subscriptionPlan !== 'BASIC' && sortField === 'price' && (sortOrder === 'asc' ? '▲' : '▼')}
+                </div>
+              </th>
+
+              <th onClick={() => handleSort('status')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
+                <div className="flex items-center gap-1 whitespace-nowrap">
+                  <span>Status</span>
+                  {subscriptionPlan !== 'BASIC' && sortField === 'status' && (sortOrder === 'asc' ? '▲' : '▼')}
+                </div>
+              </th>
+
+              <th className="py-3.5 px-3 text-center">
+                <span className="whitespace-nowrap">Aksi</span>
+              </th>
+            </tr>
+          </thead>
+
+          <tbody className="divide-y divide-zinc-800/50 text-xs">
+            {displayedReservations.map((item) => {
+              const rawStatus = (item.status || 'pending').toLowerCase()
+              const cleanWa = item.whatsapp_number ? item.whatsapp_number.replace(/[^0-9]/g, '') : ''
+              const price = getServicePrice(item.service_name)
+
+              // Text & Link WA Umum
+              const waText = `Halo Kak ${item.customer_name}, kami dari ${brandTitle || 'Salon/Barbershop'}. Mau konfirmasi reservasi kamu tanggal ${formatDateID(item.booking_date)} jam ${item.booking_time} WIB untuk layanan ${item.service_name}. Terima kasih!`
+              const waUrl = `https://wa.me/${cleanWa}?text=${encodeURIComponent(waText)}`
+
+              // Text & Link WA Khusus Refund
+              const refundWaText = `Halo Kak ${item.customer_name}, terkait pembatalan reservasi tanggal ${formatDateID(item.booking_date)}, mohon kirimkan nomor rekening / e-wallet Anda untuk proses refund. Terima kasih!`
+              const refundWaUrl = `https://wa.me/${cleanWa}?text=${encodeURIComponent(refundWaText)}`
+
+              return (
+                <tr key={item.id} className="hover:bg-zinc-900/60 transition-all">
+                  <td className="py-3 px-3 font-semibold whitespace-nowrap text-zinc-300">
+                    {formatDateID(item.booking_date)}
+                  </td>
+
+                  <td className="py-3 px-3 font-bold whitespace-nowrap text-zinc-100">
+                    {item.booking_time}
+                  </td>
+
+                  <td className="py-3 px-3">
+                    <div className="font-bold text-white whitespace-nowrap">{item.customer_name}</div>
+                    <div className="text-[10px] text-zinc-400 font-mono mt-0.5">{item.whatsapp_number || '-'}</div>
+                  </td>
+
+                  <td className="py-3 px-3 font-medium text-zinc-200">
+                    <span className="line-clamp-2">{item.service_name}</span>
+                  </td>
+
+                  <td className="py-3 px-3 font-medium text-zinc-300 whitespace-nowrap">
+                    {item.staff_name || '-'}
+                  </td>
+
+                  <td className="py-3 px-3 font-semibold text-zinc-300 whitespace-nowrap">
+                    <span className="px-2 py-0.5 rounded-lg bg-zinc-900 border border-zinc-800 text-[10px]">
+                      💳 {item.payment_method || 'QRIS'}
+                    </span>
+                  </td>
+
+                  <td className="py-3 px-3 font-bold text-zinc-100 whitespace-nowrap">
+                    Rp {price.toLocaleString('id-ID')}
+                  </td>
+
+                  {/* KOLOM STATUS */}
+                  <td className="py-3 px-3 whitespace-nowrap">
+                    <select
+                      value={rawStatus}
+                      onChange={(e) => handleStatusChange(item, e.target.value)}
+                      className={`px-2.5 py-1.5 rounded-xl text-[11px] font-extrabold border cursor-pointer focus:outline-none transition-all shadow-sm ${
+                        rawStatus === 'confirmed' || rawStatus === 'dikonfirmasi'
+                          ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
+                          : isCompleted(rawStatus)
+                          ? 'bg-blue-500/15 border-blue-500/40 text-blue-300'
+                          : rawStatus === 'cancelled_need_refund'
+                          ? 'bg-amber-500/15 border-amber-500/40 text-amber-300'
+                          : rawStatus === 'cancelled_refunded'
+                          ? 'bg-purple-500/15 border-purple-500/40 text-purple-300'
+                          : rawStatus.startsWith('cancelled') || rawStatus === 'batal'
+                          ? 'bg-rose-500/15 border-rose-500/40 text-rose-300'
+                          : 'bg-amber-500/15 border-amber-500/40 text-amber-300'
+                      }`}
+                    >
+                      <option value="pending" className="bg-zinc-900 text-amber-300 font-bold">🟡 Pending</option>
+                      <option value="confirmed" className="bg-zinc-900 text-emerald-300 font-bold">🟢 Confirmed</option>
+                      <option value="completed" className="bg-zinc-900 text-blue-300 font-bold">🔵 Completed</option>
+                      <option value="cancelled" className="bg-zinc-900 text-rose-300 font-bold">🔴 Cancelled</option>
+                      
+                      {/* DIHIDDEN AGAR TIDAK BISA DIPILIH MANUAL OLEH USER */}
+                      <option value="cancelled_need_refund" hidden className="bg-zinc-900 text-amber-300 font-bold">🟠 Need Refund</option>
+                      <option value="cancelled_refunded" hidden className="bg-zinc-900 text-purple-300 font-bold">💸 Refunded</option>
+                    </select>
+                  </td>
+
+                  {/* KOLOM AKSI */}
+                  <td className="py-3 px-3 text-center whitespace-nowrap">
+                    <div className="flex items-center justify-center space-x-2">
+                      {/* Tombol WA (Biasa / Refund) */}
+                      {cleanWa ? (
+                        <a
+                          href={rawStatus === 'cancelled_need_refund' ? refundWaUrl : waUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={`p-2 rounded-xl transition-all font-bold text-[11px] flex items-center justify-center active:scale-95 shadow-sm ${
+                            rawStatus === 'cancelled_need_refund'
+                              ? 'bg-amber-500/20 hover:bg-amber-500/40 text-amber-300 border border-amber-500/40 animate-pulse'
+                              : 'bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-300 border border-emerald-500/30'
+                          }`}
+                          title={rawStatus === 'cancelled_need_refund' ? 'WA Refund Pelanggan' : 'Konfirmasi via WhatsApp'}
+                        >
+                          💬
+                        </a>
+                      ) : (
+                        <span className="text-zinc-600 p-2 text-xs">-</span>
+                      )}
+
+                      {/* Tombol "✓ Refunded" di Aksi (Muncul Khusus Saat Need Refund) */}
+                      {rawStatus === 'cancelled_need_refund' && isProfesional && (
+                        <button
+                          onClick={() => handleCompleteRefund(item.id)}
+                          className="bg-amber-500/20 hover:bg-amber-500/40 text-amber-300 border border-amber-500/40 px-2.5 py-1.5 rounded-xl transition-all font-extrabold text-[10px] shadow-sm active:scale-95 whitespace-nowrap"
+                          title="Tandai Sudah Refund"
+                        >
+                          ✓ Refunded
+                        </button>
+                      )}
+
+                      {/* Tombol Hapus (Selalu Tampil) */}
+                      <button
+                        onClick={() => handleDelete(item.id, item.customer_name)}
+                        className="bg-rose-500/15 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 p-2 rounded-xl transition-all font-bold text-[11px] flex items-center justify-center active:scale-95 shadow-sm"
+                        title="Hapus Data Reservasi"
+                      >
+                        🗑️
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
       </div>
 
-      {/* MODAL REFUND HANYA BERLAKU UNTUK PAKET PROFESIONAL */}
-      {cancelModalItem && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className={`max-w-md w-full border rounded-3xl p-6 space-y-5 shadow-2xl animate-in fade-in zoom-in duration-200 ${themeStyles.cardBg}`}>
-            <div className="text-center space-y-2">
-              <span className="text-4xl">⚠️</span>
-              <h3 className="text-lg font-black text-white">Konfirmasi Pembatalan Reservasi</h3>
-              <p className="text-xs text-zinc-400">
-                Pesanan atas nama <strong className="text-white">{cancelModalItem.customer_name}</strong> akan dibatalkan.
-              </p>
-            </div>
-            <div className="bg-zinc-950/80 border border-zinc-800/80 p-4 rounded-2xl space-y-2 text-xs">
-              <div className="flex justify-between text-zinc-400">
-                <span>Layanan:</span>
-                <span className="font-bold text-zinc-200">{cancelModalItem.service_name}</span>
-              </div>
-              <div className="flex justify-between text-zinc-400">
-                <span>Tanggal & Jam:</span>
-                <span className="font-bold text-zinc-200">{formatDateID(cancelModalItem.booking_date)} - {cancelModalItem.booking_time} WIB</span>
-              </div>
-              <div className="flex justify-between text-zinc-400">
-                <span>Total Bayar:</span>
-                <span className="font-bold text-emerald-400">Rp {getServicePrice(cancelModalItem.service_name).toLocaleString('id-ID')}</span>
-              </div>
-            </div>
-            <p className="text-[11px] font-bold text-amber-300 text-center">Apakah pelanggan ini membutuhkan pengembalian dana (refund)?</p>
-            <div className="grid grid-cols-2 gap-3 pt-2">
-              <button
-                onClick={() => handleConfirmCancel(true)}
-                className="bg-amber-500 hover:bg-amber-400 text-zinc-950 font-black py-3 rounded-2xl text-xs transition-all shadow-lg active:scale-95"
-              >
-                Ya, Perlu Refund 💳
-              </button>
-              <button
-                onClick={() => handleConfirmCancel(false)}
-                className="bg-rose-600 hover:bg-rose-500 text-white font-black py-3 rounded-2xl text-xs transition-all shadow-lg active:scale-95"
-              >
-                Tidak Perlu Refund ❌
-              </button>
-            </div>
-
+      {/* 17.11 PAGINATION FOOTER */}
+      {totalPages > 1 && (
+        <div className="p-3.5 sm:p-4 bg-zinc-950/90 border-t border-zinc-800/80 flex items-center justify-between text-xs">
+          <span className="text-zinc-400 font-medium">
+            Halaman <strong className="text-white">{currentPage}</strong> dari <strong className="text-white">{totalPages}</strong>
+          </span>
+          <div className="flex space-x-2">
             <button
-              onClick={() => setCancelModalItem(null)}
-              className="w-full text-zinc-400 hover:text-white font-bold text-xs py-2 transition-colors text-center"
+              disabled={currentPage === 1}
+              onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
+              className="px-3 py-1.5 bg-zinc-900 border border-zinc-800 rounded-xl disabled:opacity-40 font-bold hover:bg-zinc-800 transition text-zinc-200"
             >
-              Batal
+              Sebelumnya
+            </button>
+            <button
+              disabled={currentPage === totalPages}
+              onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
+              className="px-3 py-1.5 bg-zinc-900 border border-zinc-800 rounded-xl disabled:opacity-40 font-bold hover:bg-zinc-800 transition text-zinc-200"
+            >
+              Selanjutnya
             </button>
           </div>
         </div>
       )}
-    </div>
-  </div>
-)}
+    </>
+  )}
+</div>
+
+</div>
+
+          {/* MODAL REFUND HANYA BERLAKU UNTUK PAKET PROFESIONAL */}
+          {cancelModalItem && (
+          <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className={`max-w-md w-full border rounded-3xl p-6 space-y-5 shadow-2xl animate-in fade-in zoom-in duration-200 ${themeStyles.cardBg}`}>
+              <div className="text-center space-y-2">
+                <span className="text-4xl">⚠️</span>
+                <h3 className="text-lg font-black text-white">Konfirmasi Pembatalan Reservasi</h3>
+                <p className="text-xs text-zinc-400">
+                  Pesanan atas nama <strong className="text-white">{cancelModalItem.customer_name}</strong> akan dibatalkan.
+                </p>
+              </div>
+
+              <div className="bg-zinc-950/80 border border-zinc-800/80 p-4 rounded-2xl space-y-2 text-xs">
+                <div className="flex justify-between text-zinc-400">
+                  <span>Layanan:</span>
+                  <span className="font-bold text-zinc-200">{cancelModalItem.service_name}</span>
+                </div>
+                <div className="flex justify-between text-zinc-400">
+                  <span>Tanggal & Jam:</span>
+                  <span className="font-bold text-zinc-200">{formatDateID(cancelModalItem.booking_date)} - {cancelModalItem.booking_time} WIB</span>
+                </div>
+                <div className="flex justify-between text-zinc-400">
+                  <span>Total Bayar:</span>
+                  <span className="font-bold text-emerald-400">Rp {getServicePrice(cancelModalItem.service_name).toLocaleString('id-ID')}</span>
+                </div>
+              </div>
+
+              <p className="text-[11px] font-bold text-amber-300 text-center">Apakah pelanggan ini membutuhkan pengembalian dana (refund)?</p>
+
+              <div className="grid grid-cols-2 gap-3 pt-2">
+                <button
+                  onClick={() => handleConfirmCancel(true)}
+                  className="bg-amber-500 hover:bg-amber-400 text-zinc-950 font-black py-3 rounded-2xl text-xs transition-all shadow-lg active:scale-95"
+                >
+                  Ya, Perlu Refund 💳
+                </button>
+                <button
+                  onClick={() => handleConfirmCancel(false)}
+                  className="bg-rose-600 hover:bg-rose-500 text-white font-black py-3 rounded-2xl text-xs transition-all shadow-lg active:scale-95"
+                >
+                  Tidak Perlu Refund ❌
+                </button>
+              </div>
+
+              <button
+                onClick={() => setCancelModalItem(null)}
+                className="w-full text-zinc-400 hover:text-white font-bold text-xs py-2 transition-colors text-center"
+              >
+                Batal
+              </button>
+            </div>
+          </div>
+        )}
+
+      </div>
+  )
+}
