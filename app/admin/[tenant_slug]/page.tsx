@@ -1255,83 +1255,104 @@ export default function AdminDashboard() {
   }
 
   // ============================================================================
-  // 18. LOGIN FORM UI STATE (UNAUTHENTICATED)
-  // ============================================================================
-  if (!isAuthenticated) {
-    const isEyelash = businessType === 'eyelash'
+// 18. LOGIN FORM UI STATE (UNAUTHENTICATED)
+// ============================================================================
+if (!isAuthenticated) {
+  // 1. Tentukan Tema Visual (Misal: Eyelash/Beauty pake tema pink, sisanya tema dark/purple)
+  const isPinkTheme = ['eyelash', 'beauty', 'clinic', 'glow'].includes(businessType?.toLowerCase())
 
-    return (
-      <main className={`min-h-screen flex items-center justify-center p-4 font-sans text-zinc-100 relative overflow-hidden transition-colors duration-500 ${
-        isEyelash ? 'bg-[#0b0510]' : 'bg-[#06040a]'
+  // 2. Format Nama Kategori secara Otomatis dari Supabase (misal: "clinic" -> "Clinic", "eyelash" -> "Eyelash")
+  const categoryLabel = businessType 
+    ? businessType.charAt(0).toUpperCase() + businessType.slice(1) 
+    : 'Admin'
+
+  // 3. Ikon Otomatis Berdasarkan Keyword / Default
+  const getCategoryIcon = (categoryType?: string | null) => {
+  const t = categoryType?.toLowerCase() || ''
+  if (t.includes('eyelash')) return '✨'
+  if (t.includes('barber')) return '💈'
+  if (t.includes('clinic') || t.includes('glow')) return '🩺'
+  if (t.includes('beauty') || t.includes('salon')) return '💄'
+  return '⚡'
+  }
+
+  const categoryIcon = getCategoryIcon(businessType)
+
+  return (
+    <main className={`min-h-screen flex items-center justify-center p-4 font-sans text-zinc-100 relative overflow-hidden transition-colors duration-500 ${
+      isPinkTheme ? 'bg-[#0b0510]' : 'bg-[#06040a]'
+    }`}>
+      <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-80 sm:w-96 h-80 sm:h-96 rounded-full blur-3xl pointer-events-none transition-all duration-500 ${
+        isPinkTheme ? 'bg-pink-500/15' : 'bg-purple-600/15'
+      }`}></div>
+
+      <div className={`max-w-md w-full backdrop-blur-2xl border rounded-3xl shadow-2xl p-6 sm:p-8 space-y-6 relative z-10 transition-all duration-300 ${
+        isPinkTheme 
+          ? 'bg-pink-950/20 border-pink-500/30 shadow-pink-950/30' 
+          : 'bg-zinc-900/60 border-purple-500/30 shadow-purple-950/40'
       }`}>
-        <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-80 sm:w-96 h-80 sm:h-96 rounded-full blur-3xl pointer-events-none transition-all duration-500 ${
-          isEyelash ? 'bg-pink-500/15' : 'bg-purple-600/15'
-        }`}></div>
+        <div className="text-center space-y-2">
+          {/* BADGE DINAMIS BERDASARKAN KATEGORI SUPABASE */}
+          <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black border tracking-widest uppercase shadow-inner ${
+            isPinkTheme 
+              ? 'bg-gradient-to-r from-pink-500/20 to-rose-600/10 text-pink-300 border-pink-500/30' 
+              : 'bg-gradient-to-r from-purple-500/20 via-indigo-500/20 to-purple-600/10 text-purple-300 border-purple-500/30'
+          }`}>
+            <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${isPinkTheme ? 'bg-pink-400' : 'bg-purple-400'}`}></span>
+            {categoryIcon} {categoryLabel} Control Center
+          </span>
 
-        <div className={`max-w-md w-full backdrop-blur-2xl border rounded-3xl shadow-2xl p-6 sm:p-8 space-y-6 relative z-10 transition-all duration-300 ${
-          isEyelash 
-            ? 'bg-pink-950/20 border-pink-500/30 shadow-pink-950/30' 
-            : 'bg-zinc-900/60 border-purple-500/30 shadow-purple-950/40'
-        }`}>
-          <div className="text-center space-y-2">
-            <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black border tracking-widest uppercase shadow-inner ${
-              isEyelash 
-                ? 'bg-gradient-to-r from-pink-500/20 to-rose-600/10 text-pink-300 border-pink-500/30' 
-                : 'bg-gradient-to-r from-purple-500/20 via-indigo-500/20 to-purple-600/10 text-purple-300 border-purple-500/30'
-            }`}>
-              <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${isEyelash ? 'bg-pink-400' : 'bg-purple-400'}`}></span>
-              {isEyelash ? '✨ Eyelash Control Center' : '💈 Barber Control Center'}
-            </span>
-            <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight uppercase bg-gradient-to-b from-white via-zinc-200 to-purple-200/60 bg-clip-text text-transparent mt-2">
-              {brandTitle || (isEyelash ? 'Eyelash Salon' : 'Barbershop Portal')}
-            </h1>
-            <p className="text-xs text-zinc-400 font-medium">Masuk untuk mengakses dasbor manajemen reservasi</p>
+          {/* JUDUL BRAND DINAMIS */}
+          <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight uppercase bg-gradient-to-b from-white via-zinc-200 to-purple-200/60 bg-clip-text text-transparent mt-2">
+            {brandTitle || `${categoryLabel} Portal`}
+          </h1>
+          <p className="text-xs text-zinc-400 font-medium">Masuk untuk mengakses dasbor manajemen reservasi</p>
+        </div>
+
+        <form onSubmit={handleLogin} className="space-y-4">
+          <div>
+            <label className="block text-xs font-semibold text-zinc-300 mb-1.5">Email Admin</label>
+            <input
+              type="email"
+              required
+              placeholder="admin@bisnis.com"
+              className={`w-full px-4 py-3 bg-zinc-950/80 border rounded-2xl text-xs text-zinc-100 placeholder-zinc-600 focus:outline-none transition-all shadow-inner ${
+                isPinkTheme ? 'border-pink-900/50 focus:border-pink-500 focus:ring-2 focus:ring-pink-500/20' : 'border-zinc-800 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20'
+              }`}
+              value={emailInput}
+              onChange={(e) => setEmailInput(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-zinc-300 mb-1.5">Password</label>
+            <input
+              type="password"
+              required
+              placeholder="••••••••"
+              className={`w-full px-4 py-3 bg-zinc-950/80 border rounded-2xl text-xs text-zinc-100 placeholder-zinc-600 focus:outline-none transition-all shadow-inner ${
+                isPinkTheme ? 'border-pink-900/50 focus:border-pink-500 focus:ring-2 focus:ring-pink-500/20' : 'border-zinc-800 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20'
+              }`}
+              value={passwordInput}
+              onChange={(e) => setPasswordInput(e.target.value)}
+            />
           </div>
 
-          <form onSubmit={handleLogin} className="space-y-4">
-            <div>
-              <label className="block text-xs font-semibold text-zinc-300 mb-1.5">Email Admin</label>
-              <input
-                type="email"
-                required
-                placeholder="admin@bisnis.com"
-                className={`w-full px-4 py-3 bg-zinc-950/80 border rounded-2xl text-xs text-zinc-100 placeholder-zinc-600 focus:outline-none transition-all shadow-inner ${
-                  isEyelash ? 'border-pink-900/50 focus:border-pink-500 focus:ring-2 focus:ring-pink-500/20' : 'border-zinc-800 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20'
-                }`}
-                value={emailInput}
-                onChange={(e) => setEmailInput(e.target.value)}
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-zinc-300 mb-1.5">Password</label>
-              <input
-                type="password"
-                required
-                placeholder="••••••••"
-                className={`w-full px-4 py-3 bg-zinc-950/80 border rounded-2xl text-xs text-zinc-100 placeholder-zinc-600 focus:outline-none transition-all shadow-inner ${
-                  isEyelash ? 'border-pink-900/50 focus:border-pink-500 focus:ring-2 focus:ring-pink-500/20' : 'border-zinc-800 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20'
-                }`}
-                value={passwordInput}
-                onChange={(e) => setPasswordInput(e.target.value)}
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className={`w-full font-black py-3.5 rounded-2xl transition-all text-xs tracking-wide shadow-lg active:scale-[0.98] disabled:opacity-50 mt-2 ${
-                isEyelash 
-                  ? 'bg-gradient-to-r from-pink-500 to-rose-600 hover:from-pink-400 hover:to-rose-500 text-white shadow-pink-500/20' 
-                  : 'bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-700 hover:from-purple-500 hover:to-indigo-500 text-white shadow-purple-600/30'
-              }`}
-            >
-              {loading ? 'Memproses Authentikasi...' : 'MASUK DASHBOARD'}
-            </button>
-          </form>
-        </div>
-      </main>
-    )
-  }
+          <button
+            type="submit"
+            disabled={loading}
+            className={`w-full font-black py-3.5 rounded-2xl transition-all text-xs tracking-wide shadow-lg active:scale-[0.98] disabled:opacity-50 mt-2 ${
+              isPinkTheme 
+                ? 'bg-gradient-to-r from-pink-500 to-rose-600 hover:from-pink-400 hover:to-rose-500 text-white shadow-pink-500/20' 
+                : 'bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-700 hover:from-purple-500 hover:to-indigo-500 text-white shadow-purple-600/30'
+            }`}
+          >
+            {loading ? 'Memproses Authentikasi...' : 'MASUK DASHBOARD'}
+          </button>
+        </form>
+      </div>
+    </main>
+  )
+}
 
   const isEyelash = businessType === 'eyelash'
   const isProfesional = subscriptionPlan === 'PROFESIONAL'
