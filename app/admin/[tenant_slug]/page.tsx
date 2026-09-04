@@ -82,15 +82,16 @@ export default function AdminDashboard() {
   const tenantSlugFromUrl = params?.tenant_slug as string || ''
 
   const [isInitializing, setIsInitializing] = useState<boolean>(true)
-  const [tenantCode, setTenantCode] = useState<string>(tenantSlugFromUrl)
   
+  // Ubah default state menjadi kosong/netral agar tidak ada data lama yang "bocor"
+  const [tenantCode, setTenantCode] = useState<string>('')
   const [brandTitle, setBrandTitle] = useState<string>('')
-  const [businessType, setBusinessType] = useState<BusinessType>('barbershop')
-  const [staffLabel, setStaffLabel] = useState<string>('Capster / Staff')
+  const [businessType, setBusinessType] = useState<BusinessType>('barbershop') // Boleh tetap, nanti dioverride database
+  const [staffLabel, setStaffLabel] = useState<string>('')
   const [selectedTheme, setSelectedTheme] = useState<ThemeMode>('purple')
 
   const [isAuthenticated, setIsAuthenticated] = useState(false)
-  const [subscriptionPlan, setSubscriptionPlan] = useState<SubscriptionPlanType>('PROFESIONAL')
+  const [subscriptionPlan, setSubscriptionPlan] = useState<SubscriptionPlanType>('BASIC') // Ubah default ke BASIC/kosong
 
   const [emailInput, setEmailInput] = useState('')
   const [passwordInput, setPasswordInput] = useState('')
