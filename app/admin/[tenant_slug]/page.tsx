@@ -132,21 +132,23 @@ export default function AdminDashboard() {
     return code.replace(/[^a-zA-Z0-9\-_]/g, '').toLowerCase()
   }
 
-  const determineCategory = (slugOrEmail: string): BusinessType | 'main_dashboard' => {
+  const determineCategory = (slugOrEmail: string): BusinessType => {
   const text = slugOrEmail.toLowerCase()
   
-  if (text.includes('fitri') || text.includes('lash') || text.includes('eyelash')) {
+  // Hanya tangkap kategori yang benar-benar spesifik
+  if (text.includes('lash') || text.includes('eyelash')) {
     return 'eyelash'
   }
   if (text.includes('barber')) {
     return 'barbershop'
   }
-  if (text.includes('skincare') || text.includes('clinic') || text.includes('aesthetic')) {
+  if (text.includes('skincare') || text.includes('clinic-aesthetic') || text.includes('aesthetic')) {
     return 'Skincare & Aesthetic'
   }
   
-  // Default aman: Masuk ke pusat kontrol utama jika tidak ada keyword spesifik
-  return 'main_dashboard' 
+  // Jika emailnya seperti admin@glowclinic.com atau dari URL /admin/glow, 
+  // jangan paksa masuk kategori bisnis, tapi arahkan dengan aman ke pusat kontrol utama.
+  return 'main_dashboard' as any // atau sesuaikan dengan tipe BusinessType jika main_dashboard sudah didaftarkan
 }
 
   const getServicePrice = useCallback((serviceName?: string): number => {
@@ -409,9 +411,19 @@ export default function AdminDashboard() {
 
       const category = determineCategory(emailInput || cleanCode)
       setBusinessType(category)
-      setStaffLabel(category === 'eyelash' ? 'Lash Artist' : 'Capster / Staff')
-      if (category === 'eyelash') setSelectedTheme('pink')
 
+      // PERBAIKAN: Tangani label dan tema berdasarkan kategori, termasuk untuk main_dashboard
+      if (category === 'eyelash') {
+        setStaffLabel('Lash Artist')
+        setSelectedTheme('pink')
+      } else if (category === 'barbershop') {
+        setStaffLabel('Capster / Staff')
+        setSelectedTheme('purple')
+      } else {
+        // Pengaturan untuk Pusat Kontrol Utama / Admin Pusat (gunakan tema netral yang valid)
+        setStaffLabel('Staff / Admin')
+        setSelectedTheme('blue') // Ganti dengan salah satu tema valid yang tersedia di app lu
+      }
       await fetchTenantDetail(cleanCode)
     }
     setLoading(false)
