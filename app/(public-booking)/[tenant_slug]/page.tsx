@@ -31,6 +31,7 @@ interface StaffItem {
 }
 
 interface TenantData {
+  id?: string;
   clientCode: string
   tenantSlug: string
   name: string
@@ -284,147 +285,165 @@ function BookingFormContent() {
   // 4.7 Effects: Load Tenant Data, Services, Staff & Initial Blocked Slots
   // --------------------------------------------------------------------------
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const hostname = window.location.hostname
-      const searchParams = new URLSearchParams(window.location.search)
-      const tenantQuery = searchParams.get('tenant')
+  if (typeof window !== 'undefined') {
+    const hostname = window.location.hostname.toLowerCase()
+    const searchParams = new URLSearchParams(window.location.search)
+    const tenantQuery = searchParams.get('tenant')
+    const rawSlug = params?.tenant_slug
+    const routeSlug = Array.isArray(rawSlug) ? rawSlug[0] : rawSlug
 
-      const rawSubdomain = hostname.split('.')[0].toLowerCase()
-      const isLocal = rawSubdomain === 'localhost' || rawSubdomain.startsWith('127') || hostname.includes('localhost')
+    // 1. Ekstrak slug secara cerdas dari Domain / Hostname
+    let detectedSlug = ''
+    if (hostname.includes('fitrifeb-lashes')) {
+      detectedSlug = 'fitrifeb-lashes'
+    } else if (hostname.includes('mcut-barbershop')) {
+      detectedSlug = 'mcut' // Sesuaikan dengan slug di database lu untuk M Cut
+    } else if (hostname.includes('glow-clinic')) {
+      detectedSlug = 'glow-clinic'
+    } else if (hostname.includes('localhost') || hostname.startsWith('127.')) {
+      // Kalau lagi di lokal, prioritas dari URL route/query, kalau kosong fallback ke default
+      detectedSlug = routeSlug || tenantQuery || 'mcut'
+    } else {
+      // Untuk custom domain lain yang belum di-hardcode di atas, ambil subdomain depannya
+      const parts = hostname.split('.')
+      if (parts.length > 0) {
+        detectedSlug = parts[0]
+      }
+    }
 
-      let extractedSlug = rawSubdomain
-      if (rawSubdomain.includes('fitrifeb')) {
-        extractedSlug = 'fitrifeb-lashes'
+    const currentSlug = (detectedSlug || routeSlug || tenantQuery || 'mcut').trim().toLowerCase()
+
+    const fetchTenantAndData = async () => {
+  setFetchingServices(true)
+
+  try {
+    // 1. Ambil data tenant utama berdasarkan slug/domain
+    const { data: tenantData, error: tenantErr } = await supabase
+      .from('tenants')
+      .select('*')
+      .eq('tenant_slug', currentSlug)
+      .maybeSingle()
+
+    if (tenantErr || !tenantData) {
+      console.error("Tenant tidak ditemukan!")
+      setFetchingServices(false)
+      return
+    }
+
+    // Ambil ID unik tenant sebagai acuan pengaman data (bisa tenantData.id atau tenantData.tenant_id)
+    const uniqueTenantId = tenantData.id || tenantData.tenant_id
+
+    const dbPlan = ((tenantData?.subscription_plan || 'BASIC') as string).toUpperCase() as 'BASIC' | 'PREMIUM' | 'PROFESIONAL'
+    const rawCategory = tenantData?.category || 'Layanan'
+
+    const defaultLayout = tenantData?.layout_type || (rawCategory.toLowerCase().includes('barber') ? 'BASIC_SINGLE_PAGE' : 'STEP_WIZARD')
+    const defaultColor = tenantData?.theme_color || (rawCategory.toLowerCase().includes('barber') ? 'amber' : 'rose')
+
+    const activeTenant: TenantData = {
+      id: uniqueTenantId, // Simpan id unik jika diperlukan di state
+      clientCode: tenantData?.client_code || currentSlug.toUpperCase(),
+      tenantSlug: tenantData?.tenant_slug || currentSlug,
+      name: tenantData?.business_name || tenantData?.name || currentSlug.toUpperCase(),
+      adminWa: tenantData?.admin_wa || '',
+      subscriptionPlan: dbPlan,
+      category: rawCategory,
+      staffLabel: tenantData?.staff_label || (rawCategory.toLowerCase().includes('barber') ? 'Capster' : 'Staff / Artist'),
+      layoutType: defaultLayout,
+      themeColor: defaultColor,
+      requireConsent: tenantData?.require_consent ?? rawCategory.toLowerCase().includes('lash'),
+      showExtraAddon: tenantData?.show_extra_addon ?? rawCategory.toLowerCase().includes('lash'),
+      addonLabel: tenantData?.addon_label || 'Perlu lepas eyelash lama (+Rp 30.000)',
+      addonPrice: tenantData?.addon_price || 30000,
+      dpType: tenantData?.dp_type || 'PERCENTAGE',
+      dpValue: tenantData?.dp_value ?? 50,
+      waGatewayUrl: tenantData?.wa_gateway_url || '',
+      waApiKey: tenantData?.wa_api_key || '',
+      qrisUrl: tenantData?.qris_url || '',
+      preventDoubleBooking: tenantData?.prevent_double_booking ?? true,
+      hideBookedSlots: tenantData?.hide_booked_slots ?? false
+    }
+
+    setTenant(activeTenant)
+
+    // 2. Fetch Services menggunakan tenant_id (ubah ke tenant_slug jika database lu masih pakai slug)
+    const { data: serviceData } = await supabase
+      .from('services')
+      .select('*')
+      .eq('tenant_id', uniqueTenantId) // Ganti .eq('tenant_slug', activeTenant.tenantSlug) jika belum pakai ID
+
+    if (serviceData && serviceData.length > 0) {
+      setServices(serviceData)
+      setFormData((prev) => ({ ...prev, selected_services: [serviceData[0].name] }))
+    } else {
+      setServices([])
+    }
+
+    // 3. Fetch Staff menggunakan tenant_id
+    if (activeTenant.subscriptionPlan !== 'BASIC') {
+      const { data: staffData } = await supabase
+        .from('staff')
+        .select('*')
+        .eq('tenant_id', uniqueTenantId)
+        .eq('is_active', true)
+
+      if (staffData && staffData.length > 0) {
+        setStaffList(staffData)
+        setFormData((prev) => ({ ...prev, selected_staff: staffData[0].name }))
       } else {
-        extractedSlug = rawSubdomain.replace('-barbershop', '').replace('-dental', '').replace('-clinic', '')
+        setStaffList([])
       }
+    } else {
+      const { data: staffData } = await supabase
+        .from('staff')
+        .select('*')
+        .eq('tenant_id', uniqueTenantId)
+        .eq('is_active', true)
+        .limit(1)
 
-      // Ambil slug dari params, pastikan aman dari array atau undefined
-      const rawSlug = params?.tenant_slug
-      const slugStr = Array.isArray(rawSlug) ? rawSlug[0] : (rawSlug || tenantQuery || 'fitrifeb-lashes')
-      const currentSlug = slugStr.trim().toLowerCase()
-      
-
-      const fetchTenantAndData = async () => {
-        setFetchingServices(true)
-
-        try {
-          const { data: tenantData } = await supabase
-            .from('tenants')
-            .select('*')
-            .eq('tenant_slug', currentSlug)
-            .maybeSingle()
-
-          const dbPlan = ((tenantData?.subscription_plan || 'BASIC') as string).toUpperCase() as 'BASIC' | 'PREMIUM' | 'PROFESIONAL'
-          const rawCategory = tenantData?.category || 'Layanan'
-
-          const defaultLayout = tenantData?.layout_type || (rawCategory.toLowerCase().includes('barber') ? 'BASIC_SINGLE_PAGE' : 'STEP_WIZARD')
-          const defaultColor = tenantData?.theme_color || (rawCategory.toLowerCase().includes('barber') ? 'amber' : 'rose')
-
-          const activeTenant: TenantData = {
-            clientCode: tenantData?.client_code || currentSlug.toUpperCase(),
-            tenantSlug: tenantData?.tenant_slug || currentSlug,
-            name: tenantData?.business_name || tenantData?.name || currentSlug.toUpperCase(),
-            adminWa: tenantData?.admin_wa || '',
-            subscriptionPlan: dbPlan,
-            category: rawCategory,
-            staffLabel: tenantData?.staff_label || (rawCategory.toLowerCase().includes('barber') ? 'Capster' : 'Staff / Artist'),
-            layoutType: defaultLayout,
-            themeColor: defaultColor,
-            requireConsent: tenantData?.require_consent ?? rawCategory.toLowerCase().includes('lash'),
-            showExtraAddon: tenantData?.show_extra_addon ?? rawCategory.toLowerCase().includes('lash'),
-            addonLabel: tenantData?.addon_label || 'Perlu lepas eyelash lama (+Rp 30.000)',
-            addonPrice: tenantData?.addon_price || 30000,
-            dpType: tenantData?.dp_type || 'PERCENTAGE',
-            dpValue: tenantData?.dp_value ?? 50,
-            waGatewayUrl: tenantData?.wa_gateway_url || '',
-            waApiKey: tenantData?.wa_api_key || '',
-            qrisUrl: tenantData?.qris_url || '',
-            preventDoubleBooking: tenantData?.prevent_double_booking ?? true,
-            hideBookedSlots: tenantData?.hide_booked_slots ?? false
-          }
-
-          setTenant(activeTenant)
-
-          // Fetch Services
-          const { data: serviceData } = await supabase
-            .from('services')
-            .select('*')
-            .eq('tenant_slug', activeTenant.tenantSlug)
-
-          if (serviceData && serviceData.length > 0) {
-            setServices(serviceData)
-            setFormData((prev) => ({ ...prev, selected_services: [serviceData[0].name] }))
-          } else {
-            setServices([])
-          }
-
-          // Fetch Staff
-          if (activeTenant.subscriptionPlan !== 'BASIC') {
-            const { data: staffData } = await supabase
-              .from('staff')
-              .select('*')
-              .eq('tenant_slug', activeTenant.tenantSlug)
-              .eq('is_active', true)
-
-            if (staffData && staffData.length > 0) {
-              setStaffList(staffData)
-              setFormData((prev) => ({ ...prev, selected_staff: staffData[0].name }))
-            } else {
-              setStaffList([])
-            }
-          } else {
-            // Paket BASIC: Dibatasi 1 Staff saja
-            const { data: staffData } = await supabase
-              .from('staff')
-              .select('*')
-              .eq('tenant_slug', activeTenant.tenantSlug)
-              .eq('is_active', true)
-              .limit(1)
-
-            if (staffData && staffData.length > 0) {
-              setStaffList(staffData)
-              setFormData((prev) => ({ ...prev, selected_staff: staffData[0].name }))
-            } else {
-              setStaffList([])
-            }
-          }
-
-          // Fetch Blocked Slots
-          const { data: blockedData, error: blockedErr } = await supabase
-            .from('blocked_slots')
-            .select('date, start_time')
-            .eq('tenant_slug', activeTenant.tenantSlug)
-
-          if (blockedErr) console.error("Error fetching blocked_slots:", blockedErr)
-
-          const { data: confirmedReservations, error: resErr } = await supabase
-            .from('reservations')
-            .select('booking_date, booking_time')
-            .eq('tenant_slug', activeTenant.tenantSlug)
-            .eq('status', 'confirmed')
-
-          if (resErr) console.error("Error fetching reservations:", resErr)
-
-          const combinedBlockedSlots = [
-            ...(blockedData?.map((item) => ({
-              block_date: item.date,
-              block_time: item.start_time ? item.start_time.substring(0, 5) : '',
-            })) || []),
-            ...(confirmedReservations?.map((item) => ({
-              block_date: item.booking_date,
-              block_time: item.booking_time ? item.booking_time.substring(0, 5) : '',
-            })) || [])
-          ]
-
-          setBlockedSlots(combinedBlockedSlots)
-
-        } catch (err) {
-          console.error("Error fetching data:", err)
-        } finally {
-          setFetchingServices(false)
-        }
+      if (staffData && staffData.length > 0) {
+        setStaffList(staffData)
+        setFormData((prev) => ({ ...prev, selected_staff: staffData[0].name }))
+      } else {
+        setStaffList([])
       }
+    }
+
+    // 4. Fetch Blocked Slots menggunakan tenant_id
+    const { data: blockedData, error: blockedErr } = await supabase
+      .from('blocked_slots')
+      .select('date, start_time')
+      .eq('tenant_id', uniqueTenantId)
+
+    if (blockedErr) console.error("Error fetching blocked_slots:", blockedErr)
+
+    // 5. Fetch Reservations menggunakan tenant_id
+    const { data: confirmedReservations, error: resErr } = await supabase
+      .from('reservations')
+      .select('booking_date, booking_time')
+      .eq('tenant_id', uniqueTenantId)
+      .eq('status', 'confirmed')
+
+    if (resErr) console.error("Error fetching reservations:", resErr)
+
+    const combinedBlockedSlots = [
+      ...(blockedData?.map((item) => ({
+        block_date: item.date,
+        block_time: item.start_time ? item.start_time.substring(0, 5) : '',
+      })) || []),
+      ...(confirmedReservations?.map((item) => ({
+        block_date: item.booking_date,
+        block_time: item.booking_time ? item.booking_time.substring(0, 5) : '',
+      })) || [])
+    ]
+
+    setBlockedSlots(combinedBlockedSlots)
+
+  } catch (err) {
+    console.error("Error fetching data:", err)
+  } finally {
+    setFetchingServices(false)
+  }
+}
 
       fetchTenantAndData()
     }
