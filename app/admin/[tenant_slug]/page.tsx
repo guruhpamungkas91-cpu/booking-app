@@ -225,15 +225,16 @@ export default function AdminDashboard() {
   }
 
   // ============================================================================
-  // 6. API FETCHERS & HANDLERS (STRICT EXACT MATCH)
+  // 6. API FETCHERS & HANDLERS (AUTOMATIC DOMAIN VALIDATION)
   // ============================================================================
   const fetchTenantDetail = useCallback(async (slugToFind: string) => {
     if (!slugToFind) return false
 
     try {
+      // 1. Fetch data tenant termasuk kolom domain_url yang baru dibuat
       const { data: tenantData, error } = await supabase
         .from('Tenants')
-        .select('subscription_plan, staff_label, tenant_slug, auto_wa_reminder, prevent_double_booking, hide_booked_slots')
+        .select('subscription_plan, staff_label, tenant_slug, auto_wa_reminder, prevent_double_booking, hide_booked_slots, domain_url')
         .eq('tenant_slug', slugToFind)
         .maybeSingle()
 
@@ -241,6 +242,20 @@ export default function AdminDashboard() {
         return false
       }
 
+      // 2. 🛡️ VALIDASI DOMAIN OTOMATIS BERDASARKAN DATABASE
+      if (typeof window !== 'undefined') {
+        const currentHost = window.location.hostname
+
+        // Cek domain browser cuma kalau lagi di production (bukan localhost)
+        if (currentHost !== 'localhost' && !currentHost.includes('127.0.0.1')) {
+          // Jika domain browser beda sama domain_url resmi tenant di Supabase -> REJECT!
+          if (tenantData.domain_url && tenantData.domain_url !== currentHost) {
+            return false
+          }
+        }
+      }
+
+      // 3. SET STATE JIKA VALIDASI LOLOS
       const rawPlan = String(tenantData.subscription_plan || '').trim().toUpperCase()
 
       if (rawPlan.includes('PROFESIONAL') || rawPlan.includes('PROFESSIONAL') || rawPlan.includes('PRO')) {
@@ -263,15 +278,9 @@ export default function AdminDashboard() {
       setBrandTitle(tenantData.tenant_slug.toUpperCase())
       setTenantCode(tenantData.tenant_slug)
 
-      if (typeof tenantData.auto_wa_reminder === 'boolean') {
-        setAutoWaReminder(tenantData.auto_wa_reminder)
-      }
-      if (typeof tenantData.prevent_double_booking === 'boolean') {
-        setPreventDoubleBooking(tenantData.prevent_double_booking)
-      }
-      if (typeof tenantData.hide_booked_slots === 'boolean') {
-        setHideBookedSlots(tenantData.hide_booked_slots)
-      }
+      if (typeof tenantData.auto_wa_reminder === 'boolean') setAutoWaReminder(tenantData.auto_wa_reminder)
+      if (typeof tenantData.prevent_double_booking === 'boolean') setPreventDoubleBooking(tenantData.prevent_double_booking)
+      if (typeof tenantData.hide_booked_slots === 'boolean') setHideBookedSlots(tenantData.hide_booked_slots)
 
       return true
     } catch (err) {
@@ -281,13 +290,13 @@ export default function AdminDashboard() {
   }, [])
 
   // ============================================================================
-  // 7. INITIALIZATION EFFECT (DISENJATAKAN AGAR TIDAK BOKOR TAMPILAN AWAL)
+  // 7. INITIALIZATION EFFECT
   // ============================================================================
   useEffect(() => {
     const initTenantAndSession = async () => {
       setIsInitializing(true)
+      setIsInvalidDomain(false) // Reset state tiap navigasi
       
-      // Kosongkan state visual sementara agar tidak ada bekas tenant sebelumnya
       setReservations([])
       setFilteredReservations([])
       setBlockedSlots([])
@@ -302,13 +311,13 @@ export default function AdminDashboard() {
       }
 
       const cleanSlug = sanitizeClientCode(activeSlug)
-      
+
       if (cleanSlug) {
+        // Cek detail & validasi domain otomatis di sini
         const isValid = await fetchTenantDetail(cleanSlug)
         
         if (!isValid) {
-          setTenantCode('')
-          setBrandTitle('TENANT TIDAK DITEMUKAN')
+          setIsInvalidDomain(true) // Otomatis lempar ke 404 jika slug salah ATAU domain tidak cocok
           setIsInitializing(false)
           return
         }
@@ -334,6 +343,29 @@ export default function AdminDashboard() {
 
     initTenantAndSession()
   }, [tenantSlugFromUrl, fetchTenantDetail])
+
+  // ============================================================================
+  // RENDER GUARD (TARUH DI SINI, DI BAWAH SEMUA HOOKS)
+  // ============================================================================
+  if (isInitializing) {
+    return (
+      <div className="min-h-screen bg-zinc-950 flex items-center justify-center text-zinc-400 text-xs font-semibold">
+        Memuat Dashboard...
+      </div>
+    )
+  }
+
+  if (isInvalidDomain) {
+    return (
+      <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center p-4 text-center">
+        <h1 className="text-7xl font-black text-rose-500 mb-2">404</h1>
+        <h2 className="text-xl font-bold text-white mb-1">Akses Ditolak / Halaman Tidak Ada</h2>
+        <p className="text-xs text-zinc-400 max-w-md">
+          Halaman admin <code className="text-amber-400">/admin/{tenantSlugFromUrl}</code> tidak valid untuk domain ini.
+        </p>
+      </div>
+    )
+  }
 
   // ============================================================================
   // 8. TOGGLE HANDLERS
