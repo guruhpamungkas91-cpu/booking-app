@@ -613,21 +613,30 @@ export default function AdminDashboard() {
       (item) => item.staff_name && item.staff_name.toLowerCase().includes('rian')
     ).length
 
+    // 1. Hitung performa per staff secara dinamis dari transaksi yang completed
     const staffPerformance: Record<string, number> = {}
     reservations.forEach((item) => {
       if (isCompleted(item.status) && item.staff_name) {
-        staffPerformance[item.staff_name] = (staffPerformance[item.staff_name] || 0) + 1
+        const staffName = item.staff_name.trim()
+        staffPerformance[staffName] = (staffPerformance[staffName] || 0) + 1
       }
     })
 
+    // 2. Buat array staffList yang diurutkan dari transaksi terbanyak
+    const staffList = Object.keys(staffPerformance)
+      .map((name) => ({
+        name,
+        count: staffPerformance[name],
+      }))
+      .sort((a, b) => b.count - a.count)
+
+    // 3. Cari top staff
     let topStaffName = '-'
     let topStaffCount = 0
-    Object.entries(staffPerformance).forEach(([name, count]) => {
-      if (count > topStaffCount) {
-        topStaffCount = count
-        topStaffName = name
-      }
-    })
+    if (staffList.length > 0) {
+      topStaffName = staffList[0].name
+      topStaffCount = staffList[0].count
+    }
 
     return {
       totalBookings,
@@ -641,8 +650,7 @@ export default function AdminDashboard() {
       totalRevenue,
       topStaffName,
       topStaffCount,
-      budiCount, // <-- Ditambahkan di sini
-      rianCount, // <-- Ditambahkan di sini
+      staffList, // <-- Kembalikan array dinamis ini (HAPUS budiCount & rianCount)
     }
   }, [reservations, businessType])
 
@@ -1579,55 +1587,60 @@ export default function AdminDashboard() {
         </div>
 
         {/* 17.5 TOP STAFF PERFORMANCE SECTION */}
-        {isProfesional && (
-          <div className={`border p-4 sm:p-5 rounded-2xl sm:rounded-3xl transition-all flex flex-col gap-4 relative overflow-hidden ${themeStyles.cardBg}`}>
-            {/* Header Section */}
-            <div className="flex items-center space-x-3 sm:space-x-4">
-              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl border border-amber-400/50 bg-amber-500/20 flex items-center justify-center text-xl sm:text-2xl shrink-0 shadow-lg shadow-amber-500/20">
-                👑
+{isProfesional && (
+  <div className={`border p-4 sm:p-5 rounded-2xl sm:rounded-3xl transition-all flex flex-col gap-4 relative overflow-hidden ${themeStyles.cardBg}`}>
+    {/* Header Section */}
+    <div className="flex items-center space-x-3 sm:space-x-4">
+      <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl border border-amber-400/50 bg-amber-500/20 flex items-center justify-center text-xl sm:text-2xl shrink-0 shadow-lg shadow-amber-500/20">
+        👑
+      </div>
+      <div>
+        <span className={`text-[9px] sm:text-[10px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-full border ${themeStyles.badgeBg}`}>
+          Performa Staff ({staffLabel})
+        </span>
+        <h3 className="text-lg sm:text-xl font-black text-white mt-1">
+          Grafik Transaksi Staff
+        </h3>
+      </div>
+    </div>
+
+    {/* Grafik Progress Bar Staff Dinamis */}
+    <div className="flex flex-col gap-3 pt-2 border-t border-zinc-800/80">
+      {(!stats.staffList || stats.staffList.length === 0) ? (
+        <p className="text-xs text-zinc-400 italic py-2">
+          Belum ada transaksi staff terdata pada tenant ini.
+        </p>
+      ) : (
+        (() => {
+          const maxCount = Math.max(...stats.staffList.map((s: { count: number }) => s.count), 1);
+
+          return stats.staffList.map((staff: { name: string; count: number }, idx: number) => {
+            const percentage = Math.round((staff.count / maxCount) * 100);
+
+            return (
+              <div key={idx} className="flex flex-col gap-1.5">
+                <div className="flex justify-between items-center text-xs sm:text-sm">
+                  <span className="font-bold text-zinc-200">{staff.name}</span>
+                  <span className={`font-mono font-black ${themeStyles.textAccent}`}>
+                    {staff.count} <span className="text-[10px] text-zinc-300 font-normal">Transaksi</span>
+                  </span>
+                </div>
+
+                {/* Progress Bar Track */}
+                <div className="w-full bg-zinc-800/80 rounded-full h-2.5 sm:h-3 overflow-hidden p-0.5 border border-zinc-700/50">
+                  <div
+                    className="bg-gradient-to-r from-amber-500 to-amber-300 h-full rounded-full transition-all duration-500 shadow-sm"
+                    style={{ width: `${percentage}%` }}
+                  />
+                </div>
               </div>
-              <div>
-                <span className={`text-[9px] sm:text-[10px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-full border ${themeStyles.badgeBg}`}>
-                  Performa Staff ({staffLabel})
-                </span>
-                <h3 className="text-lg sm:text-xl font-black text-white mt-1">
-                  Grafik Transaksi Staff
-                </h3>
-              </div>
-            </div>
-
-            {/* Grafik Progress Bar Staff */}
-            <div className="flex flex-col gap-3 pt-2 border-t border-zinc-800/80">
-              {[
-                { name: 'Budi M CUT', count: stats.budiCount || 0 },
-                { name: 'Rian M CUT', count: stats.rianCount || 0 }
-              ].map((staff, idx) => {
-                // Menghitung persentase bar berdasarkan total transaksi terbanyak
-                const maxCount = Math.max(stats.budiCount || 0, stats.rianCount || 0, 1);
-                const percentage = Math.round((staff.count / maxCount) * 100);
-
-                return (
-                  <div key={idx} className="flex flex-col gap-1.5">
-                    <div className="flex justify-between items-center text-xs sm:text-sm">
-                      <span className="font-bold text-zinc-200">{staff.name}</span>
-                      <span className={`font-mono font-black ${themeStyles.textAccent}`}>
-                        {staff.count} <span className="text-[10px] text-zinc-300 font-normal">Transaksi</span>
-                      </span>
-                    </div>
-
-                    {/* Progress Bar Track */}
-                    <div className="w-full bg-zinc-800/80 rounded-full h-2.5 sm:h-3 overflow-hidden p-0.5 border border-zinc-700/50">
-                      <div
-                        className="bg-gradient-to-r from-amber-500 to-amber-300 h-full rounded-full transition-all duration-500 shadow-sm"
-                        style={{ width: `${percentage}%` }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
+            );
+          });
+        })()
+      )}
+    </div>
+  </div>
+)}
 
         {/* 17.6 BASIC PLAN UPGRADE BANNER */}
         {subscriptionPlan === 'BASIC' && (
