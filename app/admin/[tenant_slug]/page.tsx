@@ -199,9 +199,10 @@ export default function AdminDashboard() {
     if (!slugToFind) return false
 
     try {
+      // 1. TAMBAHKAN 'category' DI DALAM .select()
       const { data: tenantData, error } = await supabase
         .from('Tenants')
-        .select('subscription_plan, staff_label, tenant_slug, auto_wa_reminder, prevent_double_booking, hide_booked_slots, domain_url')
+        .select('subscription_plan, staff_label, tenant_slug, category, auto_wa_reminder, prevent_double_booking, hide_booked_slots, domain_url')
         .eq('tenant_slug', slugToFind)
         .maybeSingle()
 
@@ -216,7 +217,6 @@ export default function AdminDashboard() {
         if (currentHost !== 'localhost' && !currentHost.includes('127.0.0.1')) {
           const dbDomain = (tenantData.domain_url || '').toLowerCase().trim()
 
-          // Jika domain terisi di DB & beda dari domain browser -> Reject!
           if (dbDomain && dbDomain !== currentHost) {
             return false
           }
@@ -233,7 +233,9 @@ export default function AdminDashboard() {
         setSubscriptionPlan('BASIC')
       }
 
-      const category = determineCategory(tenantData.tenant_slug)
+      // 2. AMBIL KATEGORI ASLI DARI DATABASE, GUNAKAN FALLBACK KE SLUG JIKA KOSONG
+      const rawCategoryFromDb = tenantData.category || tenantData.tenant_slug
+      const category = determineCategory(rawCategoryFromDb)
       setBusinessType(category)
 
       if (tenantData.staff_label) {
