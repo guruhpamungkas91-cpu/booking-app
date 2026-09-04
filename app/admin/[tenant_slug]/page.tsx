@@ -192,26 +192,28 @@ export default function AdminDashboard() {
     }
   }
 
-  // ============================================================================
-// 6. API FETCHERS & HANDLERS (STRICT EXACT MATCH)
+// ============================================================================
+// 6. API FETCHERS & HANDLERS (STRICT EXACT MATCH + DEBUG LOG)
 // ============================================================================
 const fetchTenantDetail = useCallback(async (slugToFind: string) => {
   if (!slugToFind) return false
 
   try {
-    // 1. Lakukan pencarian secara PAS / EXACT MATCH (bukan ilike dengan persen)
+    // 1. Lakukan pencarian secara PAS / EXACT MATCH
     const { data: tenantData, error } = await supabase
       .from('Tenants')
       .select('subscription_plan, staff_label, tenant_slug, auto_wa_reminder, prevent_double_booking, hide_booked_slots')
       .eq('tenant_slug', slugToFind)
       .maybeSingle()
 
+    // --- TAMBAHKAN DEBUG LOG INI UNTUK MENGECEK HASILNYA DI BROWSER ---
+    console.log("DEBUG QUERY TENANT:", { slugToFind, tenantData, error })
+
     if (error || !tenantData) {
-      // Jika slug tidak ditemukan di database, anggap tidak valid / error
       return false
     }
 
-    // 2. Jika ketemu, set datanya dengan benar sesuai tenant tersebut
+    // 2. Jika ketemu, set datanya dengan benar
     const rawPlan = String(tenantData.subscription_plan || '').trim().toUpperCase()
 
     if (rawPlan.includes('PROFESIONAL') || rawPlan.includes('PROFESSIONAL') || rawPlan.includes('PRO')) {
