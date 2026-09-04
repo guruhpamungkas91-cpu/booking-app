@@ -3,25 +3,38 @@ import type { NextRequest } from 'next/server';
 
 export function middleware(request: NextRequest) {
   const hostname = request.headers.get('host') || '';
-
-  // 1. Ambil URL request
   const url = request.nextUrl.clone();
 
-  // 2. Cek apakah domain memuat 'barbershop' atau 'mcut'
-  if (hostname.includes('mcut-barbershop') || hostname.includes('barber')) {
-    // Set custom header agar halaman page.tsx tahu ini Barber dari awal
-    const response = NextResponse.next();
-    response.headers.set('x-tenant-type', 'barber');
-    return response;
+  // Abaikan file internal Next.js atau API agar tidak terganggu
+  if (
+    url.pathname.startsWith('/_next') ||
+    url.pathname.startsWith('/api') ||
+    url.pathname.includes('.')
+  ) {
+    return NextResponse.next();
   }
 
-  // 3. Fallback jika domain tidak teridentifikasi
-  const response = NextResponse.next();
-  response.headers.set('x-tenant-type', 'default');
-  return response;
+  // Contoh pemetaan domain Vercel ke slug tenant di database lu
+  let tenantSlug = '';
+
+  if (hostname.includes('mcut-barbershop')) {
+    tenantSlug = 'mcut'; // Sesuai slug di database Supabase lu
+  } else if (hostname.includes('fitrifeb-lashes')) {
+    tenantSlug = 'fitrifeb';
+  } else if (hostname.includes('glow-clinic')) {
+    tenantSlug = 'glow';
+  }
+
+  // Jika domain terdeteksi sebagai tenant, arahkan (rewrite) ke halaman dinamis [tenant_slug]
+  if (tenantSlug && url.pathname === '/') {
+    url.pathname = `/${tenantSlug}`;
+    return NextResponse.rewrite(url);
+  }
+
+  return NextResponse.next();
 }
 
-// Jalankan middleware hanya pada route /admin
+// Jalankan middleware untuk seluruh halaman utama, KECUALI file statis/api
 export const config = {
-  matcher: '/admin/:path*',
+  matcher: ['/((?!api|_next/static|_next/image|favicon.ico).*)'],
 };

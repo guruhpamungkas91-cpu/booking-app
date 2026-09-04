@@ -404,7 +404,7 @@ function BookingFormContent() {
             .eq('tenant_slug', activeTenant.tenantSlug)
             .eq('status', 'confirmed')
 
-          if (resErr) console.error("Error fetching Reservations:", resErr)
+          if (resErr) console.error("Error fetching reservations:", resErr)
 
           const combinedBlockedSlots = [
             ...(blockedData?.map((item) => ({
