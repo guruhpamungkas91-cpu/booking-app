@@ -1569,25 +1569,51 @@ export default function AdminDashboard() {
 
         {/* 17.5 TOP STAFF PERFORMANCE SECTION */}
         {isProfesional && (
-          <div className={`border p-4 sm:p-5 rounded-2xl sm:rounded-3xl transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 relative overflow-hidden ${themeStyles.cardBg}`}>
+          <div className={`border p-4 sm:p-5 rounded-2xl sm:rounded-3xl transition-all flex flex-col gap-4 relative overflow-hidden ${themeStyles.cardBg}`}>
+            {/* Header Section */}
             <div className="flex items-center space-x-3 sm:space-x-4">
               <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl border border-amber-400/50 bg-amber-500/20 flex items-center justify-center text-xl sm:text-2xl shrink-0 shadow-lg shadow-amber-500/20">
                 👑
               </div>
-              <div className="min-w-0">
+              <div>
                 <span className={`text-[9px] sm:text-[10px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-full border ${themeStyles.badgeBg}`}>
-                  Performa Staff Terbaik ({staffLabel})
+                  Performa Staff ({staffLabel})
                 </span>
-                <h3 className="text-lg sm:text-xl font-black text-white mt-1 truncate">
-                  {stats.topStaffName !== '-' ? stats.topStaffName : 'Belum Ada Data'}
+                <h3 className="text-lg sm:text-xl font-black text-white mt-1">
+                  Grafik Transaksi Staff
                 </h3>
               </div>
             </div>
-            <div className="flex sm:flex-col items-center sm:items-end justify-between border-t border-zinc-800 sm:border-t-0 pt-2 sm:pt-0">
-              <span className={`text-xl sm:text-2xl font-black font-mono ${themeStyles.textAccent}`}>
-                {stats.topStaffCount}
-              </span>
-              <p className="text-[10px] sm:text-[11px] text-zinc-300 font-bold uppercase tracking-wider">Transaksi Selesai</p>
+
+            {/* Grafik Progress Bar Staff */}
+            <div className="flex flex-col gap-3 pt-2 border-t border-zinc-800/80">
+              {[
+                { name: 'Budi M CUT', count: stats.budiCount || 0 },
+                { name: 'Rian M CUT', count: stats.rianCount || 0 }
+              ].map((staff, idx) => {
+                // Menghitung persentase bar berdasarkan total transaksi terbanyak
+                const maxCount = Math.max(stats.budiCount || 0, stats.rianCount || 0, 1);
+                const percentage = Math.round((staff.count / maxCount) * 100);
+
+                return (
+                  <div key={idx} className="flex flex-col gap-1.5">
+                    <div className="flex justify-between items-center text-xs sm:text-sm">
+                      <span className="font-bold text-zinc-200">{staff.name}</span>
+                      <span className={`font-mono font-black ${themeStyles.textAccent}`}>
+                        {staff.count} <span className="text-[10px] text-zinc-300 font-normal">Transaksi</span>
+                      </span>
+                    </div>
+
+                    {/* Progress Bar Track */}
+                    <div className="w-full bg-zinc-800/80 rounded-full h-2.5 sm:h-3 overflow-hidden p-0.5 border border-zinc-700/50">
+                      <div
+                        className="bg-gradient-to-r from-amber-500 to-amber-300 h-full rounded-full transition-all duration-500 shadow-sm"
+                        style={{ width: `${percentage}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
