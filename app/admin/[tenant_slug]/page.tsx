@@ -1417,9 +1417,10 @@ const isProfesional = subscriptionPlan === 'PROFESIONAL'
         <div className={`flex flex-col md:flex-row justify-between items-start md:items-center p-4 sm:p-6 md:p-7 rounded-2xl sm:rounded-3xl transition-all duration-300 gap-4 ${themeStyles.headerGradient}`}>
           <div>
             <div className="flex items-center space-x-3 flex-wrap gap-y-2">
-              <span className="text-xl sm:text-2xl">{isEyelash ? '✨' : '💈'}</span>
+              {/* Gunakan fungsi ikon dinamis */}
+              <span className="text-xl sm:text-2xl">{categoryIcon}</span>
               <h1 className="text-xl sm:text-2xl md:text-3xl font-black text-white tracking-tight uppercase bg-gradient-to-r from-white via-zinc-200 to-zinc-400 bg-clip-text text-transparent">
-                {brandTitle || tenantCode || (isEyelash ? 'EYELASH SALON' : 'BARBERSHOP')}
+                {brandTitle || tenantCode || `${categoryLabel} Portal`}
               </h1>
               
               <span className={`text-[9px] sm:text-[10px] font-black px-3.5 py-1.5 rounded-full border tracking-widest transition-all uppercase flex items-center gap-1.5 ${
@@ -1435,10 +1436,10 @@ const isProfesional = subscriptionPlan === 'PROFESIONAL'
               </span>
             </div>
             <p className="text-[11px] sm:text-xs text-zinc-300 mt-1 font-medium">
-              {isEyelash ? 'Kelola janji temu eyelash & beauty salon secara real-time' : 'Kelola dan pantau pesanan masuk secara real-time'}
+              Kelola dan pantau pesanan masuk secara real-time untuk {categoryLabel}
             </p>
           </div>
-
+          
           <div className="flex flex-wrap items-center justify-between md:justify-end gap-3 w-full md:w-auto">
             
             {subscriptionPlan !== 'BASIC' && (
