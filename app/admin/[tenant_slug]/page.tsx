@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic'
 
 import { useEffect, useState, useMemo, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
-import { useParams } from 'next/navigation'
+import { useParams, notFound } from 'next/navigation'
 
 // ============================================================================
 // 2. TYPES & INTERFACES
@@ -63,12 +63,25 @@ const SERVICE_PRICES: Record<string, number> = {
 // ============================================================================
 // 4. MAIN DASHBOARD COMPONENT & STATES
 // ============================================================================
+
+// Mapping domain resmi ke tenant_slug yang sah
+const DOMAIN_TO_SLUG_MAP: Record<string, string> = {
+  'glow-clinic.vercel.app': 'glow',
+  'fitrifeb-lashes.vercel.app': 'fitrifeb', // Sesuaikan dengan slug DB lu
+  'mcut-barbershop.vercel.app': 'mcut',
+}
+
 export default function AdminDashboard() {
   const params = useParams() 
-  const tenantSlugFromUrl = params?.tenant_slug as string || ''
+  
+  // FIX 1: Ambil slug dari params.slug (atau params.tenant_slug jika nama folder lu mmg [tenant_slug])
+  const tenantSlugFromUrl = (params?.slug || params?.tenant_slug || '') as string
 
   const [isInitializing, setIsInitializing] = useState<boolean>(true)
   
+  // FIX 2: State untuk memblokir UI jika domain & slug URL tidak cocok
+  const [isInvalidDomain, setIsInvalidDomain] = useState<boolean>(false)
+
   // Neutralize default state agar tidak ada data tenant lama yang bocor saat render awal
   const [tenantCode, setTenantCode] = useState<string>('')
   const [brandTitle, setBrandTitle] = useState<string>('')
@@ -121,6 +134,25 @@ export default function AdminDashboard() {
   const [reportDate, setReportDate] = useState(new Date().toISOString().split('T')[0])
   const [reportStartDate, setReportStartDate] = useState('')
   const [reportEndDate, setReportEndDate] = useState('')
+
+  // FIX 3: Effect Pengecekan Domain Match
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const currentHost = window.location.hostname
+
+      // Skip validasi kalau sedang di Localhost saat koding
+      if (currentHost !== 'localhost' && !currentHost.includes('127.0.0.1')) {
+        const expectedSlug = DOMAIN_TO_SLUG_MAP[currentHost]
+
+        // Jika domain terdaftar tapi slug di URL beda -> Tandai invalid
+        if (expectedSlug && expectedSlug !== tenantSlugFromUrl) {
+          setIsInvalidDomain(true)
+          setIsInitializing(false)
+          return
+        }
+      }
+    }
+  }, [tenantSlugFromUrl])
 
   // ============================================================================
   // 5. AUXILIARY UTILITY FUNCTIONS
@@ -177,6 +209,19 @@ export default function AdminDashboard() {
       startStr: formatYMD(startDateObj),
       endStr: formatYMD(endDateObj),
     }
+  }
+
+  // FIX 4: Intercept Render - Tampilkan Error 404 Jika Domain Tidak Match
+  if (isInvalidDomain) {
+    return (
+      <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center p-4 text-center">
+        <h1 className="text-7xl font-black text-rose-500 mb-2">404</h1>
+        <h2 className="text-xl font-bold text-white mb-1">Akses Ditolak / Halaman Tidak Ada</h2>
+        <p className="text-xs text-zinc-400 max-w-md">
+          Halaman admin <code className="text-amber-400">/admin/{tenantSlugFromUrl}</code> tidak dapat diakses melalui domain ini.
+        </p>
+      </div>
+    )
   }
 
   // ============================================================================
