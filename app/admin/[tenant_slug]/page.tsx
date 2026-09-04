@@ -295,6 +295,84 @@ export default function AdminDashboard() {
   }, [])
 
   // ============================================================================
+  // 7. INITIALIZATION EFFECT
+  // ============================================================================
+  useEffect(() => {
+    const initTenantAndSession = async () => {
+      setIsInitializing(true)
+      setIsInvalidDomain(false) // Reset state tiap navigasi
+      
+      setReservations([])
+      setFilteredReservations([])
+      setBlockedSlots([])
+
+      let activeSlug = tenantSlugFromUrl
+      if (!activeSlug && typeof window !== 'undefined') {
+        const pathSegments = window.location.pathname.split('/')
+        const adminIndex = pathSegments.indexOf('admin')
+        if (adminIndex !== -1 && pathSegments[adminIndex + 1]) {
+          activeSlug = pathSegments[adminIndex + 1]
+        }
+      }
+
+      const cleanSlug = sanitizeClientCode(activeSlug)
+
+      if (cleanSlug) {
+        // Cek detail & validasi domain otomatis di sini
+        const isValid = await fetchTenantDetail(cleanSlug)
+        
+        if (!isValid) {
+          setIsInvalidDomain(true) // Otomatis lempar ke 404 jika slug salah ATAU domain tidak cocok
+          setIsInitializing(false)
+          return
+        }
+      } else {
+        setBrandTitle('DASHBOARD ADMIN')
+      }
+
+      const { data } = await supabase.auth.getSession()
+      if (data?.session) {
+        setIsAuthenticated(true)
+        if (!cleanSlug) {
+          const rawCode = data.session.user.app_metadata?.client_code || data.session.user.app_metadata?.tenant_slug || data.session.user.email || ''
+          const userCode = sanitizeClientCode(rawCode)
+          setTenantCode(userCode)
+          await fetchTenantDetail(userCode)
+        }
+      } else {
+        setIsAuthenticated(false)
+      }
+
+      setIsInitializing(false)
+    }
+
+    initTenantAndSession()
+  }, [tenantSlugFromUrl, fetchTenantDetail])
+
+  // ============================================================================
+  // RENDER GUARD (TARUH DI SINI, DI BAWAH SEMUA HOOKS)
+  // ============================================================================
+  if (isInitializing) {
+    return (
+      <div className="min-h-screen bg-zinc-950 flex items-center justify-center text-zinc-400 text-xs font-semibold">
+        Memuat Dashboard...
+      </div>
+    )
+  }
+
+  if (isInvalidDomain) {
+    return (
+      <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center p-4 text-center">
+        <h1 className="text-7xl font-black text-rose-500 mb-2">404</h1>
+        <h2 className="text-xl font-bold text-white mb-1">Akses Ditolak / Halaman Tidak Ada</h2>
+        <p className="text-xs text-zinc-400 max-w-md">
+          Halaman admin <code className="text-amber-400">/admin/{tenantSlugFromUrl}</code> tidak valid untuk domain ini.
+        </p>
+      </div>
+    )
+  }
+  
+  // ============================================================================
   // 8. TOGGLE HANDLERS
   // ============================================================================
   const handleToggleWaReminder = async (newStatus: boolean) => {
