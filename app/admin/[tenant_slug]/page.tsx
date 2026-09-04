@@ -1113,9 +1113,10 @@ useEffect(() => {
         setStaffLabel(category === 'eyelash' ? 'Lash Artist' : 'Capster / Staff')
         if (category === 'eyelash') setSelectedTheme('pink')
 
-        await fetchTenantDetail(cleanCode, info.brand)
+        await fetchTenantDetail(cleanCode)
       } else {
-        await fetchTenantDetail('', info.brand)
+        // Jika tidak ada cleanCode, bisa dikosongkan atau ditangani sesuai kebutuhan
+        await fetchTenantDetail('')
       }
       setIsInitializing(false)
     }
