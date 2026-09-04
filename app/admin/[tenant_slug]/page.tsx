@@ -1279,13 +1279,14 @@ export default function AdminDashboard() {
 // 18. LOGIN FORM UI STATE (UNAUTHENTICATED)
 // ============================================================================
 if (!isAuthenticated) {
-  // 1. Ambil slug dari URL dengan pembersihan yang lebih aman (mendukung subpath & query params)
-  const currentSlug = typeof window !== 'undefined' 
-    ? (window.location.pathname.split('/').filter(Boolean).pop() || window.location.hostname.split('.')[0])?.toLowerCase() 
-    : ''
+  // 1. Ambil slug tenant secara akurat dari URL path (misal: /tenant-slug/admin atau /admin/tenant-slug)
+  const pathSegments = typeof window !== 'undefined' ? window.location.pathname.split('/').filter(Boolean) : []
+  // Ambil elemen sebelum 'admin' atau elemen terakhir jika tidak ada kata 'admin'
+  const adminIndex = pathSegments.indexOf('admin')
+  const urlSlug = adminIndex > 0 ? pathSegments[adminIndex - 1] : (pathSegments[pathSegments.length - 1] !== 'admin' ? pathSegments[pathSegments.length - 1] : '')
 
-  // 2. Kategori Aktif (Prioritas: Data Supabase -> Slug URL -> Fallback Empty String)
-  const activeCategory = (businessType || currentSlug || '').toLowerCase()
+  // 2. Kategori Aktif (Prioritas mutlak: businessType dari DB -> urlSlug dari URL -> Fallback aman)
+  const activeCategory = (businessType || urlSlug || '').toLowerCase()
 
   // 3. Tentukan Tema Visual (Ditambahkan keyword database: 'skincare', 'aesthetic')
   const isPinkTheme = ['eyelash', 'beauty', 'clinic', 'glow', 'skincare', 'aesthetic', 'spa'].some(k => activeCategory.includes(k))
