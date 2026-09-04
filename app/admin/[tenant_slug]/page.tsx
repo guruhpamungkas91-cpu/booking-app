@@ -604,6 +604,15 @@ export default function AdminDashboard() {
       return (b.status || '').toLowerCase() === 'cancelled_need_refund'
     }).length
 
+    // Hitung spesifik untuk Budi dan Rian agar tidak error TypeScript
+    const budiCount = reservations.filter(
+      (item) => item.staff_name && item.staff_name.toLowerCase().includes('budi')
+    ).length
+
+    const rianCount = reservations.filter(
+      (item) => item.staff_name && item.staff_name.toLowerCase().includes('rian')
+    ).length
+
     const staffPerformance: Record<string, number> = {}
     reservations.forEach((item) => {
       if (isCompleted(item.status) && item.staff_name) {
@@ -632,6 +641,8 @@ export default function AdminDashboard() {
       totalRevenue,
       topStaffName,
       topStaffCount,
+      budiCount, // <-- Ditambahkan di sini
+      rianCount, // <-- Ditambahkan di sini
     }
   }, [reservations, businessType])
 
