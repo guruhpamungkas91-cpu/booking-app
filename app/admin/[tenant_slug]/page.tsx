@@ -1254,19 +1254,19 @@ export default function AdminDashboard() {
     )
   }
 
- // ============================================================================
+// ============================================================================
 // 18. LOGIN FORM UI STATE (UNAUTHENTICATED)
 // ============================================================================
 if (!isAuthenticated) {
-  // 1. Ambil slug dari URL (misal: "glow" dari /admin/glow) secara aman & akurat
+  // 1. Ambil slug dari URL dengan pembersihan yang lebih aman (mendukung subpath & query params)
   const currentSlug = typeof window !== 'undefined' 
-    ? window.location.pathname.split('/').filter(Boolean).pop()?.toLowerCase() 
+    ? (window.location.pathname.split('/').filter(Boolean).pop() || window.location.hostname.split('.')[0])?.toLowerCase() 
     : ''
 
   // 2. Kategori Aktif (Prioritas: Data Supabase -> Slug URL -> Fallback Empty String)
   const activeCategory = (businessType || currentSlug || '').toLowerCase()
 
-  // 3. Tentukan Tema Visual
+  // 3. Tentukan Tema Visual (Ditambahkan keyword database: 'skincare', 'aesthetic')
   const isPinkTheme = ['eyelash', 'beauty', 'clinic', 'glow', 'skincare', 'aesthetic', 'spa'].some(k => activeCategory.includes(k))
 
   // 4. Format Nama Kategori secara Otomatis
@@ -1373,8 +1373,8 @@ if (!isAuthenticated) {
   )
 }
 
-  const isEyelash = businessType === 'eyelash'
-  const isProfesional = subscriptionPlan === 'PROFESIONAL'
+const isEyelash = businessType === 'eyelash'
+const isProfesional = subscriptionPlan === 'PROFESIONAL'
 
   // ============================================================================
   // 19. MAIN DASHBOARD UI (AUTHENTICATED)
