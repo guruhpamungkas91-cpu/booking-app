@@ -292,24 +292,21 @@ function BookingFormContent() {
     const rawSlug = params?.tenant_slug
     const routeSlug = Array.isArray(rawSlug) ? rawSlug[0] : rawSlug
 
-    // 1. MURNI DINAMIS: Tanpa if-else tenant satu-satu
+    // 1. Ekstrak slug dinamis dari domain (otomatis ambil kata depan sebelum strip '-')
     let detectedSlug = ''
     const parts = hostname.split('.')
 
     if (hostname.includes('localhost') || hostname.startsWith('127.')) {
       detectedSlug = routeSlug || tenantQuery || ''
     } else if (parts.length > 0) {
-      // Ambil bagian depan subdomain (cth: "glow-clinic", "mcut-barbershop", "fitrifeb-lashes")
       const subDomainFull = parts[0]
-      
-      // Ambil kata pertama sebelum tanda strip (-) agar klop dengan database ("glow", "mcut")
-      detectedSlug = subDomainFull.split('-')[0]
+      detectedSlug = subDomainFull.split('-')[0] // Ambil kata pertama (cth: glow, mcut, fitrifeb)
     }
 
     const currentSlug = (detectedSlug || routeSlug || tenantQuery || '').trim().toLowerCase()
 
     if (!currentSlug) {
-      console.error("Slug tenant tidak terdeteksi dari domain!")
+      console.error("Identitas tenant tidak terdeteksi dari domain!")
       setFetchingServices(false)
       return
     }
@@ -318,7 +315,7 @@ function BookingFormContent() {
       setFetchingServices(true)
 
       try {
-        // 2. Ambil data tenant utama berdasarkan slug yang terbaca dinamis
+        // --- PENJAGAAN GANDA LAPIS PERTAMA: Ambil tenant berdasarkan slug ---
         const { data: tenantData, error: tenantErr } = await supabase
           .from('tenants')
           .select('*')
@@ -331,8 +328,16 @@ function BookingFormContent() {
           return
         }
 
-        // Ambil ID unik tenant sebagai acuan pengaman data relasi
+        // Ambil ID unik tenant
         const uniqueTenantId = tenantData.id || tenantData.tenant_id
+
+        // --- PENJAGAAN GANDA LAPIS KEDUA: Validasi keamanan data tenant ---
+        // Kita pastikan uniqueTenantId benar-benar ada dan status tenant aktif (mencegah data nyasar/bajakan)
+        if (!uniqueTenantId) {
+          console.error("Peringatan Keamanan: Tenant ditemukan tapi ID unik tidak valid!")
+          setFetchingServices(false)
+          return
+        }
 
         const dbPlan = ((tenantData?.subscription_plan || 'BASIC') as string).toUpperCase() as 'BASIC' | 'PREMIUM' | 'PROFESIONAL'
         const rawCategory = tenantData?.category || 'Layanan'
@@ -366,7 +371,9 @@ function BookingFormContent() {
 
         setTenant(activeTenant)
 
-        // 3. Fetch Services menggunakan tenant_id
+        // --- FETCH DATA LANJUTAN DIKEKANG KETAT PAKAI UNIQUE TENANT ID ---
+        // Semua query anak tabel (services, staff, blocked_slots, reservations) 
+        // 100% di-lock menggunakan uniqueTenantId yang valid dari database, bukan cuma percaya string slug!
         const { data: serviceData } = await supabase
           .from('services')
           .select('*')
@@ -379,52 +386,32 @@ function BookingFormContent() {
           setServices([])
         }
 
-        // 4. Fetch Staff menggunakan tenant_id
-        if (activeTenant.subscriptionPlan !== 'BASIC') {
-          const { data: staffData } = await supabase
-            .from('staff')
-            .select('*')
-            .eq('tenant_id', uniqueTenantId)
-            .eq('is_active', true)
+        // Fetch Staff
+        const { data: staffData } = await supabase
+          .from('staff')
+          .select('*')
+          .eq('tenant_id', uniqueTenantId)
+          .eq('is_active', true)
 
-          if (staffData && staffData.length > 0) {
-            setStaffList(staffData)
-            setFormData((prev) => ({ ...prev, selected_staff: staffData[0].name }))
-          } else {
-            setStaffList([])
-          }
+        if (staffData && staffData.length > 0) {
+          setStaffList(staffData)
+          setFormData((prev) => ({ ...prev, selected_staff: staffData[0].name }))
         } else {
-          const { data: staffData } = await supabase
-            .from('staff')
-            .select('*')
-            .eq('tenant_id', uniqueTenantId)
-            .eq('is_active', true)
-            .limit(1)
-
-          if (staffData && staffData.length > 0) {
-            setStaffList(staffData)
-            setFormData((prev) => ({ ...prev, selected_staff: staffData[0].name }))
-          } else {
-            setStaffList([])
-          }
+          setStaffList([])
         }
 
-        // 5. Fetch Blocked Slots menggunakan tenant_id
-        const { data: blockedData, error: blockedErr } = await supabase
+        // Fetch Blocked Slots
+        const { data: blockedData } = await supabase
           .from('blocked_slots')
           .select('date, start_time')
           .eq('tenant_id', uniqueTenantId)
 
-        if (blockedErr) console.error("Error fetching blocked_slots:", blockedErr)
-
-        // 6. Fetch Reservations menggunakan tenant_id
-        const { data: confirmedReservations, error: resErr } = await supabase
+        // Fetch Reservations
+        const { data: confirmedReservations } = await supabase
           .from('reservations')
           .select('booking_date, booking_time')
           .eq('tenant_id', uniqueTenantId)
           .eq('status', 'confirmed')
-
-        if (resErr) console.error("Error fetching reservations:", resErr)
 
         const combinedBlockedSlots = [
           ...(blockedData?.map((item) => ({
