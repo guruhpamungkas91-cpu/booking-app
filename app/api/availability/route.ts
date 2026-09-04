@@ -20,19 +20,18 @@ export async function GET(request: Request) {
 
     const supabase = createClient(supabaseUrl, supabaseKey)
 
-    // 1. Fetch slot diblokir
-    // FIX: Hanya panggil tenant_slug (karena tenant_id tidak ada di tabel blocked_slots)
+    // 1. Fetch slot diblokir (disesuaikan dengan block_date & block_time)
     const { data: blockedData, error: blockedErr } = await supabase
       .from('blocked_slots')
-      .select('start_time')
+      .select('block_time')
       .eq('tenant_slug', tenantSlug)
-      .eq('date', date)
+      .eq('block_date', date)
 
     if (blockedErr) {
       console.error('Error fetching blocked_slots:', blockedErr)
     }
 
-    // 2. Fetch slot terisi
+    // 2. Fetch slot terisi dari Reservations
     const { data: bookedData, error: bookedErr } = await supabase
       .from('Reservations')
       .select('booking_time')
@@ -44,7 +43,8 @@ export async function GET(request: Request) {
       console.error('Error fetching Reservations:', bookedErr)
     }
 
-    const blockedTimes = blockedData ? blockedData.map(item => item.start_time?.substring(0, 5)) : []
+    // Mapping data
+    const blockedTimes = blockedData ? blockedData.map(item => item.block_time?.substring(0, 5)) : []
     const bookedTimes = bookedData ? bookedData.map(item => item.booking_time?.substring(0, 5)) : []
 
     return NextResponse.json({

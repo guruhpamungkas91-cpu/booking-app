@@ -6,6 +6,7 @@
 export const dynamic = 'force-dynamic'
 
 import { useEffect, useState, useMemo, useCallback } from 'react'
+import { useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
 // ============================================================================
@@ -22,15 +23,13 @@ interface Reservation {
   booking_time: string
   payment_method?: string
   status: string
-  client_code?: string
-  tenant_slug?: string
+  tenant_id?: string
 }
 
 interface BlockedSlot {
   id?: number
   created_at?: string
-  client_code: string
-  tenant_slug?: string
+  tenant_id?: string
   block_date: string
   block_time: string
   reason?: string
@@ -45,20 +44,6 @@ type ThemeMode = 'purple' | 'pink' | 'amber' | 'emerald' | 'blue'
 // ============================================================================
 // 3. HELPER FUNCTIONS & CONSTANTS
 // ============================================================================
-const detectBrandFromHostname = (): { brand: string; type: BusinessType } => {
-  if (typeof window !== 'undefined') {
-    const host = window.location.hostname.toLowerCase()
-    if (host.includes('sem')) return { brand: 'SEM BARBERSHOP', type: 'barber' }
-    if (host.includes('fitrifeb') || host.includes('lashes') || host.includes('eyelash')) {
-      return { brand: 'FITRIFEB', type: 'eyelash' }
-    }
-    if (host.includes('mcut') || host.includes('barber')) {
-      return { brand: 'MCUT', type: 'barber' }
-    }
-  }
-  return { brand: 'DASHBOARD ADMIN', type: 'barber' }
-}
-
 const SERVICE_PRICES: Record<string, number> = {
   'Potong Rambut': 50000,
   'Coloring': 120000,
@@ -77,20 +62,22 @@ const SERVICE_PRICES: Record<string, number> = {
 // 4. MAIN DASHBOARD COMPONENT & STATES
 // ============================================================================
 export default function AdminDashboard() {
+  const params = useParams()
+  const tenantSlug = (params?.tenant_slug as string) || ''
+
   const [isInitializing, setIsInitializing] = useState<boolean>(true)
-
-  const [brandTitle, setBrandTitle] = useState<string>(() => detectBrandFromHostname().brand)
-  const [businessType, setBusinessType] = useState<BusinessType>(() => detectBrandFromHostname().type)
-  const [staffLabel, setStaffLabel] = useState<string>(() => 
-    detectBrandFromHostname().type === 'eyelash' ? 'Lash Artist' : 'Capster / Staff'
-  )
-
-  const [selectedTheme, setSelectedTheme] = useState<ThemeMode>(() => 
-    detectBrandFromHostname().type === 'eyelash' ? 'pink' : 'purple'
-  )
+  
+  // State dasar
+  const [brandTitle, setBrandTitle] = useState<string>('Memuat...')
+  const [businessType, setBusinessType] = useState<string>('barbershop')
+  const [staffLabel, setStaffLabel] = useState<string>('Staff')
+  const [selectedTheme, setSelectedTheme] = useState<ThemeMode>('purple')
+  const [controlCenterLabel, setControlCenterLabel] = useState<string>('Control Center')
 
   const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [tenantId, setTenantId] = useState<string>('')
   const [tenantCode, setTenantCode] = useState<string>('')
+
   const [subscriptionPlan, setSubscriptionPlan] = useState<SubscriptionPlanType>('PROFESIONAL')
 
   const [emailInput, setEmailInput] = useState('')
@@ -144,21 +131,27 @@ export default function AdminDashboard() {
     return code.replace(/[^a-zA-Z0-9]/g, '').toLowerCase()
   }
 
-  const determineCategory = (slugOrEmail: string): BusinessType => {
-    const text = slugOrEmail.toLowerCase()
-    if (text.includes('fitri') || text.includes('lash') || text.includes('eyelash')) {
-      return 'eyelash'
-    }
-    return 'barber'
-  }
-
   const getServicePrice = (serviceName?: string): number => {
     if (!serviceName) return businessType === 'eyelash' ? 120000 : 50000
     if (serviceName.includes(',')) {
-      const parts = serviceName.split(',').map((s) => s.trim())
-      return parts.reduce((acc, curr) => acc + (SERVICE_PRICES[curr] || (businessType === 'eyelash' ? 120000 : 50000)), 0)
+      const parts = serviceName.split(',').map((s) => s.trim().toLowerCase());
+      
+      return parts.reduce((acc, curr) => {
+        const matchedKey = Object.keys(SERVICE_PRICES).find(
+          (key) => key.toLowerCase() === curr
+        );
+        
+        const price = matchedKey 
+          ? SERVICE_PRICES[matchedKey] 
+          : (businessType === 'eyelash' ? 120000 : 50000);
+          
+        return acc + price;
+      }, 0);
     }
-    return SERVICE_PRICES[serviceName] ?? (businessType === 'eyelash' ? 120000 : 50000)
+    const matchedKey = Object.keys(SERVICE_PRICES).find(
+      (key) => key.toLowerCase() === serviceName.trim().toLowerCase()
+    );
+    return matchedKey ? SERVICE_PRICES[matchedKey] : (businessType === 'eyelash' ? 120000 : 50000);
   }
 
   const formatDateID = (dateStr: string) => {
@@ -193,74 +186,49 @@ export default function AdminDashboard() {
     }
   }
 
-  // ============================================================================
-  // 6. API FETCHERS & TOGGLE HANDLERS
-  // ============================================================================
-  const fetchTenantDetail = useCallback(async (cleanCode: string, detectedBrandHint: string = '') => {
+  // 1. Fungsi Fetch Tenant yang aman dari error UUID & Slug
+  const fetchTenantDetail = useCallback(async (searchKey: string) => {
     try {
-      let tenantData = null
+      if (!searchKey) return;
+      
+      const target = searchKey.trim();
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(target);
 
-      if (cleanCode) {
-        const { data } = await supabase
-          .from('Tenants')
-          .select('subscription_plan, staff_label, tenant_slug, auto_wa_reminder, prevent_double_booking, hide_booked_slots')
-          .ilike('tenant_slug', `%${cleanCode}%`)
-          .maybeSingle()
-        tenantData = data
+      let query = supabase.from('tenants').select('*');
+
+      if (isUuid) {
+        query = query.eq('id', target);
+      } else {
+        query = query.or(`tenant_slug.eq.${target.toLowerCase()},domain_url.eq.${target.toLowerCase()}`);
       }
 
-      if (!tenantData && detectedBrandHint) {
-        const { data } = await supabase
-          .from('Tenants')
-          .select('subscription_plan, staff_label, tenant_slug, auto_wa_reminder, prevent_double_booking, hide_booked_slots')
-          .ilike('tenant_slug', `%${detectedBrandHint.toLowerCase()}%`)
-          .maybeSingle()
-        tenantData = data
+      const { data, error } = await query.maybeSingle();
+
+      if (error) {
+        console.error('Supabase error:', error);
+        return;
       }
 
-      if (tenantData) {
-        const rawPlan = String(tenantData.subscription_plan || '').trim().toUpperCase()
+      if (data) {
+        setTenantId(data.id);
+        setBrandTitle(data.business_name || data.name || target);
+        
+        const dbCategory = (data.category || 'barbershop').toLowerCase();
+        setBusinessType(dbCategory);
+        setTenantCode(data.tenant_slug);
 
-        if (rawPlan.includes('PROFESIONAL') || rawPlan.includes('PROFESSIONAL') || rawPlan.includes('PRO')) {
-          setSubscriptionPlan('PROFESIONAL')
-        } else if (rawPlan.includes('PREMIUM')) {
-          setSubscriptionPlan('PREMIUM')
-        } else {
-          setSubscriptionPlan('BASIC')
-        }
-
-        const category = determineCategory(tenantData.tenant_slug || cleanCode || detectedBrandHint)
-        setBusinessType(category)
-
-        if (tenantData.staff_label) {
-          setStaffLabel(tenantData.staff_label)
-        } else {
-          setStaffLabel(category === 'eyelash' ? 'Lash Artist' : 'Capster / Staff')
-        }
-
-        if (tenantData.tenant_slug) {
-          setBrandTitle(tenantData.tenant_slug.toUpperCase())
-          setTenantCode(tenantData.tenant_slug)
-        }
-
-        if (typeof tenantData.auto_wa_reminder === 'boolean') {
-          setAutoWaReminder(tenantData.auto_wa_reminder)
-        }
-        if (typeof tenantData.prevent_double_booking === 'boolean') {
-          setPreventDoubleBooking(tenantData.prevent_double_booking)
-        }
-        if (typeof tenantData.hide_booked_slots === 'boolean') {
-          setHideBookedSlots(tenantData.hide_booked_slots)
-        }
-      }     
+        setStaffLabel(data.staff_label || 'Capster / Staff');
+        setControlCenterLabel(data.control_center_label || '💈 Barber Control Center');
+        setSelectedTheme((data.theme_color || 'purple') as ThemeMode);
+      }
     } catch (err) {
-      console.error('Error fetching tenant details:', err)
+      console.error('Error fetching tenant details:', err);
     }
-  }, [])
+  }, []);
 
   const handleToggleWaReminder = async (newStatus: boolean) => {
-    if (!tenantCode) {
-      alert('Tenant code tidak ditemukan.')
+    if (!tenantId) {
+      alert('Tenant ID tidak ditemukan.')
       return
     }
 
@@ -275,7 +243,7 @@ export default function AdminDashboard() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          tenant_slug: tenantCode,
+          tenant_id: tenantId,
           auto_wa_reminder: newStatus,
         }),
       })
@@ -295,8 +263,8 @@ export default function AdminDashboard() {
   }
 
   const handleToggleBookingSetting = async (field: 'prevent_double_booking' | 'hide_booked_slots', newStatus: boolean) => {
-    if (!tenantCode) {
-      alert('Tenant code tidak ditemukan.')
+    if (!tenantId) {
+      alert('Tenant ID tidak ditemukan.')
       return
     }
 
@@ -315,7 +283,7 @@ export default function AdminDashboard() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          tenant_slug: tenantCode,
+          tenant_id: tenantId,
           [field]: newStatus,
         }),
       })
@@ -342,6 +310,26 @@ export default function AdminDashboard() {
     e.preventDefault()
     setLoading(true)
 
+    const { data: currentTenant } = await supabase
+      .from('tenants')
+      .select('*')
+      .eq('tenant_slug', tenantSlug)
+      .maybeSingle()
+
+    if (!currentTenant) {
+      alert('Tenant tidak ditemukan!')
+      setLoading(false)
+      return
+    }
+
+    // 👉 TARUH DI SINI (UNTUK FORM LOGIN)
+    if (!currentTenant.admin_email || currentTenant.admin_email.toLowerCase() !== emailInput.toLowerCase()) {
+      alert(`Akses Ditolak! Akun "${emailInput}" tidak memiliki izin untuk mengelola tenant ini.`);
+      setLoading(false);
+      return;
+    }
+
+    // Jika lolos, baru jalankan login Supabase Auth
     const { data, error } = await supabase.auth.signInWithPassword({
       email: emailInput,
       password: passwordInput,
@@ -351,16 +339,12 @@ export default function AdminDashboard() {
       alert('Login gagal: ' + error.message)
     } else if (data.session) {
       setIsAuthenticated(true)
-      const rawCode = data.session.user.app_metadata?.client_code || data.session.user.app_metadata?.tenant_slug || emailInput
-      const cleanCode = sanitizeClientCode(rawCode)
-      setTenantCode(cleanCode)
-
-      const category = determineCategory(emailInput || cleanCode)
-      setBusinessType(category)
-      setStaffLabel(category === 'eyelash' ? 'Lash Artist' : 'Capster / Staff')
-      if (category === 'eyelash') setSelectedTheme('pink')
-
-      await fetchTenantDetail(cleanCode)
+      setTenantId(currentTenant.id)
+      setBrandTitle(currentTenant.business_name || currentTenant.name)
+      setBusinessType((currentTenant.category || 'barbershop').toLowerCase())
+      setTenantCode(currentTenant.tenant_slug)
+      setControlCenterLabel(currentTenant.control_center_label || 'Control Center')
+      setSelectedTheme((currentTenant.theme_color || 'purple') as ThemeMode)
     }
     setLoading(false)
   }
@@ -374,17 +358,17 @@ export default function AdminDashboard() {
   // 8. BLOCKED SLOTS MANAGEMENT
   // ============================================================================
   const fetchBlockedSlots = useCallback(async () => {
-    if (!tenantCode) return
+    if (!tenantId) return
     const { data, error } = await supabase
       .from('blocked_slots')
       .select('*')
-      .or(`client_code.eq.${tenantCode},tenant_slug.eq.${tenantCode}`)
+      .eq('tenant_id', tenantId)
       .order('block_date', { ascending: true })
 
     if (!error && data) {
       setBlockedSlots(data)
     }
-  }, [tenantCode])
+  }, [tenantId])
 
   const handleAddBlockSlot = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -393,8 +377,8 @@ export default function AdminDashboard() {
       return
     }
 
-    if (!tenantCode) {
-      alert('Tenant code belum teridentifikasi!')
+    if (!tenantId) {
+      alert('Tenant ID belum teridentifikasi!')
       return
     }
 
@@ -407,8 +391,7 @@ export default function AdminDashboard() {
       .from('blocked_slots')
       .insert([
         {
-          client_code: tenantCode,
-          tenant_slug: tenantCode,
+          tenant_id: tenantId,
           block_date: blockDateInput,
           block_time: blockTimeInput,
           reason: finalReason
@@ -449,27 +432,30 @@ export default function AdminDashboard() {
     setLoading(true)
     const { data: { user } } = await supabase.auth.getUser()
 
-    if (!user) {
+    if (!user && !tenantId) {
       setLoading(false)
       return
     }
 
-    const { data: tenantData } = await supabase
-      .from('Tenants')
-      .select('client_code, tenant_slug')
-      .or(`admin_email.eq.${user.email},client_code.eq.${tenantCode},tenant_slug.eq.${tenantCode}`)
-      .maybeSingle()
+    let activeTenantId = tenantId
+    if (!activeTenantId && user) {
+      const { data: tenantData } = await supabase
+        .from('tenants')
+        .select('id, tenant_slug')
+        .eq('admin_email', user.email)
+        .maybeSingle()
 
-    const activeClientCode = tenantData?.client_code || user?.app_metadata?.client_code || tenantCode
-    const activeTenantSlug = tenantData?.tenant_slug || user?.app_metadata?.tenant_slug || tenantCode
-
-    if (activeClientCode || activeTenantSlug) {
-      await fetchTenantDetail(activeClientCode || activeTenantSlug)
+      if (tenantData) {
+        activeTenantId = tenantData.id
+        setTenantId(tenantData.id)
+        setTenantCode(tenantData.tenant_slug)
+        await fetchTenantDetail(tenantData.tenant_slug)
+      }
     }
 
-    let query = supabase.from('Reservations').select('*')
-    if (activeClientCode || activeTenantSlug) {
-      query = query.or(`client_code.eq.${activeClientCode},tenant_slug.eq.${activeTenantSlug},client_code.ilike.%${activeClientCode}%`)
+    let query = supabase.from('reservations').select('*')
+    if (activeTenantId) {
+      query = query.eq('tenant_id', activeTenantId)
     }
     
     const { data, error } = await query.order('created_at', { ascending: false })
@@ -481,10 +467,10 @@ export default function AdminDashboard() {
       setFilteredReservations(data || [])
     }
     setLoading(false)
-  }, [tenantCode, fetchTenantDetail])
+  }, [tenantId, fetchTenantDetail])
 
   const syncConfirmedSlotsToBlocked = useCallback(async () => {
-    if (!tenantCode) return
+    if (!tenantId) return
 
     const confirmedList = reservations.filter((r) => {
       const s = (r.status || '').toLowerCase()
@@ -501,8 +487,7 @@ export default function AdminDashboard() {
       if (!exists) {
         await supabase.from('blocked_slots').insert([
           {
-            client_code: tenantCode,
-            tenant_slug: tenantCode,
+            tenant_id: tenantId,
             block_date: item.booking_date,
             block_time: item.booking_time,
             reason: `Otomatis: Booking Confirmed (${item.customer_name})`
@@ -511,11 +496,11 @@ export default function AdminDashboard() {
       }
     }
     fetchBlockedSlots()
-  }, [reservations, blockedSlots, tenantCode, fetchBlockedSlots])
+  }, [reservations, blockedSlots, tenantId, fetchBlockedSlots])
 
   const updateStatusInDB = async (id: number, newStatus: string) => {
     const { error } = await supabase
-      .from('Reservations')
+      .from('reservations')
       .update({ status: newStatus })
       .eq('id', id)
 
@@ -558,7 +543,7 @@ export default function AdminDashboard() {
     if (!isConfirmed) return
 
     const { error } = await supabase
-      .from('Reservations')
+      .from('reservations')
       .delete()
       .eq('id', id)
 
@@ -604,16 +589,6 @@ export default function AdminDashboard() {
       return (b.status || '').toLowerCase() === 'cancelled_need_refund'
     }).length
 
-    // Hitung spesifik untuk Budi dan Rian agar tidak error TypeScript
-    const budiCount = reservations.filter(
-      (item) => item.staff_name && item.staff_name.toLowerCase().includes('budi')
-    ).length
-
-    const rianCount = reservations.filter(
-      (item) => item.staff_name && item.staff_name.toLowerCase().includes('rian')
-    ).length
-
-    // 1. Hitung performa per staff secara dinamis dari transaksi yang completed
     const staffPerformance: Record<string, number> = {}
     reservations.forEach((item) => {
       if (isCompleted(item.status) && item.staff_name) {
@@ -622,7 +597,6 @@ export default function AdminDashboard() {
       }
     })
 
-    // 2. Buat array staffList yang diurutkan dari transaksi terbanyak
     const staffList = Object.keys(staffPerformance)
       .map((name) => ({
         name,
@@ -630,7 +604,6 @@ export default function AdminDashboard() {
       }))
       .sort((a, b) => b.count - a.count)
 
-    // 3. Cari top staff
     let topStaffName = '-'
     let topStaffCount = 0
     if (staffList.length > 0) {
@@ -650,7 +623,7 @@ export default function AdminDashboard() {
       totalRevenue,
       topStaffName,
       topStaffCount,
-      staffList, // <-- Kembalikan array dinamis ini (HAPUS budiCount & rianCount)
+      staffList,
     }
   }, [reservations, businessType])
 
@@ -1069,45 +1042,51 @@ export default function AdminDashboard() {
   // ============================================================================
   useEffect(() => {
     const initSession = async () => {
-      setIsInitializing(true)
-      const info = detectBrandFromHostname()
-      const { data } = await supabase.auth.getSession()
-      
-      if (data?.session) {
-        setIsAuthenticated(true)
-        const rawCode = data.session.user.app_metadata?.client_code || data.session.user.app_metadata?.tenant_slug || data.session.user.email || ''
-        const cleanCode = sanitizeClientCode(rawCode)
-        setTenantCode(cleanCode)
+    setIsInitializing(true)
+    const { data } = await supabase.auth.getSession()
+    
+    const { data: currentTenant } = await supabase
+      .from('tenants')
+      .select('*')
+      .eq('tenant_slug', tenantSlug)
+      .maybeSingle()
 
-        const category = determineCategory(data.session.user.email || cleanCode)
-        setBusinessType(category)
-        setStaffLabel(category === 'eyelash' ? 'Lash Artist' : 'Capster / Staff')
-        if (category === 'eyelash') setSelectedTheme('pink')
+    if (data?.session && currentTenant) {
+      const userEmail = data.session.user.email
 
-        await fetchTenantDetail(cleanCode, info.brand)
-      } else {
-        await fetchTenantDetail('', info.brand)
+      // 👉 TARUH DI SINI (UNTUK VALIDASI SESI SAAT RELOAD)
+      if (!currentTenant.admin_email || currentTenant.admin_email.toLowerCase() !== userEmail?.toLowerCase()) {
+        await supabase.auth.signOut();
+        setIsAuthenticated(false);
+        setIsInitializing(false);
+        alert(`Akses Ditolak! Akun "${userEmail}" tidak memiliki izin untuk mengelola tenant ini.`);
+        return;
       }
-      setIsInitializing(false)
+
+      setIsAuthenticated(true)
+      setTenantId(currentTenant.id)
+      setBrandTitle(currentTenant.business_name || currentTenant.name)
+      setBusinessType((currentTenant.category || 'barbershop').toLowerCase())
+      setTenantCode(currentTenant.tenant_slug)
+      setControlCenterLabel(currentTenant.control_center_label || 'Control Center')
+      setSelectedTheme((currentTenant.theme_color || 'purple') as ThemeMode)
+    } else if (currentTenant) {
+      // Belum login, set data publik tenant untuk form login
+      setTenantId(currentTenant.id)
+      setBrandTitle(currentTenant.business_name || currentTenant.name)
+      setBusinessType((currentTenant.category || 'barbershop').toLowerCase())
+      setTenantCode(currentTenant.tenant_slug)
+      setControlCenterLabel(currentTenant.control_center_label || 'Control Center')
+      setSelectedTheme((currentTenant.theme_color || 'purple') as ThemeMode)
     }
 
-    initSession()
-  }, [fetchTenantDetail])
+    setIsInitializing(false)
+  }
 
-  useEffect(() => {
-    if (isAuthenticated) {
-      fetchReservations()
-      if (subscriptionPlan !== 'BASIC') {
-        fetchBlockedSlots()
-      }
+    if (tenantSlug) {
+      initSession()
     }
-  }, [isAuthenticated, fetchReservations, fetchBlockedSlots, subscriptionPlan])
-
-  useEffect(() => {
-    if (isAuthenticated && reservations.length > 0 && subscriptionPlan !== 'BASIC') {
-      syncConfirmedSlotsToBlocked()
-    }
-  }, [reservations, isAuthenticated, syncConfirmedSlotsToBlocked, subscriptionPlan])
+  }, [tenantSlug, fetchTenantDetail])
 
   // ============================================================================
   // 14. DYNAMIC THEME SYSTEM COMPUTATION
@@ -1276,7 +1255,8 @@ export default function AdminDashboard() {
                 : 'bg-gradient-to-r from-purple-500/20 via-indigo-500/20 to-purple-600/10 text-purple-300 border-purple-500/30'
             }`}>
               <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${isEyelash ? 'bg-pink-400' : 'bg-purple-400'}`}></span>
-              {isEyelash ? '✨ Eyelash Control Center' : '💈 Barber Control Center'}
+              {/* Ganti teks hardcode di bawah ini dengan state controlCenterLabel: */}
+              {controlCenterLabel}
             </span>
             <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight uppercase bg-gradient-to-b from-white via-zinc-200 to-purple-200/60 bg-clip-text text-transparent mt-2">
               {brandTitle || (isEyelash ? 'Eyelash Salon' : 'Barbershop Portal')}
@@ -1350,9 +1330,9 @@ export default function AdminDashboard() {
         <div className={`flex flex-col md:flex-row justify-between items-start md:items-center p-4 sm:p-6 md:p-7 rounded-2xl sm:rounded-3xl transition-all duration-300 gap-4 ${themeStyles.headerGradient}`}>
           <div>
             <div className="flex items-center space-x-3 flex-wrap gap-y-2">
-              <span className="text-xl sm:text-2xl">{isEyelash ? '✨' : '💈'}</span>
-              <h1 className="text-xl sm:text-2xl md:text-3xl font-black text-white tracking-tight uppercase bg-gradient-to-r from-white via-zinc-200 to-zinc-400 bg-clip-text text-transparent">
-                {brandTitle || tenantCode || (isEyelash ? 'EYELASH SALON' : 'BARBERSHOP')}
+              {/* Menggunakan controlCenterLabel secara dinamis, atau pisahkan teks/ikon jika disimpan terpisah */}
+              <h1 className="text-xl sm:text-2xl md:text-3xl font-black text-white tracking-tight uppercase bg-gradient-to-r from-white via-zinc-200 to-zinc-400 bg-clip-text text-transparent flex items-center gap-2">
+                <span>{controlCenterLabel}</span>
               </h1>
               
               <span className={`text-[9px] sm:text-[10px] font-black px-3.5 py-1.5 rounded-full border tracking-widest transition-all uppercase flex items-center gap-1.5 ${
@@ -1368,7 +1348,7 @@ export default function AdminDashboard() {
               </span>
             </div>
             <p className="text-[11px] sm:text-xs text-zinc-300 mt-1 font-medium">
-              {isEyelash ? 'Kelola janji temu eyelash & beauty salon secara real-time' : 'Kelola dan pantau pesanan masuk secara real-time'}
+              Kelola dan pantau pesanan masuk secara real-time untuk <span className="text-white font-bold">{brandTitle}</span>
             </p>
           </div>
 
@@ -1518,7 +1498,6 @@ export default function AdminDashboard() {
           </div>
         )}
 
-
         {/* 17.4 STATS CARDS SECTION */}
         <div className={`grid grid-cols-2 sm:grid-cols-3 ${
           subscriptionPlan === 'BASIC' ? 'lg:grid-cols-4' : 'lg:grid-cols-5'
@@ -1587,60 +1566,57 @@ export default function AdminDashboard() {
         </div>
 
         {/* 17.5 TOP STAFF PERFORMANCE SECTION */}
-{isProfesional && (
-  <div className={`border p-4 sm:p-5 rounded-2xl sm:rounded-3xl transition-all flex flex-col gap-4 relative overflow-hidden ${themeStyles.cardBg}`}>
-    {/* Header Section */}
-    <div className="flex items-center space-x-3 sm:space-x-4">
-      <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl border border-amber-400/50 bg-amber-500/20 flex items-center justify-center text-xl sm:text-2xl shrink-0 shadow-lg shadow-amber-500/20">
-        👑
-      </div>
-      <div>
-        <span className={`text-[9px] sm:text-[10px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-full border ${themeStyles.badgeBg}`}>
-          Performa Staff ({staffLabel})
-        </span>
-        <h3 className="text-lg sm:text-xl font-black text-white mt-1">
-          Grafik Transaksi Staff
-        </h3>
-      </div>
-    </div>
-
-    {/* Grafik Progress Bar Staff Dinamis */}
-    <div className="flex flex-col gap-3 pt-2 border-t border-zinc-800/80">
-      {(!stats.staffList || stats.staffList.length === 0) ? (
-        <p className="text-xs text-zinc-400 italic py-2">
-          Belum ada transaksi staff terdata pada tenant ini.
-        </p>
-      ) : (
-        (() => {
-          const maxCount = Math.max(...stats.staffList.map((s: { count: number }) => s.count), 1);
-
-          return stats.staffList.map((staff: { name: string; count: number }, idx: number) => {
-            const percentage = Math.round((staff.count / maxCount) * 100);
-
-            return (
-              <div key={idx} className="flex flex-col gap-1.5">
-                <div className="flex justify-between items-center text-xs sm:text-sm">
-                  <span className="font-bold text-zinc-200">{staff.name}</span>
-                  <span className={`font-mono font-black ${themeStyles.textAccent}`}>
-                    {staff.count} <span className="text-[10px] text-zinc-300 font-normal">Transaksi</span>
-                  </span>
-                </div>
-
-                {/* Progress Bar Track */}
-                <div className="w-full bg-zinc-800/80 rounded-full h-2.5 sm:h-3 overflow-hidden p-0.5 border border-zinc-700/50">
-                  <div
-                    className="bg-gradient-to-r from-amber-500 to-amber-300 h-full rounded-full transition-all duration-500 shadow-sm"
-                    style={{ width: `${percentage}%` }}
-                  />
-                </div>
+        {isProfesional && (
+          <div className={`border p-4 sm:p-5 rounded-2xl sm:rounded-3xl transition-all flex flex-col gap-4 relative overflow-hidden ${themeStyles.cardBg}`}>
+            <div className="flex items-center space-x-3 sm:space-x-4">
+              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl border border-amber-400/50 bg-amber-500/20 flex items-center justify-center text-xl sm:text-2xl shrink-0 shadow-lg shadow-amber-500/20">
+                👑
               </div>
-            );
-          });
-        })()
-      )}
-    </div>
-  </div>
-)}
+              <div>
+                <span className={`text-[9px] sm:text-[10px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-full border ${themeStyles.badgeBg}`}>
+                  Performa Staff ({staffLabel})
+                </span>
+                <h3 className="text-lg sm:text-xl font-black text-white mt-1">
+                  Grafik Transaksi Staff
+                </h3>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-3 pt-2 border-t border-zinc-800/80">
+              {(!stats.staffList || stats.staffList.length === 0) ? (
+                <p className="text-xs text-zinc-400 italic py-2">
+                  Belum ada transaksi staff terdata pada tenant ini.
+                </p>
+              ) : (
+                (() => {
+                  const maxCount = Math.max(...stats.staffList.map((s: { count: number }) => s.count), 1);
+
+                  return stats.staffList.map((staff: { name: string; count: number }, idx: number) => {
+                    const percentage = Math.round((staff.count / maxCount) * 100);
+
+                    return (
+                      <div key={idx} className="flex flex-col gap-1.5">
+                        <div className="flex justify-between items-center text-xs sm:text-sm">
+                          <span className="font-bold text-zinc-200">{staff.name}</span>
+                          <span className={`font-mono font-black ${themeStyles.textAccent}`}>
+                            {staff.count} <span className="text-[10px] text-zinc-300 font-normal">Transaksi</span>
+                          </span>
+                        </div>
+
+                        <div className="w-full bg-zinc-800/80 rounded-full h-2.5 sm:h-3 overflow-hidden p-0.5 border border-zinc-700/50">
+                          <div
+                            className="bg-gradient-to-r from-amber-500 to-amber-300 h-full rounded-full transition-all duration-500 shadow-sm"
+                            style={{ width: `${percentage}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  });
+                })()
+              )}
+            </div>
+          </div>
+        )}
 
         {/* 17.6 BASIC PLAN UPGRADE BANNER */}
         {subscriptionPlan === 'BASIC' && (
@@ -1754,7 +1730,6 @@ export default function AdminDashboard() {
             )}
           </div>
         )}
-
         {/* 17.8 FINANCIAL REPORT SECTION */}
         {subscriptionPlan !== 'BASIC' && (
           <div className={`p-4 sm:p-6 md:p-7 rounded-2xl sm:rounded-3xl shadow-2xl space-y-4 sm:space-y-5 border transition-all ${themeStyles.cardBg}`}>
@@ -1767,7 +1742,6 @@ export default function AdminDashboard() {
                   Data siap diexport ke Excel atau dicetak langsung/disimpan sebagai PDF resmi.
                 </p>
               </div>
-              
               {subscriptionPlan === 'PREMIUM' && (
                 <span className={`text-[9px] sm:text-[10px] font-black border px-3 py-1 rounded-full flex items-center gap-1.5 w-max ${themeStyles.badgeBg}`}>
                   ⭐ Premium Plan (Export Excel Only)
@@ -1779,7 +1753,6 @@ export default function AdminDashboard() {
                 </span>
               )}
             </div>
-
             <div className="grid grid-cols-1 md:grid-cols-12 gap-4 sm:gap-6 items-start">
               <div className="md:col-span-6 space-y-3 sm:space-y-4">
                 <div>
@@ -1800,7 +1773,6 @@ export default function AdminDashboard() {
                     ))}
                   </div>
                 </div>
-
                 {reportPeriod !== 'custom' ? (
                   <div>
                     <label className="block text-xs font-bold text-zinc-300 mb-1.5 sm:mb-2">
@@ -1808,7 +1780,6 @@ export default function AdminDashboard() {
                       {reportPeriod === 'weekly' && 'Pilih Tanggal Awal (7 Hari):'}
                       {reportPeriod === 'monthly' && 'Pilih Bulan & Tahun:'}
                     </label>
-
                     <input
                       type={reportPeriod === 'monthly' ? 'month' : 'date'}
                       value={reportPeriod === 'monthly' ? reportDate.substring(0, 7) : reportDate}
@@ -1818,7 +1789,6 @@ export default function AdminDashboard() {
                       }}
                       className={`w-full px-3.5 sm:px-4 py-2 sm:py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-xl sm:rounded-2xl text-xs text-zinc-200 focus:outline-none shadow-inner ${themeStyles.focusBorder}`}
                     />
-
                     {reportPeriod === 'weekly' && reportData.weekInfo && (
                       <p className={`text-[10px] sm:text-[11px] font-bold mt-2 flex items-center gap-1 ${themeStyles.textAccent}`}>
                         <span>📅</span> Periode: {formatDateID(reportData.weekInfo.startStr)} s/d {formatDateID(reportData.weekInfo.endStr)}
@@ -1848,7 +1818,6 @@ export default function AdminDashboard() {
                   </div>
                 )}
               </div>
-
               <div className="md:col-span-6 space-y-3 sm:space-y-4">
                 <div className="bg-zinc-950/90 border border-zinc-800/80 p-4 sm:p-5 rounded-xl sm:rounded-2xl grid grid-cols-2 gap-3 sm:gap-4 text-xs shadow-inner">
                   <div>
@@ -1867,7 +1836,6 @@ export default function AdminDashboard() {
                     </p>
                   </div>
                 </div>
-
                 {subscriptionPlan === 'PREMIUM' && (
                   <div className="space-y-2">
                     <button
@@ -1878,7 +1846,6 @@ export default function AdminDashboard() {
                     </button>
                   </div>
                 )}
-
                 {isProfesional && (
                   <div className="grid grid-cols-2 gap-2 sm:gap-3">
                     <button
@@ -1887,7 +1854,6 @@ export default function AdminDashboard() {
                     >
                       <span>📥 Export Excel</span>
                     </button>
-
                     <button
                       onClick={handlePrintPDF}
                       className={`w-full px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl font-bold transition-all text-xs flex items-center justify-center gap-2 active:scale-[0.98] ${themeStyles.buttonPrimary}`}
@@ -1897,7 +1863,6 @@ export default function AdminDashboard() {
                   </div>
                 )}
               </div>
-
             </div>
           </div>
         )}
@@ -1929,7 +1894,6 @@ export default function AdminDashboard() {
                 )}
               </div>
             </div>
-
             {subscriptionPlan !== 'BASIC' && (
               <div className="w-full">
                 <label className="block text-xs font-bold text-zinc-300 mb-1.5">Dari Tanggal:</label>
@@ -1941,7 +1905,6 @@ export default function AdminDashboard() {
                 />
               </div>
             )}
-
             {subscriptionPlan !== 'BASIC' && (
               <div className="w-full">
                 <label className="block text-xs font-bold text-zinc-300 mb-1.5">Sampai Tanggal:</label>
@@ -1953,7 +1916,6 @@ export default function AdminDashboard() {
                 />
               </div>
             )}
-
             <div className="w-full">
               <label className="block text-xs font-bold text-zinc-300 mb-1.5">Status:</label>
               <select
@@ -1969,7 +1931,6 @@ export default function AdminDashboard() {
                 <option value="cancelled_need_refund">⚠️ Need Refund</option>
               </select>
             </div>
-
             {subscriptionPlan !== 'BASIC' && (
               <div className="w-full">
                 <label className="block text-xs font-bold text-zinc-300 mb-1.5">Layanan:</label>
@@ -1987,7 +1948,6 @@ export default function AdminDashboard() {
                 </select>
               </div>
             )}
-
             {subscriptionPlan !== 'BASIC' && (
               <div className="w-full">
                 <label className="block text-xs font-bold text-zinc-300 mb-1.5">Limit Data:</label>
@@ -2007,7 +1967,6 @@ export default function AdminDashboard() {
                 </select>
               </div>
             )}
-
             <div className="w-full flex gap-2 items-end">
               <div className="w-full">
                 <label className="block text-xs font-bold text-zinc-300 mb-1.5">Metode Bayar:</label>
@@ -2042,243 +2001,217 @@ export default function AdminDashboard() {
                 </button>
               )}
             </div>
-
           </div>
         </div>
 
         {/* 17.10 RESERVATIONS DATA TABLE */}
-<div className={`border rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden transition-all ${themeStyles.cardBg}`}>
-  {loading ? (
-    <div className="p-12 text-center text-zinc-400 text-xs font-semibold">Memuat data reservasi...</div>
-  ) : filteredReservations.length === 0 ? (
-    <div className="p-12 text-center text-zinc-400 text-xs font-semibold">Belum ada reservasi masuk / sesuai filter.</div>
-  ) : (
-    <>
-      <div className="w-full overflow-x-auto">
-        <table className="w-full text-left border-collapse min-w-full">
-          <thead>
-            <tr className="border-b border-zinc-800/80 bg-zinc-950/90 text-[10px] font-black uppercase tracking-widest text-zinc-400 select-none">
-              <th onClick={() => handleSort('booking_date')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
-                <div className="flex items-center gap-1 whitespace-nowrap">
-                  <span>Tanggal</span>
-                  {subscriptionPlan !== 'BASIC' && sortField === 'booking_date' && (sortOrder === 'asc' ? '▲' : '▼')}
-                </div>
-              </th>
+        <div className={`border rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden transition-all ${themeStyles.cardBg}`}>
+          {loading ? (
+            <div className="p-12 text-center text-zinc-400 text-xs font-semibold">Memuat data reservasi...</div>
+          ) : filteredReservations.length === 0 ? (
+            <div className="p-12 text-center text-zinc-400 text-xs font-semibold">Belum ada reservasi masuk / sesuai filter.</div>
+          ) : (
+            <>
+              <div className="w-full overflow-x-auto">
+                <table className="w-full text-left border-collapse min-w-full">
+                  <thead>
+                    <tr className="border-b border-zinc-800/80 bg-zinc-950/90 text-[10px] font-black uppercase tracking-widest text-zinc-400 select-none">
+                      <th onClick={() => handleSort('booking_date')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
+                        <div className="flex items-center gap-1 whitespace-nowrap">
+                          <span>Tanggal</span>
+                          {subscriptionPlan !== 'BASIC' && sortField === 'booking_date' && (sortOrder === 'asc' ? '▲' : '▼')}
+                        </div>
+                      </th>
+                      <th onClick={() => handleSort('booking_time')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
+                        <div className="flex items-center gap-1 whitespace-nowrap">
+                          <span>Jam</span>
+                          {subscriptionPlan !== 'BASIC' && sortField === 'booking_time' && (sortOrder === 'asc' ? '▲' : '▼')}
+                        </div>
+                      </th>
+                      <th onClick={() => handleSort('customer_name')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
+                        <div className="flex items-center gap-1 whitespace-nowrap">
+                          <span>Pelanggan</span>
+                          {subscriptionPlan !== 'BASIC' && sortField === 'customer_name' && (sortOrder === 'asc' ? '▲' : '▼')}
+                        </div>
+                      </th>
+                      <th onClick={() => handleSort('service_name')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
+                        <div className="flex items-center gap-1 whitespace-nowrap">
+                          <span>Layanan</span>
+                          {subscriptionPlan !== 'BASIC' && sortField === 'service_name' && (sortOrder === 'asc' ? '▲' : '▼')}
+                        </div>
+                      </th>
+                      <th onClick={() => handleSort('staff_name')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
+                        <div className="flex items-center gap-1 whitespace-nowrap">
+                          <span>{staffLabel}</span>
+                          {subscriptionPlan !== 'BASIC' && sortField === 'staff_name' && (sortOrder === 'asc' ? '▲' : '▼')}
+                        </div>
+                      </th>
+                      <th onClick={() => handleSort('payment_method')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
+                        <div className="flex items-center gap-1 whitespace-nowrap">
+                          <span>Bayar</span>
+                          {subscriptionPlan !== 'BASIC' && sortField === 'payment_method' && (sortOrder === 'asc' ? '▲' : '▼')}
+                        </div>
+                      </th>
+                      <th onClick={() => handleSort('price')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
+                        <div className="flex items-center gap-1 whitespace-nowrap">
+                          <span>Harga</span>
+                          {subscriptionPlan !== 'BASIC' && sortField === 'price' && (sortOrder === 'asc' ? '▲' : '▼')}
+                        </div>
+                      </th>
+                      <th onClick={() => handleSort('status')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
+                        <div className="flex items-center gap-1 whitespace-nowrap">
+                          <span>Status</span>
+                          {subscriptionPlan !== 'BASIC' && sortField === 'status' && (sortOrder === 'asc' ? '▲' : '▼')}
+                        </div>
+                      </th>
+                      <th className="py-3.5 px-3 text-center">
+                        <span className="whitespace-nowrap">Aksi</span>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-800/50 text-xs">
+                    {displayedReservations.map((item) => {
+                      const rawStatus = (item.status || 'pending').toLowerCase()
+                      const cleanWa = item.whatsapp_number ? item.whatsapp_number.replace(/[^0-9]/g, '') : ''
+                      const price = getServicePrice(item.service_name)
+                      // Text & Link WA Umum
+                      const waText = `Halo Kak ${item.customer_name}, kami dari ${brandTitle || 'Salon/Barbershop'}. Mau konfirmasi reservasi kamu tanggal ${formatDateID(item.booking_date)} jam ${item.booking_time} WIB untuk layanan ${item.service_name}. Terima kasih!`
+                      const waUrl = `https://wa.me/${cleanWa}?text=${encodeURIComponent(waText)}`
+                      // Text & Link WA Khusus Refund
+                      const refundWaText = `Halo Kak ${item.customer_name}, terkait pembatalan reservasi tanggal ${formatDateID(item.booking_date)}, mohon kirimkan nomor rekening / e-wallet Anda untuk proses refund. Terima kasih!`
+                      const refundWaUrl = `https://wa.me/${cleanWa}?text=${encodeURIComponent(refundWaText)}`
+                      return (
+                        <tr key={item.id} className="hover:bg-zinc-900/60 transition-all">
+                          <td className="py-3 px-3 font-semibold whitespace-nowrap text-zinc-300">
+                            {formatDateID(item.booking_date)}
+                          </td>
+                          <td className="py-3 px-3 font-bold whitespace-nowrap text-zinc-100">
+                            {item.booking_time}
+                          </td>
+                          <td className="py-3 px-3">
+                            <div className="font-bold text-white whitespace-nowrap">{item.customer_name}</div>
+                            <div className="text-[10px] text-zinc-400 font-mono mt-0.5">{item.whatsapp_number || '-'}</div>
+                          </td>
+                          <td className="py-3 px-3 font-medium text-zinc-200">
+                            <span className="line-clamp-2">{item.service_name}</span>
+                          </td>
+                          <td className="py-3 px-3 font-medium text-zinc-300 whitespace-nowrap">
+                            {item.staff_name || '-'}
+                          </td>
+                          <td className="py-3 px-3 font-semibold text-zinc-300 whitespace-nowrap">
+                            <span className="px-2 py-0.5 rounded-lg bg-zinc-900 border border-zinc-800 text-[10px]">
+                              💳 {item.payment_method || 'QRIS'}
+                            </span>
+                          </td>
+                          <td className="py-3 px-3 font-bold text-zinc-100 whitespace-nowrap">
+                            Rp {price.toLocaleString('id-ID')}
+                          </td>
+                          {/* KOLOM STATUS */}
+                          <td className="py-3 px-3 whitespace-nowrap">
+                            <select
+                              value={rawStatus}
+                              onChange={(e) => handleStatusChange(item, e.target.value)}
+                              className={`px-2.5 py-1.5 rounded-xl text-[11px] font-extrabold border cursor-pointer focus:outline-none transition-all shadow-sm ${
+                                rawStatus === 'confirmed' || rawStatus === 'dikonfirmasi'
+                                  ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
+                                  : isCompleted(rawStatus)
+                                  ? 'bg-blue-500/15 border-blue-500/40 text-blue-300'
+                                  : rawStatus === 'cancelled_need_refund'
+                                  ? 'bg-amber-500/15 border-amber-500/40 text-amber-300'
+                                  : rawStatus === 'cancelled_refunded'
+                                  ? 'bg-purple-500/15 border-purple-500/40 text-purple-300'
+                                  : rawStatus.startsWith('cancelled') || rawStatus === 'batal'
+                                  ? 'bg-rose-500/15 border-rose-500/40 text-rose-300'
+                                  : 'bg-amber-500/15 border-amber-500/40 text-amber-300'
+                              }`}
+                            >
+                              <option value="pending" className="bg-zinc-900 text-amber-300 font-bold">🟡 Pending</option>
+                              <option value="confirmed" className="bg-zinc-900 text-emerald-300 font-bold">🟢 Confirmed</option>
+                              <option value="completed" className="bg-zinc-900 text-blue-300 font-bold">🔵 Completed</option>
+                              <option value="cancelled" className="bg-zinc-900 text-rose-300 font-bold">🔴 Cancelled</option>
+                              {/* DIHIDDEN AGAR TIDAK BISA DIPILIH MANUAL OLEH USER */}
+                              <option value="cancelled_need_refund" hidden className="bg-zinc-900 text-amber-300 font-bold">🟠 Need Refund</option>
+                              <option value="cancelled_refunded" hidden className="bg-zinc-900 text-purple-300 font-bold">💸 Refunded</option>
+                            </select>
+                          </td>
+                          {/* KOLOM AKSI */}
+                          <td className="py-3 px-3 text-center whitespace-nowrap">
+                            <div className="flex items-center justify-center space-x-2">
+                              {/* Tombol WA (Biasa / Refund) */}
+                              {cleanWa ? (
+                                <a
+                                  href={rawStatus === 'cancelled_need_refund' ? refundWaUrl : waUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className={`p-2 rounded-xl transition-all font-bold text-[11px] flex items-center justify-center active:scale-95 shadow-sm ${
+                                    rawStatus === 'cancelled_need_refund'
+                                      ? 'bg-amber-500/20 hover:bg-amber-500/40 text-amber-300 border border-amber-500/40 animate-pulse'
+                                      : 'bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-300 border border-emerald-500/30'
+                                  }`}
+                                  title={rawStatus === 'cancelled_need_refund' ? 'WA Refund Pelanggan' : 'Konfirmasi via WhatsApp'}
+                                >
+                                  💬
+                                </a>
+                              ) : (
+                                <span className="text-zinc-600 p-2 text-xs">-</span>
+                              )}
 
-              <th onClick={() => handleSort('booking_time')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
-                <div className="flex items-center gap-1 whitespace-nowrap">
-                  <span>Jam</span>
-                  {subscriptionPlan !== 'BASIC' && sortField === 'booking_time' && (sortOrder === 'asc' ? '▲' : '▼')}
-                </div>
-              </th>
-
-              <th onClick={() => handleSort('customer_name')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
-                <div className="flex items-center gap-1 whitespace-nowrap">
-                  <span>Pelanggan</span>
-                  {subscriptionPlan !== 'BASIC' && sortField === 'customer_name' && (sortOrder === 'asc' ? '▲' : '▼')}
-                </div>
-              </th>
-
-              <th onClick={() => handleSort('service_name')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
-                <div className="flex items-center gap-1 whitespace-nowrap">
-                  <span>Layanan</span>
-                  {subscriptionPlan !== 'BASIC' && sortField === 'service_name' && (sortOrder === 'asc' ? '▲' : '▼')}
-                </div>
-              </th>
-
-              <th onClick={() => handleSort('staff_name')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
-                <div className="flex items-center gap-1 whitespace-nowrap">
-                  <span>{staffLabel}</span>
-                  {subscriptionPlan !== 'BASIC' && sortField === 'staff_name' && (sortOrder === 'asc' ? '▲' : '▼')}
-                </div>
-              </th>
-
-              <th onClick={() => handleSort('payment_method')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
-                <div className="flex items-center gap-1 whitespace-nowrap">
-                  <span>Bayar</span>
-                  {subscriptionPlan !== 'BASIC' && sortField === 'payment_method' && (sortOrder === 'asc' ? '▲' : '▼')}
-                </div>
-              </th>
-
-              <th onClick={() => handleSort('price')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
-                <div className="flex items-center gap-1 whitespace-nowrap">
-                  <span>Harga</span>
-                  {subscriptionPlan !== 'BASIC' && sortField === 'price' && (sortOrder === 'asc' ? '▲' : '▼')}
-                </div>
-              </th>
-
-              <th onClick={() => handleSort('status')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
-                <div className="flex items-center gap-1 whitespace-nowrap">
-                  <span>Status</span>
-                  {subscriptionPlan !== 'BASIC' && sortField === 'status' && (sortOrder === 'asc' ? '▲' : '▼')}
-                </div>
-              </th>
-
-              <th className="py-3.5 px-3 text-center">
-                <span className="whitespace-nowrap">Aksi</span>
-              </th>
-            </tr>
-          </thead>
-
-          <tbody className="divide-y divide-zinc-800/50 text-xs">
-            {displayedReservations.map((item) => {
-              const rawStatus = (item.status || 'pending').toLowerCase()
-              const cleanWa = item.whatsapp_number ? item.whatsapp_number.replace(/[^0-9]/g, '') : ''
-              const price = getServicePrice(item.service_name)
-
-              // Text & Link WA Umum
-              const waText = `Halo Kak ${item.customer_name}, kami dari ${brandTitle || 'Salon/Barbershop'}. Mau konfirmasi reservasi kamu tanggal ${formatDateID(item.booking_date)} jam ${item.booking_time} WIB untuk layanan ${item.service_name}. Terima kasih!`
-              const waUrl = `https://wa.me/${cleanWa}?text=${encodeURIComponent(waText)}`
-
-              // Text & Link WA Khusus Refund
-              const refundWaText = `Halo Kak ${item.customer_name}, terkait pembatalan reservasi tanggal ${formatDateID(item.booking_date)}, mohon kirimkan nomor rekening / e-wallet Anda untuk proses refund. Terima kasih!`
-              const refundWaUrl = `https://wa.me/${cleanWa}?text=${encodeURIComponent(refundWaText)}`
-
-              return (
-                <tr key={item.id} className="hover:bg-zinc-900/60 transition-all">
-                  <td className="py-3 px-3 font-semibold whitespace-nowrap text-zinc-300">
-                    {formatDateID(item.booking_date)}
-                  </td>
-
-                  <td className="py-3 px-3 font-bold whitespace-nowrap text-zinc-100">
-                    {item.booking_time}
-                  </td>
-
-                  <td className="py-3 px-3">
-                    <div className="font-bold text-white whitespace-nowrap">{item.customer_name}</div>
-                    <div className="text-[10px] text-zinc-400 font-mono mt-0.5">{item.whatsapp_number || '-'}</div>
-                  </td>
-
-                  <td className="py-3 px-3 font-medium text-zinc-200">
-                    <span className="line-clamp-2">{item.service_name}</span>
-                  </td>
-
-                  <td className="py-3 px-3 font-medium text-zinc-300 whitespace-nowrap">
-                    {item.staff_name || '-'}
-                  </td>
-
-                  <td className="py-3 px-3 font-semibold text-zinc-300 whitespace-nowrap">
-                    <span className="px-2 py-0.5 rounded-lg bg-zinc-900 border border-zinc-800 text-[10px]">
-                      💳 {item.payment_method || 'QRIS'}
-                    </span>
-                  </td>
-
-                  <td className="py-3 px-3 font-bold text-zinc-100 whitespace-nowrap">
-                    Rp {price.toLocaleString('id-ID')}
-                  </td>
-
-                  {/* KOLOM STATUS */}
-                  <td className="py-3 px-3 whitespace-nowrap">
-                    <select
-                      value={rawStatus}
-                      onChange={(e) => handleStatusChange(item, e.target.value)}
-                      className={`px-2.5 py-1.5 rounded-xl text-[11px] font-extrabold border cursor-pointer focus:outline-none transition-all shadow-sm ${
-                        rawStatus === 'confirmed' || rawStatus === 'dikonfirmasi'
-                          ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
-                          : isCompleted(rawStatus)
-                          ? 'bg-blue-500/15 border-blue-500/40 text-blue-300'
-                          : rawStatus === 'cancelled_need_refund'
-                          ? 'bg-amber-500/15 border-amber-500/40 text-amber-300'
-                          : rawStatus === 'cancelled_refunded'
-                          ? 'bg-purple-500/15 border-purple-500/40 text-purple-300'
-                          : rawStatus.startsWith('cancelled') || rawStatus === 'batal'
-                          ? 'bg-rose-500/15 border-rose-500/40 text-rose-300'
-                          : 'bg-amber-500/15 border-amber-500/40 text-amber-300'
-                      }`}
+                              {/* Tombol "✓ Refunded" di Aksi (Muncul Khusus Saat Need Refund) */}
+                              {rawStatus === 'cancelled_need_refund' && isProfesional && (
+                                <button
+                                  onClick={() => handleCompleteRefund(item.id)}
+                                  className="bg-amber-500/20 hover:bg-amber-500/40 text-amber-300 border border-amber-500/40 px-2.5 py-1.5 rounded-xl transition-all font-extrabold text-[10px] shadow-sm active:scale-95 whitespace-nowrap"
+                                  title="Tandai Sudah Refund"
+                                >
+                                  ✓ Refunded
+                                </button>
+                              )}
+                              {/* Tombol Hapus (Selalu Tampil) */}
+                              <button
+                                onClick={() => handleDelete(item.id, item.customer_name)}
+                                className="bg-rose-500/15 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 p-2 rounded-xl transition-all font-bold text-[11px] flex items-center justify-center active:scale-95 shadow-sm"
+                                title="Hapus Data Reservasi"
+                              >
+                                🗑️
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              {/* 17.11 PAGINATION FOOTER */}
+              {totalPages > 1 && (
+                <div className="p-3.5 sm:p-4 bg-zinc-950/90 border-t border-zinc-800/80 flex items-center justify-between text-xs">
+                  <span className="text-zinc-400 font-medium">
+                    Halaman <strong className="text-white">{currentPage}</strong> dari <strong className="text-white">{totalPages}</strong>
+                  </span>
+                  <div className="flex space-x-2">
+                    <button
+                      disabled={currentPage === 1}
+                      onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
+                      className="px-3 py-1.5 bg-zinc-900 border border-zinc-800 rounded-xl disabled:opacity-40 font-bold hover:bg-zinc-800 transition text-zinc-200"
                     >
-                      <option value="pending" className="bg-zinc-900 text-amber-300 font-bold">🟡 Pending</option>
-                      <option value="confirmed" className="bg-zinc-900 text-emerald-300 font-bold">🟢 Confirmed</option>
-                      <option value="completed" className="bg-zinc-900 text-blue-300 font-bold">🔵 Completed</option>
-                      <option value="cancelled" className="bg-zinc-900 text-rose-300 font-bold">🔴 Cancelled</option>
-                      
-                      {/* DIHIDDEN AGAR TIDAK BISA DIPILIH MANUAL OLEH USER */}
-                      <option value="cancelled_need_refund" hidden className="bg-zinc-900 text-amber-300 font-bold">🟠 Need Refund</option>
-                      <option value="cancelled_refunded" hidden className="bg-zinc-900 text-purple-300 font-bold">💸 Refunded</option>
-                    </select>
-                  </td>
-
-                  {/* KOLOM AKSI */}
-                  <td className="py-3 px-3 text-center whitespace-nowrap">
-                    <div className="flex items-center justify-center space-x-2">
-                      {/* Tombol WA (Biasa / Refund) */}
-                      {cleanWa ? (
-                        <a
-                          href={rawStatus === 'cancelled_need_refund' ? refundWaUrl : waUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className={`p-2 rounded-xl transition-all font-bold text-[11px] flex items-center justify-center active:scale-95 shadow-sm ${
-                            rawStatus === 'cancelled_need_refund'
-                              ? 'bg-amber-500/20 hover:bg-amber-500/40 text-amber-300 border border-amber-500/40 animate-pulse'
-                              : 'bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-300 border border-emerald-500/30'
-                          }`}
-                          title={rawStatus === 'cancelled_need_refund' ? 'WA Refund Pelanggan' : 'Konfirmasi via WhatsApp'}
-                        >
-                          💬
-                        </a>
-                      ) : (
-                        <span className="text-zinc-600 p-2 text-xs">-</span>
-                      )}
-
-                      {/* Tombol "✓ Refunded" di Aksi (Muncul Khusus Saat Need Refund) */}
-                      {rawStatus === 'cancelled_need_refund' && isProfesional && (
-                        <button
-                          onClick={() => handleCompleteRefund(item.id)}
-                          className="bg-amber-500/20 hover:bg-amber-500/40 text-amber-300 border border-amber-500/40 px-2.5 py-1.5 rounded-xl transition-all font-extrabold text-[10px] shadow-sm active:scale-95 whitespace-nowrap"
-                          title="Tandai Sudah Refund"
-                        >
-                          ✓ Refunded
-                        </button>
-                      )}
-
-                      {/* Tombol Hapus (Selalu Tampil) */}
-                      <button
-                        onClick={() => handleDelete(item.id, item.customer_name)}
-                        className="bg-rose-500/15 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 p-2 rounded-xl transition-all font-bold text-[11px] flex items-center justify-center active:scale-95 shadow-sm"
-                        title="Hapus Data Reservasi"
-                      >
-                        🗑️
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </div>
-
-      {/* 17.11 PAGINATION FOOTER */}
-      {totalPages > 1 && (
-        <div className="p-3.5 sm:p-4 bg-zinc-950/90 border-t border-zinc-800/80 flex items-center justify-between text-xs">
-          <span className="text-zinc-400 font-medium">
-            Halaman <strong className="text-white">{currentPage}</strong> dari <strong className="text-white">{totalPages}</strong>
-          </span>
-          <div className="flex space-x-2">
-            <button
-              disabled={currentPage === 1}
-              onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
-              className="px-3 py-1.5 bg-zinc-900 border border-zinc-800 rounded-xl disabled:opacity-40 font-bold hover:bg-zinc-800 transition text-zinc-200"
-            >
-              Sebelumnya
-            </button>
-            <button
-              disabled={currentPage === totalPages}
-              onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
-              className="px-3 py-1.5 bg-zinc-900 border border-zinc-800 rounded-xl disabled:opacity-40 font-bold hover:bg-zinc-800 transition text-zinc-200"
-            >
-              Selanjutnya
-            </button>
-          </div>
+                      Sebelumnya
+                    </button>
+                    <button
+                      disabled={currentPage === totalPages}
+                      onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
+                      className="px-3 py-1.5 bg-zinc-900 border border-zinc-800 rounded-xl disabled:opacity-40 font-bold hover:bg-zinc-800 transition text-zinc-200"
+                    >
+                      Selanjutnya
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
         </div>
-      )}
-    </>
-  )}
-</div>
 
-</div>
-
-          {/* MODAL REFUND HANYA BERLAKU UNTUK PAKET PROFESIONAL */}
-          {cancelModalItem && (
+        {/* MODAL REFUND HANYA BERLAKU UNTUK PAKET PROFESIONAL */}
+        {cancelModalItem && (
           <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
             <div className={`max-w-md w-full border rounded-3xl p-6 space-y-5 shadow-2xl animate-in fade-in zoom-in duration-200 ${themeStyles.cardBg}`}>
               <div className="text-center space-y-2">
@@ -2288,7 +2221,6 @@ export default function AdminDashboard() {
                   Pesanan atas nama <strong className="text-white">{cancelModalItem.customer_name}</strong> akan dibatalkan.
                 </p>
               </div>
-
               <div className="bg-zinc-950/80 border border-zinc-800/80 p-4 rounded-2xl space-y-2 text-xs">
                 <div className="flex justify-between text-zinc-400">
                   <span>Layanan:</span>
@@ -2303,9 +2235,7 @@ export default function AdminDashboard() {
                   <span className="font-bold text-emerald-400">Rp {getServicePrice(cancelModalItem.service_name).toLocaleString('id-ID')}</span>
                 </div>
               </div>
-
               <p className="text-[11px] font-bold text-amber-300 text-center">Apakah pelanggan ini membutuhkan pengembalian dana (refund)?</p>
-
               <div className="grid grid-cols-2 gap-3 pt-2">
                 <button
                   onClick={() => handleConfirmCancel(true)}
@@ -2320,7 +2250,6 @@ export default function AdminDashboard() {
                   Tidak Perlu Refund ❌
                 </button>
               </div>
-
               <button
                 onClick={() => setCancelModalItem(null)}
                 className="w-full text-zinc-400 hover:text-white font-bold text-xs py-2 transition-colors text-center"
@@ -2330,7 +2259,8 @@ export default function AdminDashboard() {
             </div>
           </div>
         )}
-
+      </div>
       </div>
   )
 }
+      

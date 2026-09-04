@@ -18,7 +18,6 @@ export async function POST(request: Request) {
     const supabase = createClient(supabaseUrl, supabaseKey)
 
     // 1. Cek dulu apakah slot jam yang dipilih diblokir/libur
-    // FIX: Gunakan tenant_slug, BUKAN tenant_id
     const { data: checkBlocked, error: checkErr } = await supabase
       .from('blocked_slots')
       .select('id')
@@ -29,7 +28,6 @@ export async function POST(request: Request) {
 
     if (checkErr) {
       console.error('Error Cek Blocked Slot:', checkErr)
-      // Jika terjadi error query (misal kolom beda), log saja jangan langsung crash 500
     }
 
     if (checkBlocked) {
@@ -59,25 +57,32 @@ export async function POST(request: Request) {
       eye_shape_notes: body.eye_shape_notes || null
     }
 
-    // 3. Insert ke database
-    const { data, error } = await supabase
-      .from('Reservations')
-      .insert([payload])
-      .select()
-      .single()
+    // 3. PANGGIL SUPABASE RPC (Aman dari Double Booking / Race Condition)
+    const { data: rpcData, error: rpcError } = await supabase.rpc('book_slot_safely', {
+      p_tenant_slug: payload.tenant_slug,
+      p_booking_date: payload.booking_date,
+      p_booking_time: payload.booking_time,
+      p_max_quota: 1, // Sesuaikan kuota per jam (bisa diatur dinamis jika diperlukan)
+      p_customer_data: payload
+    })
 
-    if (error) {
-      console.error('Supabase Insert Error:', error)
-      return NextResponse.json({ error: error.message }, { status: 400 })
+    if (rpcError) {
+      console.error('Supabase RPC Error:', rpcError)
+      return NextResponse.json({ error: rpcError.message }, { status: 400 })
     }
 
-    return NextResponse.json({ success: true, data }, { status: 200 })
+    // Cek hasil validasi dari fungsi database
+    if (!rpcData.success) {
+      return NextResponse.json({ error: rpcData.message }, { status: 400 })
+    }
 
-  } catch (err: any) {
-    console.error('Server Internal Error:', err)
-    return NextResponse.json(
-      { error: err.message || 'Internal Server Error' },
-      { status: 500 }
-    )
-  }
+    return NextResponse.json({ success: true, data: rpcData }, { status: 200 })
+
+    } catch (err: any) {
+      console.error('Server Internal Error:', err)
+      return NextResponse.json(
+        { error: err.message || 'Internal Server Error' },
+        { status: 500 }
+      )
+    }
 }

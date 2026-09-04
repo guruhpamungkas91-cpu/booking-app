@@ -6,6 +6,7 @@ export const dynamic = 'force-dynamic'
 // 1. IMPORTS & DEPENDENCIES
 // ============================================================================
 import { useState, useEffect, Suspense } from 'react'
+import { useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
 // ============================================================================
@@ -73,6 +74,9 @@ const formatWaNumber = (phone: string) => {
 // 4. MAIN BOOKING FORM COMPONENT
 // ============================================================================
 function BookingFormContent() {
+  const params = useParams()
+  const currentSlug = (params?.tenant_slug as string) || ''
+
   // --------------------------------------------------------------------------
   // 4.1 State Management (Steps & Tenant Configuration)
   // --------------------------------------------------------------------------
@@ -295,14 +299,18 @@ function BookingFormContent() {
         extractedSlug = rawSubdomain.replace('-barbershop', '').replace('-dental', '').replace('-clinic', '')
       }
 
-      const currentSlug = (tenantQuery || (isLocal ? 'fitrifeb-lashes' : extractedSlug)).trim().toLowerCase()
+      // Ambil slug dari params, pastikan aman dari array atau undefined
+      const rawSlug = params?.tenant_slug
+      const slugStr = Array.isArray(rawSlug) ? rawSlug[0] : (rawSlug || tenantQuery || 'fitrifeb-lashes')
+      const currentSlug = slugStr.trim().toLowerCase()
+      
 
       const fetchTenantAndData = async () => {
         setFetchingServices(true)
 
         try {
           const { data: tenantData } = await supabase
-            .from('Tenants')
+            .from('tenants')
             .select('*')
             .eq('tenant_slug', currentSlug)
             .maybeSingle()
@@ -340,7 +348,7 @@ function BookingFormContent() {
 
           // Fetch Services
           const { data: serviceData } = await supabase
-            .from('Services')
+            .from('services')
             .select('*')
             .eq('tenant_slug', activeTenant.tenantSlug)
 
@@ -354,7 +362,7 @@ function BookingFormContent() {
           // Fetch Staff
           if (activeTenant.subscriptionPlan !== 'BASIC') {
             const { data: staffData } = await supabase
-              .from('Staff')
+              .from('staff')
               .select('*')
               .eq('tenant_slug', activeTenant.tenantSlug)
               .eq('is_active', true)
@@ -368,7 +376,7 @@ function BookingFormContent() {
           } else {
             // Paket BASIC: Dibatasi 1 Staff saja
             const { data: staffData } = await supabase
-              .from('Staff')
+              .from('staff')
               .select('*')
               .eq('tenant_slug', activeTenant.tenantSlug)
               .eq('is_active', true)
@@ -391,7 +399,7 @@ function BookingFormContent() {
           if (blockedErr) console.error("Error fetching blocked_slots:", blockedErr)
 
           const { data: confirmedReservations, error: resErr } = await supabase
-            .from('Reservations')
+            .from('reservations')
             .select('booking_date, booking_time')
             .eq('tenant_slug', activeTenant.tenantSlug)
             .eq('status', 'confirmed')
