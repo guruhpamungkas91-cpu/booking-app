@@ -140,14 +140,14 @@ export default function AdminDashboard() {
     return 'barber'
   }
 
-  const getServicePrice = (serviceName?: string): number => {
+  const getServicePrice = useCallback((serviceName?: string): number => {
     if (!serviceName) return businessType === 'eyelash' ? 120000 : 50000
     if (serviceName.includes(',')) {
       const parts = serviceName.split(',').map((s) => s.trim())
       return parts.reduce((acc, curr) => acc + (SERVICE_PRICES[curr] || (businessType === 'eyelash' ? 120000 : 50000)), 0)
     }
     return SERVICE_PRICES[serviceName] ?? (businessType === 'eyelash' ? 120000 : 50000)
-  }
+  }, [businessType])
 
   const formatDateID = (dateStr: string) => {
     if (!dateStr) return ''
@@ -298,29 +298,6 @@ export default function AdminDashboard() {
     initTenantAndSession()
   }, [tenantSlugFromUrl, fetchTenantDetail])
 
-  // ============================================================================
-  // RENDER GUARDS (WAJIB PALING BAWAH SETELAH SEMUA HOOKS)
-  // ============================================================================
-  if (isInitializing) {
-    return (
-      <div className="min-h-screen bg-zinc-950 flex items-center justify-center text-zinc-400 text-xs font-semibold">
-        Memuat Dashboard...
-      </div>
-    )
-  }
-
-  if (isInvalidDomain) {
-    return (
-      <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center p-4 text-center">
-        <h1 className="text-7xl font-black text-rose-500 mb-2">404</h1>
-        <h2 className="text-xl font-bold text-white mb-1">Akses Ditolak / Halaman Tidak Ada</h2>
-        <p className="text-xs text-zinc-400 max-w-md">
-          Halaman admin <code className="text-amber-400">/admin/{tenantSlugFromUrl}</code> tidak valid untuk domain ini.
-        </p>
-      </div>
-    )
-  }
-  
   // ============================================================================
   // 8. TOGGLE HANDLERS
   // ============================================================================
@@ -706,7 +683,7 @@ export default function AdminDashboard() {
       topStaffCount,
       staffChartData,
     }
-  }, [reservations, businessType])
+  }, [reservations, getServicePrice])
 
   const reportData = useMemo(() => {
     let weekInfo = { startStr: '', endStr: '' }
@@ -760,7 +737,7 @@ export default function AdminDashboard() {
       count: financialItems.length,
       weekInfo: reportPeriod === 'weekly' ? getWeekRangeFromStart(reportDate) : null,
     }
-  }, [reservations, reportPeriod, reportDate, reportStartDate, reportEndDate, businessType])
+  }, [reservations, reportPeriod, reportDate, reportStartDate, reportEndDate, getServicePrice])
 
   // ============================================================================
   // 13. EXPORT & PRINT HANDLERS
@@ -1095,7 +1072,7 @@ export default function AdminDashboard() {
 
     setFilteredReservations(result)
     setCurrentPage(1)
-  }, [startDate, endDate, statusFilter, serviceFilter, paymentFilter, searchTerm, sortField, sortOrder, reservations, subscriptionPlan])
+  }, [startDate, endDate, statusFilter, serviceFilter, paymentFilter, searchTerm, sortField, sortOrder, reservations, subscriptionPlan, getServicePrice])
 
   const totalPages = useMemo(() => {
     if (limit === 'all' || subscriptionPlan === 'BASIC') return 1
@@ -2039,265 +2016,221 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* 17.10 RESERVATIONS DATA TABLE */}
-        <div className={`border rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden transition-all ${themeStyles.cardBg}`}>
-          {/* HEADER TABEL: Menampilkan total data & Limit Dropdown jika bukan paket BASIC */}
-          <div className="p-4 sm:p-5 border-b border-zinc-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <h2 className="text-base sm:text-lg font-black text-white flex items-center gap-2">
-                <span>📋 Daftar Pesanan / Reservasi</span>
-                <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full border ${themeStyles.badgeBg}`}>
-                  {filteredReservations.length} Data
-                </span>
-              </h2>
-            </div>
+        {/* 19.9 RESERVATIONS DATA TABLE */}
+      <div className={`border rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden transition-all ${themeStyles.cardBg}`}>
+        {loading ? (
+          <div className="p-12 text-center text-zinc-400 text-xs font-semibold">Memuat data reservasi...</div>
+        ) : filteredReservations.length === 0 ? (
+          <div className="p-12 text-center text-zinc-400 text-xs font-semibold">Belum ada reservasi masuk / sesuai filter.</div>
+        ) : (
+          <>
+            <div className="w-full overflow-x-auto">
+              <table className="w-full text-left border-collapse min-w-full">
+                <thead>
+                  <tr className="border-b border-zinc-800/80 bg-zinc-950/90 text-[10px] font-black uppercase tracking-widest text-zinc-400 select-none">
+                    <th onClick={() => handleSort('booking_date')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
+                      <div className="flex items-center gap-1 whitespace-nowrap">
+                        <span>Tanggal</span>
+                        {subscriptionPlan !== 'BASIC' && sortField === 'booking_date' && (sortOrder === 'asc' ? '▲' : '▼')}
+                      </div>
+                    </th>
+                    <th onClick={() => handleSort('booking_time')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
+                      <div className="flex items-center gap-1 whitespace-nowrap">
+                        <span>Jam</span>
+                        {subscriptionPlan !== 'BASIC' && sortField === 'booking_time' && (sortOrder === 'asc' ? '▲' : '▼')}
+                      </div>
+                    </th>
+                    <th onClick={() => handleSort('customer_name')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
+                      <div className="flex items-center gap-1 whitespace-nowrap">
+                        <span>Pelanggan</span>
+                        {subscriptionPlan !== 'BASIC' && sortField === 'customer_name' && (sortOrder === 'asc' ? '▲' : '▼')}
+                      </div>
+                    </th>
+                    <th onClick={() => handleSort('service_name')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
+                      <div className="flex items-center gap-1 whitespace-nowrap">
+                        <span>Layanan</span>
+                        {subscriptionPlan !== 'BASIC' && sortField === 'service_name' && (sortOrder === 'asc' ? '▲' : '▼')}
+                      </div>
+                    </th>
+                    <th onClick={() => handleSort('staff_name')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
+                      <div className="flex items-center gap-1 whitespace-nowrap">
+                        <span>{staffLabel}</span>
+                        {subscriptionPlan !== 'BASIC' && sortField === 'staff_name' && (sortOrder === 'asc' ? '▲' : '▼')}
+                      </div>
+                    </th>
+                    <th onClick={() => handleSort('payment_method')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
+                      <div className="flex items-center gap-1 whitespace-nowrap">
+                        <span>Bayar</span>
+                        {subscriptionPlan !== 'BASIC' && sortField === 'payment_method' && (sortOrder === 'asc' ? '▲' : '▼')}
+                      </div>
+                    </th>
+                    <th onClick={() => handleSort('price')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
+                      <div className="flex items-center gap-1 whitespace-nowrap">
+                        <span>Harga</span>
+                        {subscriptionPlan !== 'BASIC' && sortField === 'price' && (sortOrder === 'asc' ? '▲' : '▼')}
+                      </div>
+                    </th>
+                    <th onClick={() => handleSort('status')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
+                      <div className="flex items-center gap-1 whitespace-nowrap">
+                        <span>Status</span>
+                        {subscriptionPlan !== 'BASIC' && sortField === 'status' && (sortOrder === 'asc' ? '▲' : '▼')}
+                      </div>
+                    </th>
+                    <th className="py-3.5 px-3 text-center">
+                      <span className="whitespace-nowrap">Aksi</span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-800/50 text-xs">
+                  {displayedReservations.map((item) => {
+                    const rawStatus = (item.status || 'pending').toLowerCase()
+                    const cleanWa = item.whatsapp_number ? item.whatsapp_number.replace(/[^0-9]/g, '') : ''
+                    const price = getServicePrice(item.service_name)
 
-            {subscriptionPlan !== 'BASIC' && (
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-zinc-400 font-medium">Tampilkan:</span>
-                <select
-                  value={limit}
-                  onChange={(e) => setLimit(e.target.value === 'all' ? 'all' : Number(e.target.value))}
-                  className={`bg-zinc-950 border border-zinc-800 text-xs text-zinc-200 rounded-xl px-2.5 py-1.5 focus:outline-none cursor-pointer ${themeStyles.focusBorder}`}
-                >
-                  <option value={10}>10</option>
-                  <option value={25}>25</option>
-                  <option value={50}>50</option>
-                  <option value="all">Semua</option>
-                </select>
+                    // Text & Link WA Umum
+                    const waText = `Halo Kak ${item.customer_name}, kami dari ${brandTitle || 'Salon/Barbershop'}. Mau konfirmasi reservasi kamu tanggal ${formatDateID(item.booking_date)} jam ${item.booking_time} WIB untuk layanan ${item.service_name}. Terima kasih!`
+                    const waUrl = `https://wa.me/${cleanWa}?text=${encodeURIComponent(waText)}`
+
+                    // Text & Link WA Khusus Refund
+                    const refundWaText = `Halo Kak ${item.customer_name}, terkait pembatalan reservasi tanggal ${formatDateID(item.booking_date)}, mohon kirimkan nomor rekening / e-wallet Anda untuk proses refund. Terima kasih!`
+                    const refundWaUrl = `https://wa.me/${cleanWa}?text=${encodeURIComponent(refundWaText)}`
+
+                    return (
+                      <tr key={item.id} className="hover:bg-zinc-900/60 transition-all">
+                        <td className="py-3 px-3 font-semibold whitespace-nowrap text-zinc-300">
+                          {formatDateID(item.booking_date)}
+                        </td>
+
+                        <td className="py-3 px-3 font-bold whitespace-nowrap text-zinc-100">
+                          {item.booking_time}
+                        </td>
+                        <td className="py-3 px-3">
+                          <div className="font-bold text-white whitespace-nowrap">{item.customer_name}</div>
+                          <div className="text-[10px] text-zinc-400 font-mono mt-0.5">{item.whatsapp_number || '-'}</div>
+                        </td>
+
+                        <td className="py-3 px-3 font-medium text-zinc-200">
+                          <span className="line-clamp-2">{item.service_name}</span>
+                        </td>
+                        <td className="py-3 px-3 font-medium text-zinc-300 whitespace-nowrap">
+                          {item.staff_name || '-'}
+                        </td>
+                        <td className="py-3 px-3 font-semibold text-zinc-300 whitespace-nowrap">
+                          <span className="px-2 py-0.5 rounded-lg bg-zinc-900 border border-zinc-800 text-[10px]">
+                            💳 {item.payment_method || 'QRIS'}
+                          </span>
+                        </td>
+
+                        <td className="py-3 px-3 font-bold text-zinc-100 whitespace-nowrap">
+                          Rp {price.toLocaleString('id-ID')}
+                        </td>
+                        {/* KOLOM STATUS */}
+                        <td className="py-3 px-3 whitespace-nowrap">
+                          <select
+                            value={rawStatus}
+                            onChange={(e) => handleStatusChange(item, e.target.value)}
+                            className={`px-2.5 py-1.5 rounded-xl text-[11px] font-extrabold border cursor-pointer focus:outline-none transition-all shadow-sm ${
+                              rawStatus === 'confirmed' || rawStatus === 'dikonfirmasi'
+                                ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
+                                : isCompleted(rawStatus)
+                                ? 'bg-blue-500/15 border-blue-500/40 text-blue-300'
+                                : rawStatus === 'cancelled_need_refund'
+                                ? 'bg-amber-500/15 border-amber-500/40 text-amber-300'
+                                : rawStatus === 'cancelled_refunded'
+                                ? 'bg-purple-500/15 border-purple-500/40 text-purple-300'
+                                : rawStatus.startsWith('cancelled') || rawStatus === 'batal'
+                                ? 'bg-rose-500/15 border-rose-500/40 text-rose-300'
+                                : 'bg-amber-500/15 border-amber-500/40 text-amber-300'
+                            }`}
+                          >
+                            <option value="pending" className="bg-zinc-900 text-amber-300 font-bold">🟡 Pending</option>
+                            <option value="confirmed" className="bg-zinc-900 text-emerald-300 font-bold">🟢 Confirmed</option>
+                            <option value="completed" className="bg-zinc-900 text-blue-300 font-bold">🔵 Completed</option>
+                            <option value="cancelled" className="bg-zinc-900 text-rose-300 font-bold">🔴 Cancelled</option>
+                            
+                            {/* DIHIDDEN AGAR TIDAK BISA DIPILIH MANUAL OLEH USER */}
+                            <option value="cancelled_need_refund" hidden className="bg-zinc-900 text-amber-300 font-bold">🟠 Need Refund</option>
+                            <option value="cancelled_refunded" hidden className="bg-zinc-900 text-purple-300 font-bold">💸 Refunded</option>
+                          </select>
+                        </td>
+                        {/* KOLOM AKSI */}
+                        <td className="py-3 px-3 text-center whitespace-nowrap">
+                          <div className="flex items-center justify-center space-x-2">
+                            {/* Tombol WA (Biasa / Refund) */}
+                            {cleanWa ? (
+                              <a
+                                href={rawStatus === 'cancelled_need_refund' ? refundWaUrl : waUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className={`p-2 rounded-xl transition-all font-bold text-[11px] flex items-center justify-center active:scale-95 shadow-sm ${
+                                  rawStatus === 'cancelled_need_refund'
+                                    ? 'bg-amber-500/20 hover:bg-amber-500/40 text-amber-300 border border-amber-500/40 animate-pulse'
+                                    : 'bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-300 border border-emerald-500/30'
+                                }`}
+                                title={rawStatus === 'cancelled_need_refund' ? 'WA Refund Pelanggan' : 'Konfirmasi via WhatsApp'}
+                              >
+                                💬
+                              </a>
+                            ) : (
+                              <span className="text-zinc-600 p-2 text-xs">-</span>
+                            )}
+
+                            {/* Tombol "✓ Refunded" di Aksi (Muncul Khusus Saat Need Refund) */}
+                            {rawStatus === 'cancelled_need_refund' && isProfesional && (
+                              <button
+                                onClick={() => handleCompleteRefund(item.id)}
+                                className="bg-amber-500/20 hover:bg-amber-500/40 text-amber-300 border border-amber-500/40 px-2.5 py-1.5 rounded-xl transition-all font-extrabold text-[10px] shadow-sm active:scale-95 whitespace-nowrap"
+                                title="Tandai Sudah Refund"
+                              >
+                                ✓ Refunded
+                              </button>
+                            )}
+
+                            {/* Tombol Hapus (Selalu Tampil) */}
+                            <button
+                              onClick={() => handleDelete(item.id, item.customer_name)}
+                              className="bg-rose-500/15 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 p-2 rounded-xl transition-all font-bold text-[11px] flex items-center justify-center active:scale-95 shadow-sm"
+                              title="Hapus Data Reservasi"
+                            >
+                              🗑️
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+            {/* PAGINATION CONTROLS */}
+            {totalPages > 1 && subscriptionPlan !== 'BASIC' && (
+              <div className="flex items-center justify-between p-4 border-t border-zinc-800/80 bg-zinc-950/60 text-xs">
+                <span className="text-zinc-400 font-medium">
+                  Halaman <strong className="text-white">{currentPage}</strong> dari <strong className="text-white">{totalPages}</strong> (Total {filteredReservations.length} Data)
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+                    disabled={currentPage === 1}
+                    className="px-3 py-1.5 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-300 font-bold disabled:opacity-40 hover:bg-zinc-800 transition-all"
+                  >
+                    Prev
+                  </button>
+                  <button
+                    onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
+                    disabled={currentPage === totalPages}
+                    className="px-3 py-1.5 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-300 font-bold disabled:opacity-40 hover:bg-zinc-800 transition-all"
+                  >
+                    Next
+                  </button>
+                </div>
               </div>
             )}
-          </div>
-
-          {loading ? (
-            <div className="p-12 text-center text-zinc-400 text-xs font-semibold">Memuat data reservasi...</div>
-          ) : filteredReservations.length === 0 ? (
-            <div className="p-12 text-center text-zinc-400 text-xs font-semibold">Belum ada reservasi masuk / sesuai filter.</div>
-          ) : (
-            <>
-              <div className="w-full overflow-x-auto">
-                <table className="w-full text-left border-collapse min-w-full">
-                  <thead>
-                    <tr className="border-b border-zinc-800/80 bg-zinc-950/90 text-[10px] font-black uppercase tracking-widest text-zinc-400 select-none">
-                      <th onClick={() => handleSort('booking_date')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
-                        <div className="flex items-center gap-1 whitespace-nowrap">
-                          <span>Tanggal</span>
-                          {subscriptionPlan !== 'BASIC' && sortField === 'booking_date' && (sortOrder === 'asc' ? '▲' : '▼')}
-                        </div>
-                      </th>
-
-                      <th onClick={() => handleSort('booking_time')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
-                        <div className="flex items-center gap-1 whitespace-nowrap">
-                          <span>Jam</span>
-                          {subscriptionPlan !== 'BASIC' && sortField === 'booking_time' && (sortOrder === 'asc' ? '▲' : '▼')}
-                        </div>
-                      </th>
-
-                      <th onClick={() => handleSort('customer_name')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
-                        <div className="flex items-center gap-1 whitespace-nowrap">
-                          <span>Pelanggan</span>
-                          {subscriptionPlan !== 'BASIC' && sortField === 'customer_name' && (sortOrder === 'asc' ? '▲' : '▼')}
-                        </div>
-                      </th>
-
-                      <th onClick={() => handleSort('service_name')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
-                        <div className="flex items-center gap-1 whitespace-nowrap">
-                          <span>Layanan</span>
-                          {subscriptionPlan !== 'BASIC' && sortField === 'service_name' && (sortOrder === 'asc' ? '▲' : '▼')}
-                        </div>
-                      </th>
-
-                      <th onClick={() => handleSort('staff_name')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
-                        <div className="flex items-center gap-1 whitespace-nowrap">
-                          <span>{staffLabel}</span>
-                          {subscriptionPlan !== 'BASIC' && sortField === 'staff_name' && (sortOrder === 'asc' ? '▲' : '▼')}
-                        </div>
-                      </th>
-
-                      <th onClick={() => handleSort('payment_method')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
-                        <div className="flex items-center gap-1 whitespace-nowrap">
-                          <span>Bayar</span>
-                          {subscriptionPlan !== 'BASIC' && sortField === 'payment_method' && (sortOrder === 'asc' ? '▲' : '▼')}
-                        </div>
-                      </th>
-
-                      <th onClick={() => handleSort('price')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
-                        <div className="flex items-center gap-1 whitespace-nowrap">
-                          <span>Harga</span>
-                          {subscriptionPlan !== 'BASIC' && sortField === 'price' && (sortOrder === 'asc' ? '▲' : '▼')}
-                        </div>
-                      </th>
-
-                      <th onClick={() => handleSort('status')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
-                        <div className="flex items-center gap-1 whitespace-nowrap">
-                          <span>Status</span>
-                          {subscriptionPlan !== 'BASIC' && sortField === 'status' && (sortOrder === 'asc' ? '▲' : '▼')}
-                        </div>
-                      </th>
-
-                      <th className="py-3.5 px-3 text-center">
-                        <span className="whitespace-nowrap">Aksi</span>
-                      </th>
-                    </tr>
-                  </thead>
-
-                  <tbody className="divide-y divide-zinc-800/50 text-xs">
-                    {displayedReservations.map((item) => {
-                      const rawStatus = (item.status || 'pending').toLowerCase()
-                      const cleanWa = item.whatsapp_number ? item.whatsapp_number.replace(/[^0-9]/g, '') : ''
-                      const price = getServicePrice(item.service_name)
-
-                      // Text & Link WA Umum
-                      const waText = `Halo Kak ${item.customer_name}, kami dari ${brandTitle || 'Salon/Barbershop'}. Mau konfirmasi reservasi kamu tanggal ${formatDateID(item.booking_date)} jam ${item.booking_time} WIB untuk layanan ${item.service_name}. Terima kasih!`
-                      const waUrl = `https://wa.me/${cleanWa}?text=${encodeURIComponent(waText)}`
-
-                      // Text & Link WA Khusus Refund
-                      const refundWaText = `Halo Kak ${item.customer_name}, terkait pembatalan reservasi tanggal ${formatDateID(item.booking_date)}, mohon kirimkan nomor rekening / e-wallet Anda untuk proses refund. Terima kasih!`
-                      const refundWaUrl = `https://wa.me/${cleanWa}?text=${encodeURIComponent(refundWaText)}`
-
-                      return (
-                        <tr key={item.id} className="hover:bg-zinc-900/60 transition-all">
-                          <td className="py-3 px-3 font-semibold whitespace-nowrap text-zinc-300">
-                            {formatDateID(item.booking_date)}
-                          </td>
-
-                          <td className="py-3 px-3 font-bold whitespace-nowrap text-zinc-100">
-                            {item.booking_time}
-                          </td>
-
-                          <td className="py-3 px-3">
-                            <div className="font-bold text-white whitespace-nowrap">{item.customer_name}</div>
-                            <div className="text-[10px] text-zinc-400 font-mono mt-0.5">{item.whatsapp_number || '-'}</div>
-                          </td>
-
-                          <td className="py-3 px-3 font-medium text-zinc-200">
-                            <span className="line-clamp-2">{item.service_name}</span>
-                          </td>
-
-                          <td className="py-3 px-3 font-medium text-zinc-300 whitespace-nowrap">
-                            {item.staff_name || '-'}
-                          </td>
-
-                          <td className="py-3 px-3 font-semibold text-zinc-300 whitespace-nowrap">
-                            <span className="px-2 py-0.5 rounded-lg bg-zinc-900 border border-zinc-800 text-[10px]">
-                              💳 {item.payment_method || 'QRIS'}
-                            </span>
-                          </td>
-
-                          <td className="py-3 px-3 font-bold text-zinc-100 whitespace-nowrap">
-                            Rp {price.toLocaleString('id-ID')}
-                          </td>
-
-                          {/* KOLOM STATUS */}
-                          <td className="py-3 px-3 whitespace-nowrap">
-                            <select
-                              value={rawStatus}
-                              onChange={(e) => handleStatusChange(item, e.target.value)}
-                              className={`px-2.5 py-1.5 rounded-xl text-[11px] font-extrabold border cursor-pointer focus:outline-none transition-all shadow-sm ${
-                                rawStatus === 'confirmed' || rawStatus === 'dikonfirmasi'
-                                  ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
-                                  : isCompleted(rawStatus)
-                                  ? 'bg-blue-500/15 border-blue-500/40 text-blue-300'
-                                  : rawStatus === 'cancelled_need_refund'
-                                  ? 'bg-amber-500/15 border-amber-500/40 text-amber-300'
-                                  : rawStatus === 'cancelled_refunded'
-                                  ? 'bg-purple-500/15 border-purple-500/40 text-purple-300'
-                                  : rawStatus.startsWith('cancelled') || rawStatus === 'batal'
-                                  ? 'bg-rose-500/15 border-rose-500/40 text-rose-300'
-                                  : 'bg-amber-500/15 border-amber-500/40 text-amber-300'
-                              }`}
-                            >
-                              <option value="pending" className="bg-zinc-900 text-amber-300 font-bold">🟡 Pending</option>
-                              <option value="confirmed" className="bg-zinc-900 text-emerald-300 font-bold">🟢 Confirmed</option>
-                              <option value="completed" className="bg-zinc-900 text-blue-300 font-bold">🔵 Completed</option>
-                              <option value="cancelled" className="bg-zinc-900 text-rose-300 font-bold">🔴 Cancelled</option>
-                              
-                              {/* DIHIDDEN AGAR TIDAK BISA DIPILIH MANUAL OLEH USER */}
-                              <option value="cancelled_need_refund" hidden className="bg-zinc-900 text-amber-300 font-bold">🟠 Need Refund</option>
-                              <option value="cancelled_refunded" hidden className="bg-zinc-900 text-purple-300 font-bold">💸 Refunded</option>
-                            </select>
-                          </td>
-
-                          {/* KOLOM AKSI */}
-                          <td className="py-3 px-3 text-center whitespace-nowrap">
-                            <div className="flex items-center justify-center space-x-2">
-                              {/* Tombol WA (Biasa / Refund) */}
-                              {cleanWa ? (
-                                <a
-                                  href={rawStatus === 'cancelled_need_refund' ? refundWaUrl : waUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className={`p-2 rounded-xl transition-all font-bold text-[11px] flex items-center justify-center active:scale-95 shadow-sm ${
-                                    rawStatus === 'cancelled_need_refund'
-                                      ? 'bg-amber-500/20 hover:bg-amber-500/40 text-amber-300 border border-amber-500/40 animate-pulse'
-                                      : 'bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-300 border border-emerald-500/30'
-                                  }`}
-                                  title={rawStatus === 'cancelled_need_refund' ? 'WA Refund Pelanggan' : 'Konfirmasi via WhatsApp'}
-                                >
-                                  💬
-                                </a>
-                              ) : (
-                                <span className="text-zinc-600 p-2 text-xs">-</span>
-                              )}
-
-                              {/* Tombol "✓ Refunded" di Aksi (Muncul Khusus Saat Need Refund & Paket Profesional) */}
-                              {rawStatus === 'cancelled_need_refund' && (subscriptionPlan === 'PROFESIONAL' || isProfesional) && (
-                                <button
-                                  onClick={() => handleCompleteRefund(item.id)}
-                                  className="bg-amber-500/20 hover:bg-amber-500/40 text-amber-300 border border-amber-500/40 px-2.5 py-1.5 rounded-xl transition-all font-extrabold text-[10px] shadow-sm active:scale-95 whitespace-nowrap"
-                                  title="Tandai Sudah Refund"
-                                >
-                                  ✓ Refunded
-                                </button>
-                              )}
-
-                              {/* Tombol Hapus (Selalu Tampil) */}
-                              <button
-                                onClick={() => handleDelete(item.id, item.customer_name)}
-                                className="bg-rose-500/15 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 p-2 rounded-xl transition-all font-bold text-[11px] flex items-center justify-center active:scale-95 shadow-sm"
-                                title="Hapus Data Reservasi"
-                              >
-                                🗑️
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* 17.11 PAGINATION FOOTER */}
-              {(limit !== 'all' && totalPages > 1) && (
-                <div className="p-3.5 sm:p-4 bg-zinc-950/90 border-t border-zinc-800/80 flex items-center justify-between text-xs">
-                  <span className="text-zinc-400 font-medium">
-                    Halaman <strong className="text-white">{currentPage}</strong> dari <strong className="text-white">{totalPages}</strong>
-                  </span>
-                  <div className="flex space-x-2">
-                    <button
-                      disabled={currentPage === 1}
-                      onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
-                      className="px-3 py-1.5 bg-zinc-900 border border-zinc-800 rounded-xl disabled:opacity-40 font-bold hover:bg-zinc-800 transition text-zinc-200"
-                    >
-                      Sebelumnya
-                    </button>
-                    <button
-                      disabled={currentPage === totalPages}
-                      onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
-                      className="px-3 py-1.5 bg-zinc-900 border border-zinc-800 rounded-xl disabled:opacity-40 font-bold hover:bg-zinc-800 transition text-zinc-200"
-                    >
-                      Selanjutnya
-                    </button>
-                  </div>
-                </div>
-              )}
-            </>
-          )}
-        </div>
+          </>
+        )}
       </div>
 
-      {/* MODAL REFUND CANCEL PROMPTER (Struktur Tampilan Asli) */}
+      {/* MODAL REFUND HANYA BERLAKU UNTUK PAKET PROFESIONAL */}
       {cancelModalItem && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className={`max-w-md w-full border rounded-3xl p-6 space-y-5 shadow-2xl animate-in fade-in zoom-in duration-200 ${themeStyles.cardBg}`}>
@@ -2308,7 +2241,6 @@ export default function AdminDashboard() {
                 Pesanan atas nama <strong className="text-white">{cancelModalItem.customer_name}</strong> akan dibatalkan.
               </p>
             </div>
-
             <div className="bg-zinc-950/80 border border-zinc-800/80 p-4 rounded-2xl space-y-2 text-xs">
               <div className="flex justify-between text-zinc-400">
                 <span>Layanan:</span>
@@ -2323,9 +2255,7 @@ export default function AdminDashboard() {
                 <span className="font-bold text-emerald-400">Rp {getServicePrice(cancelModalItem.service_name).toLocaleString('id-ID')}</span>
               </div>
             </div>
-
             <p className="text-[11px] font-bold text-amber-300 text-center">Apakah pelanggan ini membutuhkan pengembalian dana (refund)?</p>
-
             <div className="grid grid-cols-2 gap-3 pt-2">
               <button
                 onClick={() => handleConfirmCancel(true)}
@@ -2351,5 +2281,5 @@ export default function AdminDashboard() {
         </div>
       )}
     </div>
-  )
-}
+  </div>
+)}
