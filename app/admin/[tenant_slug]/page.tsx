@@ -1270,7 +1270,7 @@ if (!isAuthenticated) {
   const isPinkTheme = ['eyelash', 'beauty', 'clinic', 'glow', 'skincare', 'aesthetic', 'spa'].some(k => activeCategory.includes(k))
 
   // 4. Format Nama Kategori secara Otomatis
-  const getCategoryLabel = (category) => {
+  const getCategoryLabel = (category: string) => {
     if (!category) return 'Admin'
     if (category.includes('clinic') || category.includes('glow') || category.includes('skincare') || category.includes('aesthetic')) return 'Clinic'
     if (category.includes('eyelash') || category.includes('lash')) return 'Eyelash'
