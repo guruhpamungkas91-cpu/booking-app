@@ -292,15 +292,15 @@ function BookingFormContent() {
     const rawSlug = params?.tenant_slug
     const routeSlug = Array.isArray(rawSlug) ? rawSlug[0] : rawSlug
 
-    // 1. Ekstrak slug dinamis dari domain (otomatis ambil kata depan sebelum strip '-')
+    // 1. MURNI DINAMIS: Ambil subdomain secara UTUH (tanpa dipotong-potong strip)
     let detectedSlug = ''
     const parts = hostname.split('.')
 
     if (hostname.includes('localhost') || hostname.startsWith('127.')) {
       detectedSlug = routeSlug || tenantQuery || ''
     } else if (parts.length > 0) {
-      const subDomainFull = parts[0]
-      detectedSlug = subDomainFull.split('-')[0] // Ambil kata pertama (cth: glow, mcut, fitrifeb)
+      // Ambil teks utuh sebelum titik pertama (cth: "fitrifeb-lashes", "glow-clinic", "mcut")
+      detectedSlug = parts[0]
     }
 
     const currentSlug = (detectedSlug || routeSlug || tenantQuery || '').trim().toLowerCase()
@@ -315,7 +315,7 @@ function BookingFormContent() {
       setFetchingServices(true)
 
       try {
-        // --- PENJAGAAN GANDA LAPIS PERTAMA: Ambil tenant berdasarkan slug ---
+        // --- PENJAGAAN GANDA 1: Cari berdasarkan slug domain utuh ---
         const { data: tenantData, error: tenantErr } = await supabase
           .from('tenants')
           .select('*')
@@ -328,13 +328,12 @@ function BookingFormContent() {
           return
         }
 
-        // Ambil ID unik tenant
+        // Ambil ID unik tenant sebagai kunci utama keamanan data
         const uniqueTenantId = tenantData.id || tenantData.tenant_id
 
-        // --- PENJAGAAN GANDA LAPIS KEDUA: Validasi keamanan data tenant ---
-        // Kita pastikan uniqueTenantId benar-benar ada dan status tenant aktif (mencegah data nyasar/bajakan)
+        // --- PENJAGAAN GANDA 2: Validasi ID unik tenant wajib ada & aktif ---
         if (!uniqueTenantId) {
-          console.error("Peringatan Keamanan: Tenant ditemukan tapi ID unik tidak valid!")
+          console.error("Peringatan Keamanan: Tenant ditemukan tapi ID unik kosong!")
           setFetchingServices(false)
           return
         }
@@ -371,9 +370,7 @@ function BookingFormContent() {
 
         setTenant(activeTenant)
 
-        // --- FETCH DATA LANJUTAN DIKEKANG KETAT PAKAI UNIQUE TENANT ID ---
-        // Semua query anak tabel (services, staff, blocked_slots, reservations) 
-        // 100% di-lock menggunakan uniqueTenantId yang valid dari database, bukan cuma percaya string slug!
+        // --- FETCH DATA ANAK 100% DI-LOCK MENGGUNAKAN UNIQUE TENANT ID ---
         const { data: serviceData } = await supabase
           .from('services')
           .select('*')
