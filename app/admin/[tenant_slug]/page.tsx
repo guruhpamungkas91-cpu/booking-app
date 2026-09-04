@@ -1279,14 +1279,17 @@ export default function AdminDashboard() {
 // 18. LOGIN FORM UI STATE (UNAUTHENTICATED)
 // ============================================================================
 if (!isAuthenticated) {
-  // 1. Ambil slug tenant secara akurat dari URL path (misal: /tenant-slug/admin atau /admin/tenant-slug)
+  // 1. Ambil dari Subdomain DAN URL Path sekaligus secara aman
+  const hostname = typeof window !== 'undefined' ? window.location.hostname : ''
+  const subdomain = hostname.includes('.') ? hostname.split('.')[0] : ''
+  
   const pathSegments = typeof window !== 'undefined' ? window.location.pathname.split('/').filter(Boolean) : []
-  // Ambil elemen sebelum 'admin' atau elemen terakhir jika tidak ada kata 'admin'
-  const adminIndex = pathSegments.indexOf('admin')
-  const urlSlug = adminIndex > 0 ? pathSegments[adminIndex - 1] : (pathSegments[pathSegments.length - 1] !== 'admin' ? pathSegments[pathSegments.length - 1] : '')
+  // Ambil segmen path yang bukan 'admin' (cari slug tenant di URL)
+  const nonAdminSegments = pathSegments.filter(seg => seg.toLowerCase() !== 'admin')
+  const pathSlug = nonAdminSegments.length > 0 ? nonAdminSegments[nonAdminSegments.length - 1] : ''
 
-  // 2. Kategori Aktif (Prioritas mutlak: businessType dari DB -> urlSlug dari URL -> Fallback aman)
-  const activeCategory = (businessType || urlSlug || '').toLowerCase()
+  // 2. Kategori Aktif (Prioritas: businessType dari DB -> Subdomain -> Path URL -> Fallback)
+  const activeCategory = (businessType || subdomain || pathSlug || '').toLowerCase()
 
   // 3. Tentukan Tema Visual (Ditambahkan keyword database: 'skincare', 'aesthetic')
   const isPinkTheme = ['eyelash', 'beauty', 'clinic', 'glow', 'skincare', 'aesthetic', 'spa'].some(k => activeCategory.includes(k))
