@@ -193,108 +193,107 @@ export default function AdminDashboard() {
   }
 
   // ============================================================================
-  // 6. API FETCHERS & HANDLERS
-  // ============================================================================
-  const fetchTenantDetail = useCallback(async (cleanCode: string, detectedBrandHint: string = '') => {
-    try {
-      let tenantData = null
+// 6. API FETCHERS & HANDLERS (STRICT EXACT MATCH)
+// ============================================================================
+const fetchTenantDetail = useCallback(async (slugToFind: string) => {
+  if (!slugToFind) return false
 
-      if (cleanCode) {
-        const { data } = await supabase
-          .from('Tenants')
-          .select('subscription_plan, staff_label, tenant_slug, auto_wa_reminder, prevent_double_booking, hide_booked_slots')
-          .ilike('tenant_slug', `%${cleanCode}%`)
-          .maybeSingle()
-        tenantData = data
-      }
+  try {
+    // 1. Lakukan pencarian secara PAS / EXACT MATCH (bukan ilike dengan persen)
+    const { data: tenantData, error } = await supabase
+      .from('Tenants')
+      .select('subscription_plan, staff_label, tenant_slug, auto_wa_reminder, prevent_double_booking, hide_booked_slots')
+      .eq('tenant_slug', slugToFind)
+      .maybeSingle()
 
-      if (!tenantData && detectedBrandHint) {
-        const { data } = await supabase
-          .from('Tenants')
-          .select('subscription_plan, staff_label, tenant_slug, auto_wa_reminder, prevent_double_booking, hide_booked_slots')
-          .ilike('tenant_slug', `%${detectedBrandHint.toLowerCase()}%`)
-          .maybeSingle()
-        tenantData = data
-      }
-
-      if (tenantData) {
-        const rawPlan = String(tenantData.subscription_plan || '').trim().toUpperCase()
-
-        if (rawPlan.includes('PROFESIONAL') || rawPlan.includes('PROFESSIONAL') || rawPlan.includes('PRO')) {
-          setSubscriptionPlan('PROFESIONAL')
-        } else if (rawPlan.includes('PREMIUM')) {
-          setSubscriptionPlan('PREMIUM')
-        } else {
-          setSubscriptionPlan('BASIC')
-        }
-
-        const category = determineCategory(tenantData.tenant_slug || cleanCode || detectedBrandHint)
-        setBusinessType(category)
-
-        if (tenantData.staff_label) {
-          setStaffLabel(tenantData.staff_label)
-        } else {
-          setStaffLabel(category === 'eyelash' ? 'Lash Artist' : 'Capster / Staff')
-        }
-
-        if (tenantData.tenant_slug) {
-          setBrandTitle(tenantData.tenant_slug.toUpperCase())
-          setTenantCode(tenantData.tenant_slug)
-        }
-
-        if (typeof tenantData.auto_wa_reminder === 'boolean') {
-          setAutoWaReminder(tenantData.auto_wa_reminder)
-        }
-        if (typeof tenantData.prevent_double_booking === 'boolean') {
-          setPreventDoubleBooking(tenantData.prevent_double_booking)
-        }
-        if (typeof tenantData.hide_booked_slots === 'boolean') {
-          setHideBookedSlots(tenantData.hide_booked_slots)
-        }
-      }    
-    } catch (err) {
-      console.error('Error fetching tenant details:', err)
-    }
-  }, [])
-
-  // ============================================================================
-  // 7. INITIALIZATION EFFECT (OTOMATIS DETEKSI URL & TENANT)
-  // ============================================================================
-  useEffect(() => {
-    const initTenantAndSession = async () => {
-      setIsInitializing(true)
-      
-      let activeSlug = tenantSlugFromUrl
-      if (!activeSlug && typeof window !== 'undefined') {
-        const pathSegments = window.location.pathname.split('/')
-        const adminIndex = pathSegments.indexOf('admin')
-        if (adminIndex !== -1 && pathSegments[adminIndex + 1]) {
-          activeSlug = pathSegments[adminIndex + 1]
-        }
-      }
-
-      const cleanSlug = sanitizeClientCode(activeSlug)
-      const detected = detectBrandFromHostname()
-      const targetSlug = cleanSlug || sanitizeClientCode(detected.brand)
-      
-      if (targetSlug) {
-        setTenantCode(targetSlug)
-        setBrandTitle(targetSlug.toUpperCase())
-        await fetchTenantDetail(targetSlug, detected.brand)
-      } else {
-        setBrandTitle(detected.brand)
-        setBusinessType(detected.type)
-      }
-
-      const savedAuth = localStorage.getItem(`admin_auth_${targetSlug || 'default'}`)
-      if (savedAuth === 'true') {
-        setIsAuthenticated(true)
-      }
-
-      setIsInitializing(false)
+    if (error || !tenantData) {
+      // Jika slug tidak ditemukan di database, anggap tidak valid / error
+      return false
     }
 
-    initTenantAndSession()
+    // 2. Jika ketemu, set datanya dengan benar sesuai tenant tersebut
+    const rawPlan = String(tenantData.subscription_plan || '').trim().toUpperCase()
+
+    if (rawPlan.includes('PROFESIONAL') || rawPlan.includes('PROFESSIONAL') || rawPlan.includes('PRO')) {
+      setSubscriptionPlan('PROFESIONAL')
+    } else if (rawPlan.includes('PREMIUM')) {
+      setSubscriptionPlan('PREMIUM')
+    } else {
+      setSubscriptionPlan('BASIC')
+    }
+
+    const category = determineCategory(tenantData.tenant_slug)
+    setBusinessType(category)
+
+    if (tenantData.staff_label) {
+      setStaffLabel(tenantData.staff_label)
+    } else {
+      setStaffLabel(category === 'eyelash' ? 'Lash Artist' : 'Capster / Staff')
+    }
+
+    setBrandTitle(tenantData.tenant_slug.toUpperCase())
+    setTenantCode(tenantData.tenant_slug)
+
+    if (typeof tenantData.auto_wa_reminder === 'boolean') {
+      setAutoWaReminder(tenantData.auto_wa_reminder)
+    }
+    if (typeof tenantData.prevent_double_booking === 'boolean') {
+      setPreventDoubleBooking(tenantData.prevent_double_booking)
+    }
+    if (typeof tenantData.hide_booked_slots === 'boolean') {
+      setHideBookedSlots(tenantData.hide_booked_slots)
+    }
+
+    return true
+  } catch (err) {
+    console.error('Error fetching tenant details:', err)
+    return false
+  }
+}, [])
+
+// ============================================================================
+// 7. INITIALIZATION EFFECT (DENGAN PENGECEKAN KETAT)
+// ============================================================================
+useEffect(() => {
+  const initTenantAndSession = async () => {
+    setIsInitializing(true)
+    
+    let activeSlug = tenantSlugFromUrl
+    if (!activeSlug && typeof window !== 'undefined') {
+      const pathSegments = window.location.pathname.split('/')
+      const adminIndex = pathSegments.indexOf('admin')
+      if (adminIndex !== -1 && pathSegments[adminIndex + 1]) {
+        activeSlug = pathSegments[adminIndex + 1]
+      }
+    }
+
+    const cleanSlug = sanitizeClientCode(activeSlug)
+    
+    if (cleanSlug) {
+      // Cek ke database apakah slug ini benar-benar ada
+      const isValid = await fetchTenantDetail(cleanSlug)
+      
+      if (!isValid) {
+        // JIKA TIDAK ADA DI DATABASE: Reset / Paksa kosongkan agar tidak menampilkan data tenant lain
+        setTenantCode('')
+        setBrandTitle('TENANT TIDAK DITEMUKAN')
+        setIsInitializing(false)
+        return
+      }
+    } else {
+      setBrandTitle('DASHBOARD ADMIN')
+    }
+
+    const targetSlug = cleanSlug
+    const savedAuth = localStorage.getItem(`admin_auth_${targetSlug || 'default'}`)
+    if (savedAuth === 'true') {
+      setIsAuthenticated(true)
+    }
+
+    setIsInitializing(false)
+  }
+
+  initTenantAndSession()
   }, [tenantSlugFromUrl, fetchTenantDetail])
 
   // ============================================================================
