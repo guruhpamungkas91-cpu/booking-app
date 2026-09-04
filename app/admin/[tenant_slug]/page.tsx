@@ -1269,12 +1269,14 @@ if (!isAuthenticated) {
   // 3. Ikon Otomatis Berdasarkan Keyword / Default
   const getCategoryIcon = (categoryType?: string | null) => {
   const t = categoryType?.toLowerCase() || ''
-  if (t.includes('eyelash')) return '✨'
+  if (t.includes('eyelash') || t.includes('lash')) return '✨'
   if (t.includes('barber')) return '💈'
-  if (t.includes('clinic') || t.includes('glow')) return '🩺'
-  if (t.includes('beauty') || t.includes('salon')) return '💄'
-  return '⚡'
-  }
+  if (t.includes('clinic') || t.includes('glow') || t.includes('skincare') || t.includes('aesthetic')) return '🩺'
+  if (t.includes('beauty') || t.includes('salon') || t.includes('spa')) return '💄'
+  if (t.includes('dental') || t.includes('gigi')) return '🦷'
+  if (t.includes('pet') || t.includes('vet')) return '🐾'
+  return '⚡' // Fallback universal jika kategori belum terdaftar
+}
 
   const categoryIcon = getCategoryIcon(businessType)
 
