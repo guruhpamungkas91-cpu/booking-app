@@ -1258,9 +1258,9 @@ export default function AdminDashboard() {
 // 18. LOGIN FORM UI STATE (UNAUTHENTICATED)
 // ============================================================================
 if (!isAuthenticated) {
-  // 1. Ambil slug dari URL (misal: "glow" dari /admin/glow) jika businessType belum terisi
+  // 1. Ambil slug dari URL (misal: "glow" dari /admin/glow) secara aman & akurat
   const currentSlug = typeof window !== 'undefined' 
-    ? window.location.pathname.split('/').pop()?.toLowerCase() 
+    ? window.location.pathname.split('/').filter(Boolean).pop()?.toLowerCase() 
     : ''
 
   // 2. Kategori Aktif (Prioritas: Data Supabase -> Slug URL -> Fallback Empty String)
