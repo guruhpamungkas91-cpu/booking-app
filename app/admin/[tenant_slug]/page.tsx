@@ -140,7 +140,8 @@ export default function AdminDashboard() {
   // ============================================================================
   const sanitizeClientCode = (code?: string) => {
     if (!code) return ''
-    return code.replace(/[^a-zA-Z0-9]/g, '').toLowerCase()
+    // Tambahkan tanda strip (-) dan underscore (_) di dalam regex agar tidak ikut terhapus
+    return code.replace(/[^a-zA-Z0-9\-_]/g, '').toLowerCase()
   }
 
   const determineCategory = (slugOrEmail: string): BusinessType => {
