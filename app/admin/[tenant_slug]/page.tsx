@@ -1254,31 +1254,48 @@ export default function AdminDashboard() {
     )
   }
 
-  // ============================================================================
+ // ============================================================================
 // 18. LOGIN FORM UI STATE (UNAUTHENTICATED)
 // ============================================================================
 if (!isAuthenticated) {
-  // 1. Tentukan Tema Visual (Misal: Eyelash/Beauty pake tema pink, sisanya tema dark/purple)
-  const isPinkTheme = ['eyelash', 'beauty', 'clinic', 'glow'].includes(businessType?.toLowerCase())
+  // 1. Ambil slug dari URL (misal: "glow" dari /admin/glow) jika businessType belum terisi
+  const currentSlug = typeof window !== 'undefined' 
+    ? window.location.pathname.split('/').pop()?.toLowerCase() 
+    : ''
 
-  // 2. Format Nama Kategori secara Otomatis dari Supabase (misal: "clinic" -> "Clinic", "eyelash" -> "Eyelash")
-  const categoryLabel = businessType 
-    ? businessType.charAt(0).toUpperCase() + businessType.slice(1) 
-    : 'Admin'
+  // 2. Kategori Aktif (Prioritas: Data Supabase -> Slug URL -> Fallback Empty String)
+  const activeCategory = (businessType || currentSlug || '').toLowerCase()
 
-  // 3. Ikon Otomatis Berdasarkan Keyword / Default
+  // 3. Tentukan Tema Visual
+  const isPinkTheme = ['eyelash', 'beauty', 'clinic', 'glow', 'skincare', 'aesthetic', 'spa'].some(k => activeCategory.includes(k))
+
+  // 4. Format Nama Kategori secara Otomatis
+  const getCategoryLabel = (category) => {
+    if (!category) return 'Admin'
+    if (category.includes('clinic') || category.includes('glow') || category.includes('skincare') || category.includes('aesthetic')) return 'Clinic'
+    if (category.includes('eyelash') || category.includes('lash')) return 'Eyelash'
+    if (category.includes('barber')) return 'Barber'
+    if (category.includes('beauty') || category.includes('salon')) return 'Beauty'
+    if (category.includes('dental') || category.includes('gigi')) return 'Dental'
+    if (category.includes('pet') || category.includes('vet')) return 'Pet'
+    return category.charAt(0).toUpperCase() + category.slice(1)
+  }
+
+  const categoryLabel = getCategoryLabel(activeCategory)
+
+  // 5. Ikon Otomatis Berdasarkan Keyword / Default
   const getCategoryIcon = (categoryType?: string | null) => {
-  const t = categoryType?.toLowerCase() || ''
-  if (t.includes('eyelash') || t.includes('lash')) return '✨'
-  if (t.includes('barber')) return '💈'
-  if (t.includes('clinic') || t.includes('glow') || t.includes('skincare') || t.includes('aesthetic')) return '🩺'
-  if (t.includes('beauty') || t.includes('salon') || t.includes('spa')) return '💄'
-  if (t.includes('dental') || t.includes('gigi')) return '🦷'
-  if (t.includes('pet') || t.includes('vet')) return '🐾'
-  return '⚡' // Fallback universal jika kategori belum terdaftar
-}
+    const t = categoryType?.toLowerCase() || ''
+    if (t.includes('eyelash') || t.includes('lash')) return '✨'
+    if (t.includes('barber')) return '💈'
+    if (t.includes('clinic') || t.includes('glow') || t.includes('skincare') || t.includes('aesthetic')) return '🩺'
+    if (t.includes('beauty') || t.includes('salon') || t.includes('spa')) return '💄'
+    if (t.includes('dental') || t.includes('gigi')) return '🦷'
+    if (t.includes('pet') || t.includes('vet')) return '🐾'
+    return '⚡' // Fallback universal jika kategori belum terdaftar
+  }
 
-  const categoryIcon = getCategoryIcon(businessType)
+  const categoryIcon = getCategoryIcon(activeCategory)
 
   return (
     <main className={`min-h-screen flex items-center justify-center p-4 font-sans text-zinc-100 relative overflow-hidden transition-colors duration-500 ${
@@ -1294,7 +1311,7 @@ if (!isAuthenticated) {
           : 'bg-zinc-900/60 border-purple-500/30 shadow-purple-950/40'
       }`}>
         <div className="text-center space-y-2">
-          {/* BADGE DINAMIS BERDASARKAN KATEGORI SUPABASE */}
+          {/* BADGE DINAMIS BERDASARKAN KATEGORI SUPABASE / SLUG */}
           <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black border tracking-widest uppercase shadow-inner ${
             isPinkTheme 
               ? 'bg-gradient-to-r from-pink-500/20 to-rose-600/10 text-pink-300 border-pink-500/30' 
