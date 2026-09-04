@@ -132,13 +132,22 @@ export default function AdminDashboard() {
     return code.replace(/[^a-zA-Z0-9\-_]/g, '').toLowerCase()
   }
 
-  const determineCategory = (slugOrEmail: string): BusinessType => {
-    const text = slugOrEmail.toLowerCase()
-    if (text.includes('fitri') || text.includes('lash') || text.includes('eyelash')) {
-      return 'eyelash'
-    }
-    return 'barber'
+  const determineCategory = (slugOrEmail: string): BusinessType | 'main_dashboard' => {
+  const text = slugOrEmail.toLowerCase()
+  
+  if (text.includes('fitri') || text.includes('lash') || text.includes('eyelash')) {
+    return 'eyelash'
   }
+  if (text.includes('barber')) {
+    return 'barbershop'
+  }
+  if (text.includes('skincare') || text.includes('clinic') || text.includes('aesthetic')) {
+    return 'Skincare & Aesthetic'
+  }
+  
+  // Default aman: Masuk ke pusat kontrol utama jika tidak ada keyword spesifik
+  return 'main_dashboard' 
+}
 
   const getServicePrice = useCallback((serviceName?: string): number => {
     if (!serviceName) return businessType === 'eyelash' ? 120000 : 50000
