@@ -64,22 +64,11 @@ const SERVICE_PRICES: Record<string, number> = {
 // 4. MAIN DASHBOARD COMPONENT & STATES
 // ============================================================================
 
-// Mapping domain resmi ke tenant_slug yang sah
-const DOMAIN_TO_SLUG_MAP: Record<string, string> = {
-  'glow-clinic.vercel.app': 'glow',
-  'fitrifeb-lashes.vercel.app': 'fitrifeb', // Sesuaikan dengan slug DB lu
-  'mcut-barbershop.vercel.app': 'mcut',
-}
-
 export default function AdminDashboard() {
   const params = useParams() 
-  
-  // FIX 1: Ambil slug dari params.slug (atau params.tenant_slug jika nama folder lu mmg [tenant_slug])
   const tenantSlugFromUrl = (params?.slug || params?.tenant_slug || '') as string
 
   const [isInitializing, setIsInitializing] = useState<boolean>(true)
-  
-  // FIX 2: State untuk memblokir UI jika domain & slug URL tidak cocok
   const [isInvalidDomain, setIsInvalidDomain] = useState<boolean>(false)
 
   // Neutralize default state agar tidak ada data tenant lama yang bocor saat render awal
@@ -134,25 +123,6 @@ export default function AdminDashboard() {
   const [reportDate, setReportDate] = useState(new Date().toISOString().split('T')[0])
   const [reportStartDate, setReportStartDate] = useState('')
   const [reportEndDate, setReportEndDate] = useState('')
-
-  // FIX 3: Effect Pengecekan Domain Match
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const currentHost = window.location.hostname
-
-      // Skip validasi kalau sedang di Localhost saat koding
-      if (currentHost !== 'localhost' && !currentHost.includes('127.0.0.1')) {
-        const expectedSlug = DOMAIN_TO_SLUG_MAP[currentHost]
-
-        // Jika domain terdaftar tapi slug di URL beda -> Tandai invalid
-        if (expectedSlug && expectedSlug !== tenantSlugFromUrl) {
-          setIsInvalidDomain(true)
-          setIsInitializing(false)
-          return
-        }
-      }
-    }
-  }, [tenantSlugFromUrl])
 
   // ============================================================================
   // 5. AUXILIARY UTILITY FUNCTIONS
@@ -211,56 +181,37 @@ export default function AdminDashboard() {
     }
   }
 
-  // FIX 4: Intercept Render - Tampilkan Error 404 Jika Domain Tidak Match
-  if (isInvalidDomain) {
-    return (
-      <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center p-4 text-center">
-        <h1 className="text-7xl font-black text-rose-500 mb-2">404</h1>
-        <h2 className="text-xl font-bold text-white mb-1">Akses Ditolak / Halaman Tidak Ada</h2>
-        <p className="text-xs text-zinc-400 max-w-md">
-          Halaman admin <code className="text-amber-400">/admin/{tenantSlugFromUrl}</code> tidak dapat diakses melalui domain ini.
-        </p>
-      </div>
-    )
-  }
-
   // ============================================================================
-  // 6. API FETCHERS & HANDLERS (FAIL-SAFE AUTOMATIC DOMAIN VALIDATION)
+  // 6. API FETCHERS & HANDLERS (AUTOMATIC DOMAIN VALIDATION VIA DB)
   // ============================================================================
   const fetchTenantDetail = useCallback(async (slugToFind: string) => {
     if (!slugToFind) return false
 
     try {
-      // Fetch data dari Supabase
       const { data: tenantData, error } = await supabase
         .from('Tenants')
         .select('subscription_plan, staff_label, tenant_slug, auto_wa_reminder, prevent_double_booking, hide_booked_slots, domain_url')
         .eq('tenant_slug', slugToFind)
         .maybeSingle()
 
-      // Jika data tidak ketemu / error query -> Tolak
       if (error || !tenantData) {
-        console.warn('Tenant data tidak ditemukan di Supabase:', error)
         return false
       }
 
-      // 🛡️ VALIDASI DOMAIN OTOMATIS (AMANKAN DARI CRASH)
+      // VALIDASI DOMAIN OTOMATIS DARI SUPABASE
       if (typeof window !== 'undefined') {
         const currentHost = window.location.hostname.toLowerCase().trim()
 
-        // Jalankan validasi cuma kalau bukan di Localhost
         if (currentHost !== 'localhost' && !currentHost.includes('127.0.0.1')) {
           const dbDomain = (tenantData.domain_url || '').toLowerCase().trim()
 
-          // Cek kalau domain DB terisi & tidak cocok sama domain browser -> Tolak!
+          // Jika domain terisi di DB & beda dari domain browser -> Reject!
           if (dbDomain && dbDomain !== currentHost) {
-            console.warn(`Mismatch domain! Browser: ${currentHost}, DB: ${dbDomain}`)
             return false
           }
         }
       }
 
-      // SET STATE HANYA JIKA LOLOS PENGECEKAN
       const rawPlan = String(tenantData.subscription_plan || '').trim().toUpperCase()
 
       if (rawPlan.includes('PROFESIONAL') || rawPlan.includes('PROFESSIONAL') || rawPlan.includes('PRO')) {
@@ -300,7 +251,7 @@ export default function AdminDashboard() {
   useEffect(() => {
     const initTenantAndSession = async () => {
       setIsInitializing(true)
-      setIsInvalidDomain(false) // Reset state tiap navigasi
+      setIsInvalidDomain(false)
       
       setReservations([])
       setFilteredReservations([])
@@ -318,11 +269,9 @@ export default function AdminDashboard() {
       const cleanSlug = sanitizeClientCode(activeSlug)
 
       if (cleanSlug) {
-        // Cek detail & validasi domain otomatis di sini
         const isValid = await fetchTenantDetail(cleanSlug)
-        
         if (!isValid) {
-          setIsInvalidDomain(true) // Otomatis lempar ke 404 jika slug salah ATAU domain tidak cocok
+          setIsInvalidDomain(true)
           setIsInitializing(false)
           return
         }
@@ -350,7 +299,7 @@ export default function AdminDashboard() {
   }, [tenantSlugFromUrl, fetchTenantDetail])
 
   // ============================================================================
-  // RENDER GUARD (TARUH DI SINI, DI BAWAH SEMUA HOOKS)
+  // RENDER GUARDS (WAJIB PALING BAWAH SETELAH SEMUA HOOKS)
   // ============================================================================
   if (isInitializing) {
     return (
