@@ -297,14 +297,15 @@ function BookingFormContent() {
     const parts = hostname.split('.')
 
     if (hostname.includes('localhost') || hostname.startsWith('127.')) {
-      // Khusus lokal, ambil dari route / query parameter jika ada
       detectedSlug = routeSlug || tenantQuery || ''
     } else if (parts.length > 0) {
-      // Otomatis ambil subdomain paling depan (cth: "fitrifeb-lashes", "glow-clinic", "mcut-barbershop")
-      detectedSlug = parts[0]
+      // Ambil bagian depan subdomain (cth: "glow-clinic", "mcut-barbershop", "fitrifeb-lashes")
+      const subDomainFull = parts[0]
+      
+      // Ambil kata pertama sebelum tanda strip (-) agar klop dengan database ("glow", "mcut")
+      detectedSlug = subDomainFull.split('-')[0]
     }
 
-    // Ambil slug aktif secara dinamis (fallback dikosongkan agar ketahuan jika tenant tidak ada di DB)
     const currentSlug = (detectedSlug || routeSlug || tenantQuery || '').trim().toLowerCase()
 
     if (!currentSlug) {
