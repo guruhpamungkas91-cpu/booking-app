@@ -1156,110 +1156,110 @@ export default function AdminDashboard() {
 
     const isPro = subscriptionPlan === 'PROFESIONAL'
 
-    switch (selectedTheme) {
-      case 'pink':
-        return {
-          mainBg: isPro ? 'bg-[#0f040b]' : 'bg-[#0b0510]',
-          bgGlow: isPro ? 'bg-pink-600/30' : 'bg-pink-600/10',
-          bgGlowSecondary: isPro ? 'bg-rose-500/20' : 'hidden',
-          cardBg: isPro 
-            ? 'bg-gradient-to-b from-pink-950/30 via-zinc-950/80 to-zinc-950/90 backdrop-blur-3xl border-pink-500/30 shadow-[0_8px_32px_0_rgba(236,72,153,0.15)] ring-1 ring-pink-500/20' 
-            : 'bg-zinc-950/70 border-pink-500/30',
-          textAccent: 'text-pink-400',
-          borderAccent: isPro ? 'border-pink-500/40 shadow-pink-950/50' : 'border-pink-500/30',
-          focusBorder: 'focus:border-pink-500 focus:ring-2 focus:ring-pink-500/20',
-          badgeBg: 'bg-pink-500/15 text-pink-300 border-pink-500/40 shadow-sm shadow-pink-500/20',
-          buttonPrimary: isPro 
-            ? 'bg-gradient-to-r from-pink-500 via-rose-500 to-pink-600 hover:from-pink-400 hover:to-rose-400 text-white font-black shadow-lg shadow-pink-500/30 hover:shadow-pink-500/50' 
-            : 'bg-pink-600 hover:bg-pink-500 text-white',
-          btnActivePeriod: 'bg-gradient-to-r from-pink-500 to-rose-600 text-white shadow-md shadow-pink-500/30',
-          headerGradient: isPro 
-            ? 'bg-gradient-to-r from-pink-950/90 via-zinc-950/90 to-rose-950/70 border-pink-500/50 shadow-2xl shadow-pink-950/50 ring-1 ring-pink-500/30' 
-            : 'bg-gradient-to-r from-pink-950/40 via-zinc-950/90 to-rose-950/20 border-pink-500/30',
-        }
-      case 'amber':
-        return {
-          mainBg: isPro ? 'bg-[#0d0a03]' : 'bg-[#090702]',
-          bgGlow: isPro ? 'bg-amber-500/25' : 'bg-amber-600/10',
-          bgGlowSecondary: isPro ? 'bg-yellow-600/15' : 'hidden',
-          cardBg: isPro 
-            ? 'bg-gradient-to-b from-amber-950/30 via-zinc-950/80 to-zinc-950/90 backdrop-blur-3xl border-amber-500/30 shadow-[0_8px_32px_0_rgba(245,158,11,0.15)] ring-1 ring-amber-500/20' 
-            : 'bg-zinc-950/70 border-amber-500/30',
-          textAccent: 'text-amber-400',
-          borderAccent: isPro ? 'border-amber-500/40 shadow-amber-950/50' : 'border-amber-500/30',
-          focusBorder: 'focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20',
-          badgeBg: 'bg-amber-500/15 text-amber-300 border-amber-500/40 shadow-sm shadow-amber-500/20',
-          buttonPrimary: isPro 
-            ? 'bg-gradient-to-r from-amber-400 via-amber-500 to-yellow-500 hover:from-amber-300 hover:to-yellow-400 text-zinc-950 font-black shadow-lg shadow-amber-500/30 hover:shadow-amber-500/50' 
-            : 'bg-amber-500 hover:bg-amber-400 text-zinc-950',
-          btnActivePeriod: 'bg-gradient-to-r from-amber-400 to-yellow-500 text-zinc-950 font-extrabold shadow-md shadow-amber-500/30',
-          headerGradient: isPro 
-            ? 'bg-gradient-to-r from-amber-950/90 via-zinc-950/90 to-yellow-950/70 border-amber-500/50 shadow-2xl shadow-amber-950/50 ring-1 ring-amber-500/30' 
-            : 'bg-gradient-to-r from-amber-950/40 via-zinc-950/90 to-amber-950/20 border-amber-500/30',
-        }
-      case 'emerald':
-        return {
-          mainBg: isPro ? 'bg-[#020d08]' : 'bg-[#020805]',
-          bgGlow: isPro ? 'bg-emerald-500/25' : 'bg-emerald-600/10',
-          bgGlowSecondary: isPro ? 'bg-teal-600/15' : 'hidden',
-          cardBg: isPro 
-            ? 'bg-gradient-to-b from-emerald-950/30 via-zinc-950/80 to-zinc-950/90 backdrop-blur-3xl border-emerald-500/30 shadow-[0_8px_32px_0_rgba(16,185,129,0.15)] ring-1 ring-emerald-500/20' 
-            : 'bg-zinc-950/70 border-emerald-500/30',
-          textAccent: 'text-emerald-400',
-          borderAccent: isPro ? 'border-emerald-500/40 shadow-emerald-950/50' : 'border-emerald-500/30',
-          focusBorder: 'focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20',
-          badgeBg: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40 shadow-sm shadow-emerald-500/20',
-          buttonPrimary: isPro 
-            ? 'bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 hover:from-emerald-400 hover:to-teal-400 text-white font-black shadow-lg shadow-emerald-500/30 hover:shadow-emerald-500/50' 
-            : 'bg-emerald-600 hover:bg-emerald-500 text-white',
-          btnActivePeriod: 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-md shadow-emerald-500/30',
-          headerGradient: isPro 
-            ? 'bg-gradient-to-r from-emerald-950/90 via-zinc-950/90 to-teal-950/70 border-emerald-500/50 shadow-2xl shadow-emerald-950/50 ring-1 ring-emerald-500/30' 
-            : 'bg-gradient-to-r from-emerald-950/40 via-zinc-950/90 to-teal-950/20 border-emerald-500/30',
-        }
-      case 'blue':
-        return {
-          mainBg: isPro ? 'bg-[#030914]' : 'bg-[#02050b]',
-          bgGlow: isPro ? 'bg-blue-600/30' : 'bg-blue-600/10',
-          bgGlowSecondary: isPro ? 'bg-indigo-600/20' : 'hidden',
-          cardBg: isPro 
-            ? 'bg-gradient-to-b from-blue-950/30 via-zinc-950/80 to-zinc-950/90 backdrop-blur-3xl border-blue-500/30 shadow-[0_8px_32px_0_rgba(59,130,246,0.15)] ring-1 ring-blue-500/20' 
-            : 'bg-zinc-950/70 border-blue-500/30',
-          textAccent: 'text-blue-400',
-          borderAccent: isPro ? 'border-blue-500/40 shadow-blue-950/50' : 'border-blue-500/30',
-          focusBorder: 'focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20',
-          badgeBg: 'bg-blue-500/15 text-blue-300 border-blue-500/40 shadow-sm shadow-blue-500/20',
-          buttonPrimary: isPro 
-            ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-500 hover:to-indigo-500 text-white font-black shadow-lg shadow-blue-600/30 hover:shadow-blue-600/50' 
-            : 'bg-blue-600 hover:bg-blue-500 text-white',
-          btnActivePeriod: 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-600/30',
-          headerGradient: isPro 
-            ? 'bg-gradient-to-r from-blue-950/90 via-zinc-950/90 to-indigo-950/70 border-blue-500/50 shadow-2xl shadow-blue-950/50 ring-1 ring-blue-950/30' 
-            : 'bg-gradient-to-r from-blue-950/40 via-zinc-950/90 to-indigo-950/20 border-blue-500/30',
-        }
-      case 'purple':
-      default:
-        return {
-          mainBg: isPro ? 'bg-[#09040e]' : 'bg-[#06040a]',
-          bgGlow: isPro ? 'bg-purple-600/30' : 'bg-purple-600/10',
-          bgGlowSecondary: isPro ? 'bg-indigo-600/20' : 'hidden',
-          cardBg: isPro 
-            ? 'bg-gradient-to-b from-purple-950/30 via-zinc-950/80 to-zinc-950/90 backdrop-blur-3xl border-purple-500/30 shadow-[0_8px_32px_0_rgba(168,85,247,0.15)] ring-1 ring-purple-500/20' 
-            : 'bg-zinc-950/70 border-purple-500/30',
-          textAccent: 'text-purple-300',
-          borderAccent: isPro ? 'border-purple-500/40 shadow-purple-950/50' : 'border-purple-500/30',
-          focusBorder: 'focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20',
-          badgeBg: 'bg-purple-500/20 text-purple-200 border-purple-400/50 shadow-sm shadow-purple-500/20',
-          buttonPrimary: isPro 
-            ? 'bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-700 hover:from-purple-500 hover:to-indigo-500 text-white font-black shadow-lg shadow-purple-600/40 hover:shadow-purple-600/60' 
-            : 'bg-purple-600 hover:bg-purple-500 text-white',
-          btnActivePeriod: 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md shadow-purple-600/30',
-          headerGradient: isPro 
-            ? 'bg-gradient-to-r from-purple-950/90 via-zinc-950/90 to-indigo-950/70 border-purple-500/50 shadow-2xl shadow-purple-950/50 ring-1 ring-purple-500/30' 
-            : 'bg-gradient-to-r from-purple-950/40 via-zinc-950/90 to-indigo-950/20 border-purple-500/30',
-        }
-    }
-  }, [selectedTheme, subscriptionPlan])
+  switch (selectedTheme) {
+    case 'pink':
+      return {
+        mainBg: isPro ? 'bg-[#0f040b]' : 'bg-[#0b0510]',
+        bgGlow: isPro ? 'bg-pink-600/30' : 'hidden', // <-- Diubah jadi hidden
+        bgGlowSecondary: isPro ? 'bg-rose-500/20' : 'hidden',
+        cardBg: isPro 
+          ? 'bg-gradient-to-b from-pink-950/30 via-zinc-950/80 to-zinc-950/90 backdrop-blur-3xl border-pink-500/30 shadow-[0_8px_32px_0_rgba(236,72,153,0.15)] ring-1 ring-pink-500/20' 
+          : 'bg-zinc-950/70 border-pink-500/30',
+        textAccent: 'text-pink-400',
+        borderAccent: isPro ? 'border-pink-500/40 shadow-pink-950/50' : 'border-pink-500/30',
+        focusBorder: 'focus:border-pink-500 focus:ring-2 focus:ring-pink-500/20',
+        badgeBg: 'bg-pink-500/15 text-pink-300 border-pink-500/40 shadow-sm shadow-pink-500/20',
+        buttonPrimary: isPro 
+          ? 'bg-gradient-to-r from-pink-500 via-rose-500 to-pink-600 hover:from-pink-400 hover:to-rose-400 text-white font-black shadow-lg shadow-pink-500/30 hover:shadow-pink-500/50' 
+          : 'bg-pink-600 hover:bg-pink-500 text-white',
+        btnActivePeriod: 'bg-gradient-to-r from-pink-500 to-rose-600 text-white shadow-md shadow-pink-500/30',
+        headerGradient: isPro 
+          ? 'bg-gradient-to-r from-pink-950/90 via-zinc-950/90 to-rose-950/70 border-pink-500/50 shadow-2xl shadow-pink-950/50 ring-1 ring-pink-500/30' 
+          : 'bg-gradient-to-r from-pink-950/40 via-zinc-950/90 to-rose-950/20 border-pink-500/30',
+      }
+    case 'amber':
+      return {
+        mainBg: isPro ? 'bg-[#0d0a03]' : 'bg-[#090702]',
+        bgGlow: isPro ? 'bg-amber-500/25' : 'hidden', // <-- Diubah jadi hidden
+        bgGlowSecondary: isPro ? 'bg-yellow-600/15' : 'hidden',
+        cardBg: isPro 
+          ? 'bg-gradient-to-b from-amber-950/30 via-zinc-950/80 to-zinc-950/90 backdrop-blur-3xl border-amber-500/30 shadow-[0_8px_32px_0_rgba(245,158,11,0.15)] ring-1 ring-amber-500/20' 
+          : 'bg-zinc-950/70 border-amber-500/30',
+        textAccent: 'text-amber-400',
+        borderAccent: isPro ? 'border-amber-500/40 shadow-amber-950/50' : 'border-amber-500/30',
+        focusBorder: 'focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20',
+        badgeBg: 'bg-amber-500/15 text-amber-300 border-amber-500/40 shadow-sm shadow-amber-500/20',
+        buttonPrimary: isPro 
+          ? 'bg-gradient-to-r from-amber-400 via-amber-500 to-yellow-500 hover:from-amber-300 hover:to-yellow-400 text-zinc-950 font-black shadow-lg shadow-amber-500/30 hover:shadow-amber-500/50' 
+          : 'bg-amber-500 hover:bg-amber-400 text-zinc-950',
+        btnActivePeriod: 'bg-gradient-to-r from-amber-400 to-yellow-500 text-zinc-950 font-extrabold shadow-md shadow-amber-500/30',
+        headerGradient: isPro 
+          ? 'bg-gradient-to-r from-amber-950/90 via-zinc-950/90 to-yellow-950/70 border-amber-500/50 shadow-2xl shadow-amber-950/50 ring-1 ring-amber-500/30' 
+          : 'bg-gradient-to-r from-amber-950/40 via-zinc-950/90 to-amber-950/20 border-amber-500/30',
+      }
+    case 'emerald':
+      return {
+        mainBg: isPro ? 'bg-[#020d08]' : 'bg-[#020805]',
+        bgGlow: isPro ? 'bg-emerald-500/25' : 'hidden', // <-- Diubah jadi hidden
+        bgGlowSecondary: isPro ? 'bg-teal-600/15' : 'hidden',
+        cardBg: isPro 
+          ? 'bg-gradient-to-b from-emerald-950/30 via-zinc-950/80 to-zinc-950/90 backdrop-blur-3xl border-emerald-500/30 shadow-[0_8px_32px_0_rgba(16,185,129,0.15)] ring-1 ring-emerald-500/20' 
+          : 'bg-zinc-950/70 border-emerald-500/30',
+        textAccent: 'text-emerald-400',
+        borderAccent: isPro ? 'border-emerald-500/40 shadow-emerald-950/50' : 'border-emerald-500/30',
+        focusBorder: 'focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20',
+        badgeBg: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40 shadow-sm shadow-emerald-500/20',
+        buttonPrimary: isPro 
+          ? 'bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 hover:from-emerald-400 hover:to-teal-400 text-white font-black shadow-lg shadow-emerald-500/30 hover:shadow-emerald-500/50' 
+          : 'bg-emerald-600 hover:bg-emerald-500 text-white',
+        btnActivePeriod: 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-md shadow-emerald-500/30',
+        headerGradient: isPro 
+          ? 'bg-gradient-to-r from-emerald-950/90 via-zinc-950/90 to-teal-950/70 border-emerald-500/50 shadow-2xl shadow-emerald-950/50 ring-1 ring-emerald-500/30' 
+          : 'bg-gradient-to-r from-emerald-950/40 via-zinc-950/90 to-teal-950/20 border-emerald-500/30',
+      }
+    case 'blue':
+      return {
+        mainBg: isPro ? 'bg-[#030914]' : 'bg-[#02050b]',
+        bgGlow: isPro ? 'bg-blue-600/30' : 'hidden', // <-- Diubah jadi hidden
+        bgGlowSecondary: isPro ? 'bg-indigo-600/20' : 'hidden',
+        cardBg: isPro 
+          ? 'bg-gradient-to-b from-blue-950/30 via-zinc-950/80 to-zinc-950/90 backdrop-blur-3xl border-blue-500/30 shadow-[0_8px_32px_0_rgba(59,130,246,0.15)] ring-1 ring-blue-500/20' 
+          : 'bg-zinc-950/70 border-blue-500/30',
+        textAccent: 'text-blue-400',
+        borderAccent: isPro ? 'border-blue-500/40 shadow-blue-950/50' : 'border-blue-500/30',
+        focusBorder: 'focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20',
+        badgeBg: 'bg-blue-500/15 text-blue-300 border-blue-500/40 shadow-sm shadow-blue-500/20',
+        buttonPrimary: isPro 
+          ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-500 hover:to-indigo-500 text-white font-black shadow-lg shadow-blue-600/30 hover:shadow-blue-600/50' 
+          : 'bg-blue-600 hover:bg-blue-500 text-white',
+        btnActivePeriod: 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-600/30',
+        headerGradient: isPro 
+          ? 'bg-gradient-to-r from-blue-950/90 via-zinc-950/90 to-indigo-950/70 border-blue-500/50 shadow-2xl shadow-blue-950/50 ring-1 ring-blue-950/30' 
+          : 'bg-gradient-to-r from-blue-950/40 via-zinc-950/90 to-indigo-950/20 border-blue-500/30',
+      }
+    case 'purple':
+    default:
+      return {
+        mainBg: isPro ? 'bg-[#09040e]' : 'bg-[#06040a]',
+        bgGlow: isPro ? 'bg-purple-600/30' : 'hidden', // <-- Diubah jadi hidden
+        bgGlowSecondary: isPro ? 'bg-indigo-600/20' : 'hidden',
+        cardBg: isPro 
+          ? 'bg-gradient-to-b from-purple-950/30 via-zinc-950/80 to-zinc-950/90 backdrop-blur-3xl border-purple-500/30 shadow-[0_8px_32px_0_rgba(168,85,247,0.15)] ring-1 ring-purple-500/20' 
+          : 'bg-zinc-950/70 border-purple-500/30',
+        textAccent: 'text-purple-300',
+        borderAccent: isPro ? 'border-purple-500/40 shadow-purple-950/50' : 'border-purple-500/30',
+        focusBorder: 'focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20',
+        badgeBg: 'bg-purple-500/20 text-purple-200 border-purple-400/50 shadow-sm shadow-purple-500/20',
+        buttonPrimary: isPro 
+          ? 'bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-700 hover:from-purple-500 hover:to-indigo-500 text-white font-black shadow-lg shadow-purple-600/40 hover:shadow-purple-600/60' 
+          : 'bg-purple-600 hover:bg-purple-500 text-white',
+        btnActivePeriod: 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md shadow-purple-600/30',
+        headerGradient: isPro 
+          ? 'bg-gradient-to-r from-purple-950/90 via-zinc-950/90 to-indigo-950/70 border-purple-500/50 shadow-2xl shadow-purple-950/50 ring-1 ring-purple-500/30' 
+          : 'bg-gradient-to-r from-purple-950/40 via-zinc-950/90 to-indigo-950/20 border-purple-500/30',
+      }
+  }
+}, [selectedTheme, subscriptionPlan])
 
   // ============================================================================
   // 17. INITIAL LOADING UI STATE (PROTEKSI GATEWAY VISUAL)
