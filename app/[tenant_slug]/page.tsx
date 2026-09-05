@@ -316,42 +316,51 @@ function BookingFormContent() {
       detectedKeyword = hostname.toLowerCase() // <-- Ambil seluruh hostname (misal: mcut-barbershop.vercel.app)
       }
 
-const keywordQuery = (detectedKeyword || tenantQuery || routerSlug || '').trim().toLowerCase()
+      const keywordQuery = (detectedKeyword || tenantQuery || routerSlug || '').trim().toLowerCase()
 
-      if (!keywordQuery) {
-        setFetchingServices(false)
-        return
-      }
+if (!keywordQuery) {
+  setFetchingServices(false)
+  return
+}
 
-      const fetchTenantAndData = async () => {
-        setFetchingServices(true)
+const fetchTenantAndData = async () => {
+  setFetchingServices(true)
 
-        try {
-          const { data: tenantData, error: tenantErr } = await supabase
-          .from('tenants')
-            .select('*')
-            .or(`domain.eq.${keywordQuery},domain_url.eq.${keywordQuery},tenant_slug.eq.${keywordQuery},client_code.ilike.${keywordQuery}`)
-            .maybeSingle()
+  try {
+    console.log("1. Keyword yang dicari:", keywordQuery)
 
-          if (tenantErr || !tenantData) {
-            console.error("Tenant error atau tidak ditemukan:", tenantErr)
-            setFetchingServices(false)
-            return
-          }
+    const { data: tenantData, error: tenantErr } = await supabase
+      .from('tenants')
+      .select('*')
+      .or(`domain.eq.${keywordQuery},domain_url.eq.${keywordQuery},tenant_slug.eq.${keywordQuery},client_code.ilike.${keywordQuery}`)
+      .maybeSingle()
 
-          const uniqueTenantId = tenantData.id || tenantData.tenant_id
-          const dbClientCode = tenantData.client_code
-          const dbSlug = tenantData.tenant_slug
+    console.log("2. Hasil query tenant:", { tenantData, tenantErr })
 
-          if (!uniqueTenantId || !dbClientCode || !dbSlug) {
-            setFetchingServices(false)
-            return
-          }
+    if (tenantErr || !tenantData) {
+      console.error("Tenant error atau tidak ditemukan:", tenantErr)
+      setFetchingServices(false)
+      return
+    }
 
-          if (dbClientCode.toUpperCase() !== dbSlug.toUpperCase()) {
-            setFetchingServices(false)
-            return
-          }
+    const uniqueTenantId = tenantData.id || tenantData.tenant_id
+    const dbClientCode = tenantData.client_code
+    const dbSlug = tenantData.tenant_slug
+
+    console.log("3. Data dicek:", { uniqueTenantId, dbClientCode, dbSlug })
+
+    if (!uniqueTenantId || !dbClientCode || !dbSlug) {
+      console.error("Data tenant ada yang kosong!")
+      setFetchingServices(false)
+      return
+    }
+
+    // CEK VALIDASI INI
+    if (dbClientCode.toUpperCase() !== dbSlug.toUpperCase()) {
+      console.error("GAGAL DI VALIDASI CLIENT CODE vs SLUG:", dbClientCode, "vs", dbSlug)
+      setFetchingServices(false)
+      return
+    }
 
           const dbPlan = ((tenantData?.subscription_plan || 'BASIC') as string).toUpperCase() as 'BASIC' | 'PREMIUM' | 'PROFESIONAL'
           const rawCategory = tenantData?.category || 'Layanan'
