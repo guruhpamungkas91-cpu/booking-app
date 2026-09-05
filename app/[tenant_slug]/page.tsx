@@ -6,6 +6,7 @@ export const dynamic = 'force-dynamic'
 // 1. IMPORTS & DEPENDENCIES
 // ============================================================================
 import { useState, useEffect, Suspense } from 'react'
+import { useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
 // ============================================================================
@@ -20,6 +21,16 @@ interface ServiceItem {
   long_description?: string
   duration?: string
   image_url?: string
+  is_addon?: boolean
+}
+
+interface AddonService {
+  id: number
+  tenant_slug?: string
+  addon_label: string
+  addon_price: string | number
+  desc?: string
+  is_addon?: boolean
 }
 
 interface StaffItem {
@@ -30,6 +41,7 @@ interface StaffItem {
 }
 
 interface TenantData {
+  id?: string
   clientCode: string
   tenantSlug: string
   name: string
@@ -50,6 +62,7 @@ interface TenantData {
   qrisUrl?: string
   preventDoubleBooking: boolean
   hideBookedSlots: boolean
+  maxPersonPerBooking: number // Dideklarasikan di sini agar tidak error
 }
 
 interface TimeSlot {
@@ -73,6 +86,9 @@ const formatWaNumber = (phone: string) => {
 // 4. MAIN BOOKING FORM COMPONENT
 // ============================================================================
 function BookingFormContent() {
+  const params = useParams()
+  const routerSlug = (params?.tenant_slug as string) || ''
+
   // --------------------------------------------------------------------------
   // 4.1 State Management (Steps & Tenant Configuration)
   // --------------------------------------------------------------------------
@@ -90,15 +106,16 @@ function BookingFormContent() {
     themeColor: 'rose',
     requireConsent: false,
     showExtraAddon: false,
-    addonLabel: 'Perlu lepas eyelash lama (+Rp 30.000)',
-    addonPrice: 30000,
-    dpType: 'PERCENTAGE',
-    dpValue: 50,
+    addonLabel: '', 
+    addonPrice: 0,   
+    dpType: 'PERCENTAGE', // Fallback default jika kosong
+    dpValue: 50,          // Fallback default jika kosong
     waGatewayUrl: '',
     waApiKey: '',
     qrisUrl: '',
     preventDoubleBooking: true,
-    hideBookedSlots: false
+    hideBookedSlots: false,
+    maxPersonPerBooking: 5 // Fallback default maksimal orang per booking
   })
 
   // --------------------------------------------------------------------------
@@ -112,26 +129,27 @@ function BookingFormContent() {
   const [qrisData, setQrisData] = useState<{ qrUrl?: string; qrString?: string; snapToken?: string } | null>(null)
   const [loadingQris, setLoadingQris] = useState(false)
 
+  // Filter Services Utama & Add-on
+  const mainServices = services.filter((s) => !s.is_addon)
+  const addonServices: AddonService[] = services.filter((s) => s.is_addon).map((s) => ({
+    id: s.id,
+    tenant_slug: s.tenant_slug,
+    addon_label: s.name,
+    addon_price: s.price,
+    desc: s.desc,
+    is_addon: s.is_addon
+  }))
+
   // --------------------------------------------------------------------------
   // 4.3 State Management (Availability & Slots)
   // --------------------------------------------------------------------------
-  const [blockedSlots, setBlockedSlots] = useState<{ block_date: string; block_time: string }[]>([])
-  const [blockedTimes, setBlockedTimes] = useState<string[]>([])
-  const [bookedTimes, setBookedTimes] = useState<string[]>([])
-  const [loadingSlots, setLoadingSlots] = useState<boolean>(false)
+    const [blockedSlots, setBlockedSlots] = useState<{ block_date: string; block_time: string }[]>([])
+    const [blockedTimes, setBlockedTimes] = useState<string[]>([])
+    const [bookedTimes, setBookedTimes] = useState<string[]>([])
+    const [loadingSlots, setLoadingSlots] = useState<boolean>(false)
 
-  const [availableSlots, setAvailableSlots] = useState<TimeSlot[]>([
-    { time: '09:00', maxQuota: 1, bookedCount: 0 },
-    { time: '10:00', maxQuota: 1, bookedCount: 0 },
-    { time: '11:00', maxQuota: 1, bookedCount: 0 },
-    { time: '13:00', maxQuota: 1, bookedCount: 0 },
-    { time: '14:00', maxQuota: 1, bookedCount: 0 },
-    { time: '15:00', maxQuota: 1, bookedCount: 0 },
-    { time: '16:00', maxQuota: 1, bookedCount: 0 },
-    { time: '17:00', maxQuota: 1, bookedCount: 0 },
-    { time: '19:00', maxQuota: 1, bookedCount: 0 },
-    { time: '20:00', maxQuota: 1, bookedCount: 0 }
-  ])
+    // Diubah jadi array kosong agar dinamis ditarik dari database tenant_slots!
+    const [availableSlots, setAvailableSlots] = useState<TimeSlot[]>([])
 
   // --------------------------------------------------------------------------
   // 4.4 State Management (User Form Inputs)
@@ -142,17 +160,20 @@ function BookingFormContent() {
     booking_date: '',
     booking_time: '',
     selected_services: [] as string[],
+    selectedAddonIds: [] as number[], // Multi-select add-on ID
     selected_staff: '',
     payment_method: 'Cash / Bayar di Tempat',
     person_count: 1,
     payment_type: 'FULL',
-    need_extra_addon: false,
-    addon_person_count: 1,
     has_consent: false,
     custom_notes: ''
   })
-  const [loading, setLoading] = useState(false)
+  
+  // State kuantitas orang per add-on
+  const [addonQuantities, setAddonQuantities] = useState<{ [key: number]: number }>({})
 
+  const [loading, setLoading] = useState(false)
+  
   // --------------------------------------------------------------------------
   // 4.5 Derived Flags & Configurations
   // --------------------------------------------------------------------------
@@ -216,13 +237,14 @@ function BookingFormContent() {
   // --------------------------------------------------------------------------
   // 4.6 Calculations (Pricing, DP & Payment Methods)
   // --------------------------------------------------------------------------
-  const parsePrice = (priceStr: string) => {
+  const parsePrice = (priceStr: string | number) => {
+    if (typeof priceStr === 'number') return priceStr;
     const numeric = priceStr.replace(/[^0-9]/g, '')
     return numeric ? parseInt(numeric, 10) : 0
   }
 
   const calculateTotal = () => {
-    let serviceTotal = services
+    let serviceTotal = mainServices
       .filter((s) => formData.selected_services.includes(s.name))
       .reduce((sum, item) => sum + parsePrice(item.price), 0)
 
@@ -230,9 +252,13 @@ function BookingFormContent() {
       serviceTotal = serviceTotal * formData.person_count
     }
 
-    const extraFee = (!isBasic && formData.need_extra_addon)
-      ? tenant.addonPrice * formData.addon_person_count 
-      : 0
+    const extraFee = addonServices
+      .filter((addon) => formData.selectedAddonIds.includes(addon.id))
+      .reduce((sum, addon) => {
+        const qty = addonQuantities[addon.id] || 1
+        return sum + (parsePrice(addon.addon_price) * qty)
+      }, 0)
+
     return serviceTotal + extraFee
   }
 
@@ -250,7 +276,6 @@ function BookingFormContent() {
   const payableAmount = (!isBasic && formData.payment_type === 'DP') ? dpAmount : grandTotal
   const remainingAmount = grandTotal - payableAmount
 
-  // Penyesuaian Metode Pembayaran Berdasarkan Tier Paket Langganan
   const getAvailablePaymentMethods = () => {
     if (isBasic) {
       return [
@@ -258,14 +283,12 @@ function BookingFormContent() {
       ]
     }
     if (isPremium) {
-      // Paket Premium: Dihapus opsi E-Wallet (hanya QRIS, Transfer BCA, dan Cash)
       return [
         { id: 'QRIS', label: 'QRIS Instan' },
         { id: 'Transfer BCA', label: 'Transfer BCA' },
         { id: 'Cash / Bayar di Tempat', label: 'Cash / Bayar di Tempat' }
       ]
     }
-    // Paket Profesional: Lengkap dengan E-Wallet
     return [
       { id: 'QRIS', label: 'QRIS Instan' },
       { id: 'Transfer BCA', label: 'Transfer BCA' },
@@ -281,48 +304,70 @@ function BookingFormContent() {
   // --------------------------------------------------------------------------
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const hostname = window.location.hostname
+      const hostname = window.location.hostname.toLowerCase()
       const searchParams = new URLSearchParams(window.location.search)
       const tenantQuery = searchParams.get('tenant')
 
-      const rawSubdomain = hostname.split('.')[0].toLowerCase()
-      const isLocal = rawSubdomain === 'localhost' || rawSubdomain.startsWith('127') || hostname.includes('localhost')
+      let detectedKeyword = ''
+      const parts = hostname.split('.')
 
-      let extractedSlug = rawSubdomain
-      if (rawSubdomain.includes('fitrifeb')) {
-        extractedSlug = 'fitrifeb-lashes'
-      } else {
-        extractedSlug = rawSubdomain.replace('-barbershop', '').replace('-dental', '').replace('-clinic', '')
+      if (hostname.includes('localhost') || hostname.startsWith('127.')) {
+        detectedKeyword = routerSlug || tenantQuery || ''
+      } else if (parts.length > 0) {
+        detectedKeyword = parts[0].toLowerCase()
       }
 
-      const currentSlug = (tenantQuery || (isLocal ? 'fitrifeb-lashes' : extractedSlug)).trim().toLowerCase()
+      const keywordQuery = (detectedKeyword || tenantQuery || routerSlug || '').trim().toLowerCase()
+
+      if (!keywordQuery) {
+        setFetchingServices(false)
+        return
+      }
 
       const fetchTenantAndData = async () => {
         setFetchingServices(true)
 
         try {
-          const { data: tenantData } = await supabase
+          const { data: tenantData, error: tenantErr } = await supabase
             .from('tenants')
             .select('*')
-            .eq('tenant_slug', currentSlug)
+            .or(`tenant_slug.eq.${keywordQuery},client_code.ilike.${keywordQuery}`)
             .maybeSingle()
+
+          if (tenantErr || !tenantData) {
+            console.error("Tenant error atau tidak ditemukan:", tenantErr)
+            setFetchingServices(false)
+            return
+          }
+
+          const uniqueTenantId = tenantData.id || tenantData.tenant_id
+          const dbClientCode = tenantData.client_code
+          const dbSlug = tenantData.tenant_slug
+
+          if (!uniqueTenantId || !dbClientCode || !dbSlug) {
+            setFetchingServices(false)
+            return
+          }
+
+          if (dbClientCode.toUpperCase() !== dbSlug.toUpperCase()) {
+            setFetchingServices(false)
+            return
+          }
 
           const dbPlan = ((tenantData?.subscription_plan || 'BASIC') as string).toUpperCase() as 'BASIC' | 'PREMIUM' | 'PROFESIONAL'
           const rawCategory = tenantData?.category || 'Layanan'
 
-          const defaultLayout = tenantData?.layout_type || (rawCategory.toLowerCase().includes('barber') ? 'BASIC_SINGLE_PAGE' : 'STEP_WIZARD')
-          const defaultColor = tenantData?.theme_color || (rawCategory.toLowerCase().includes('barber') ? 'amber' : 'rose')
-
           const activeTenant: TenantData = {
-            clientCode: tenantData?.client_code || currentSlug.toUpperCase(),
-            tenantSlug: tenantData?.tenant_slug || currentSlug,
-            name: tenantData?.business_name || tenantData?.name || currentSlug.toUpperCase(),
+            id: uniqueTenantId,
+            clientCode: dbClientCode,
+            tenantSlug: dbSlug,
+            name: tenantData?.business_name || tenantData?.name || dbClientCode,
             adminWa: tenantData?.admin_wa || '',
             subscriptionPlan: dbPlan,
             category: rawCategory,
             staffLabel: tenantData?.staff_label || (rawCategory.toLowerCase().includes('barber') ? 'Capster' : 'Staff / Artist'),
-            layoutType: defaultLayout,
-            themeColor: defaultColor,
+            layoutType: tenantData?.layout_type || (rawCategory.toLowerCase().includes('barber') ? 'BASIC_SINGLE_PAGE' : 'STEP_WIZARD'),
+            themeColor: tenantData?.theme_color || (rawCategory.toLowerCase().includes('barber') ? 'amber' : 'rose'),
             requireConsent: tenantData?.require_consent ?? rawCategory.toLowerCase().includes('lash'),
             showExtraAddon: tenantData?.show_extra_addon ?? rawCategory.toLowerCase().includes('lash'),
             addonLabel: tenantData?.addon_label || 'Perlu lepas eyelash lama (+Rp 30.000)',
@@ -333,70 +378,69 @@ function BookingFormContent() {
             waApiKey: tenantData?.wa_api_key || '',
             qrisUrl: tenantData?.qris_url || '',
             preventDoubleBooking: tenantData?.prevent_double_booking ?? true,
-            hideBookedSlots: tenantData?.hide_booked_slots ?? false
+            hideBookedSlots: tenantData?.hide_booked_slots ?? false,
+            maxPersonPerBooking: tenantData?.max_person_per_booking || 5, // Ditarik dari database tenant
           }
 
           setTenant(activeTenant)
 
-          // Fetch Services
+          // Fetch Slot Dinamis Supabase
+          const { data: slotData } = await supabase
+            .from('tenant_slots')
+            .select('time_slot, max_quota')
+            .eq('tenant_id', uniqueTenantId)
+            .eq('is_active', true)
+            .order('time_slot', { ascending: true })
+
+          if (slotData && slotData.length > 0) {
+            const formattedSlots: TimeSlot[] = slotData.map((s) => ({
+              time: s.time_slot.substring(0, 5), // Format 'HH:MM'
+              maxQuota: s.max_quota,
+              bookedCount: 0
+            }))
+            setAvailableSlots(formattedSlots)
+          } else {
+            setAvailableSlots([]) // Fallback jika tenant belum setting jam
+          }
+
           const { data: serviceData } = await supabase
-            .from('Services')
+            .from('services')
             .select('*')
-            .eq('tenant_slug', activeTenant.tenantSlug)
+            .eq('tenant_id', uniqueTenantId)
 
           if (serviceData && serviceData.length > 0) {
             setServices(serviceData)
-            setFormData((prev) => ({ ...prev, selected_services: [serviceData[0].name] }))
+            const firstMain = serviceData.filter((s: ServiceItem) => !s.is_addon)
+            if (firstMain.length > 0) {
+              setFormData((prev) => ({ ...prev, selected_services: [firstMain[0].name] }))
+            }
           } else {
             setServices([])
           }
 
-          // Fetch Staff
-          if (activeTenant.subscriptionPlan !== 'BASIC') {
-            const { data: staffData } = await supabase
-              .from('Staff')
-              .select('*')
-              .eq('tenant_slug', activeTenant.tenantSlug)
-              .eq('is_active', true)
+          const { data: staffData } = await supabase
+            .from('staff')
+            .select('*')
+            .eq('tenant_id', uniqueTenantId)
+            .eq('is_active', true)
 
-            if (staffData && staffData.length > 0) {
-              setStaffList(staffData)
-              setFormData((prev) => ({ ...prev, selected_staff: staffData[0].name }))
-            } else {
-              setStaffList([])
-            }
+          if (staffData && staffData.length > 0) {
+            setStaffList(staffData)
+            setFormData((prev) => ({ ...prev, selected_staff: staffData[0].name }))
           } else {
-            // Paket BASIC: Dibatasi 1 Staff saja
-            const { data: staffData } = await supabase
-              .from('Staff')
-              .select('*')
-              .eq('tenant_slug', activeTenant.tenantSlug)
-              .eq('is_active', true)
-              .limit(1)
-
-            if (staffData && staffData.length > 0) {
-              setStaffList(staffData)
-              setFormData((prev) => ({ ...prev, selected_staff: staffData[0].name }))
-            } else {
-              setStaffList([])
-            }
+            setStaffList([])
           }
 
-          // Fetch Blocked Slots
-          const { data: blockedData, error: blockedErr } = await supabase
+          const { data: blockedData } = await supabase
             .from('blocked_slots')
             .select('date, start_time')
-            .eq('tenant_slug', activeTenant.tenantSlug)
+            .eq('tenant_id', uniqueTenantId)
 
-          if (blockedErr) console.error("Error fetching blocked_slots:", blockedErr)
-
-          const { data: confirmedReservations, error: resErr } = await supabase
+          const { data: confirmedReservations } = await supabase
             .from('reservations')
             .select('booking_date, booking_time')
-            .eq('tenant_slug', activeTenant.tenantSlug)
+            .eq('tenant_id', uniqueTenantId)
             .eq('status', 'confirmed')
-
-          if (resErr) console.error("Error fetching reservations:", resErr)
 
           const combinedBlockedSlots = [
             ...(blockedData?.map((item) => ({
@@ -412,7 +456,7 @@ function BookingFormContent() {
           setBlockedSlots(combinedBlockedSlots)
 
         } catch (err) {
-          console.error("Error fetching data:", err)
+          console.error("Error fetching secure data:", err)
         } finally {
           setFetchingServices(false)
         }
@@ -420,7 +464,7 @@ function BookingFormContent() {
 
       fetchTenantAndData()
     }
-  }, [])
+  }, [routerSlug])
 
   // --------------------------------------------------------------------------
   // 4.8 Effects: Dynamic Slot Availability Check
@@ -441,7 +485,6 @@ function BookingFormContent() {
           setBookedTimes([])
         }
       } catch (err) {
-        console.error('Gagal memuat ketersediaan jam:', err)
         setBlockedTimes([])
         setBookedTimes([])
       } finally {
@@ -453,7 +496,7 @@ function BookingFormContent() {
   }, [formData.booking_date, tenant?.tenantSlug])
 
   // --------------------------------------------------------------------------
-  // 4.9 Effects: Generate Dynamic QRIS Payment (Khusus PREMIUM & PROFESIONAL)
+  // 4.9 Effects: Generate Dynamic QRIS Payment
   // --------------------------------------------------------------------------
   const generateDynamicQris = async () => {
     if (isBasic) return
@@ -493,10 +536,8 @@ function BookingFormContent() {
   // --------------------------------------------------------------------------
   const handleServiceSelect = (serviceName: string) => {
     if (isBasic) {
-      // Paket BASIC: Hanya bisa 1 jenis layanan
       setFormData((prev) => ({ ...prev, selected_services: [serviceName] }))
     } else {
-      // Paket PREMIUM & PROFESIONAL: Multi-services
       const exists = formData.selected_services.includes(serviceName)
       const updated = exists
         ? formData.selected_services.filter((s) => s !== serviceName)
@@ -506,7 +547,6 @@ function BookingFormContent() {
   }
 
   const isSlotBlocked = (date: string, time: string) => {
-    // Paket Basic tidak menerapkan time-slot blocking
     if (isBasic) return false
     if (!date || !time) return false
 
@@ -520,7 +560,6 @@ function BookingFormContent() {
   }
 
   const isTimeDisabled = (timeString: string, maxQuota: number, currentBookings: number) => {
-    // Untuk Paket BASIC: Semua slot aktif/dapat dipilih (time-slot locking dimatikan)
     if (isBasic) return false
 
     if (isSlotBlocked(formData.booking_date, timeString)) return true
@@ -593,7 +632,6 @@ function BookingFormContent() {
               }`}
             >
               <span>{slot.time}</span>
-              {/* Teks pemberitahuan "Penuh" hanya tampil pada paket Premium & Profesional */}
               {isBooked && (
                 <span className="block text-[9px] text-rose-400 font-normal">Penuh</span>
               )}
@@ -604,7 +642,6 @@ function BookingFormContent() {
     )
   }
 
-  // Step Wizard Controls
   const handleNextStep = () => {
     if (step === 1) {
       if (!formData.customer_name || !formData.whatsapp_number) {
@@ -638,7 +675,7 @@ function BookingFormContent() {
   }
 
   // --------------------------------------------------------------------------
-  // 4.12 Submit Handler (Create Reservation & Trigger WhatsApp)
+  // 4.12 Submit Handler
   // --------------------------------------------------------------------------
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -674,8 +711,7 @@ function BookingFormContent() {
     if (isWizard) {
       insertPayload.person_count = isBasic ? 1 : formData.person_count
       insertPayload.payment_type = isBasic ? 'FULL' : formData.payment_type
-      insertPayload.need_remove_lash = !isBasic && formData.need_extra_addon
-      insertPayload.addon_person_count = (!isBasic && formData.need_extra_addon) ? formData.addon_person_count : 0
+      insertPayload.selected_addon_ids = formData.selectedAddonIds
       insertPayload.has_eye_allergy_consent = formData.has_consent
       insertPayload.eye_shape_notes = formData.custom_notes
     } else {
@@ -715,8 +751,13 @@ function BookingFormContent() {
         messageText += `• Jumlah Orang: ${formData.person_count} Orang\n`
       }
 
-      if (!isBasic && formData.need_extra_addon) {
-        messageText += `• Tambahan: ${tenant.addonLabel.replace(/\s*\(\+Rp\s*[\d.]+\)/gi, '')} (${formData.addon_person_count} Orang)\n`
+      const selectedAddonsForWa = addonServices.filter((addon) => formData.selectedAddonIds.includes(addon.id))
+      if (selectedAddonsForWa.length > 0) {
+        const addonNamesStr = selectedAddonsForWa.map((a) => {
+          const qty = addonQuantities[a.id] || 1
+          return qty > 1 ? `${a.addon_label} (${qty} orang)` : a.addon_label
+        }).join(', ')
+        messageText += `• Add-on: ${addonNamesStr}\n`
       }
 
       if (formData.selected_staff) {
@@ -769,13 +810,12 @@ function BookingFormContent() {
         }
       }
 
-      const adminPhone = tenant.adminWa || '085899997828'
+      const adminPhone = tenant.adminWa
       const formattedPhone = formatWaNumber(adminPhone)
 
       const waUrl = `https://wa.me/${formattedPhone}?text=${encodeURIComponent(messageText)}`
       window.open(waUrl, '_blank')
     } catch (err) {
-      console.error("Error submitting reservation:", err)
       alert("Terjadi kesalahan saat memproses reservasi.")
     } finally {
       setLoading(false)
@@ -807,7 +847,6 @@ function BookingFormContent() {
               src={qrisSrc}
               onError={(e) => { 
                 e.currentTarget.onerror = null
-                console.error('Gagal memuat gambar dari URL:', qrisSrc)
               }}
               alt={`QRIS ${tenant?.name || 'Tenant'}`}
               className="w-full h-auto object-cover rounded-xl mx-auto"
@@ -854,7 +893,6 @@ function BookingFormContent() {
           <h1 className="text-2xl font-black tracking-tight text-white uppercase drop-shadow-sm">{tenant.name}</h1>
           <p className={`text-[11px] font-bold uppercase tracking-[0.2em] mt-1 ${theme.accentText}`}>{tenant.category}</p>
 
-          {/* Step Indicator */}
           {isWizard && (
             <div className="flex items-center justify-center space-x-2 mt-5">
               {[1, 2, 3].map((s) => (
@@ -882,7 +920,7 @@ function BookingFormContent() {
                   required
                   placeholder="Masukkan nama kamu"
                   className={`w-full px-4 py-3 bg-zinc-950/80 border border-zinc-800/80 rounded-2xl text-zinc-100 placeholder-zinc-600 text-xs outline-none transition-all duration-300 ${theme.accentRing}`}
-                  value={formData.customer_name}
+                  value={formData.customer_name || ''}
                   onChange={(e) => setFormData({ ...formData, customer_name: e.target.value })}
                 />
               </div>
@@ -911,11 +949,11 @@ function BookingFormContent() {
 
                 {fetchingServices ? (
                   <p className="text-xs text-zinc-500 animate-pulse text-center py-4">Memuat layanan...</p>
-                ) : services.length === 0 ? (
+                ) : mainServices.length === 0 ? (
                   <p className="text-xs text-zinc-500 text-center py-4">Belum ada layanan tersedia.</p>
                 ) : (
                   <div className="grid grid-cols-1 gap-2.5">
-                    {services.map((item) => {
+                    {mainServices.map((item) => {
                       const active = formData.selected_services.includes(item.name)
                       return (
                         <div
@@ -1101,7 +1139,6 @@ function BookingFormContent() {
           {/* LAYOUT B: STEP WIZARD */}
           {isWizard && (
             <>
-              {/* STEP 1: USER DATA */}
               {step === 1 && (
                 <div className="space-y-4 animate-fadeIn">
                   <div className="flex items-center justify-between">
@@ -1115,7 +1152,7 @@ function BookingFormContent() {
                       required
                       placeholder="Masukkan nama kamu"
                       className={`w-full px-4 py-3 bg-zinc-950/80 border border-zinc-800/80 rounded-2xl text-zinc-100 placeholder-zinc-600 text-xs outline-none transition-all duration-300 ${theme.accentRing}`}
-                      value={formData.customer_name}
+                      value={formData.customer_name || ''}
                       onChange={(e) => setFormData({ ...formData, customer_name: e.target.value })}
                     />
                   </div>
@@ -1136,15 +1173,14 @@ function BookingFormContent() {
                     <div>
                       <label className="block text-[11px] font-semibold text-zinc-300 uppercase tracking-wider mb-1.5">Jumlah Orang / Pasien</label>
                       <div className="grid grid-cols-5 gap-2">
-                        {[1, 2, 3, 4, 5].map((num) => (
+                        {Array.from({ length: tenant.maxPersonPerBooking || 5 }, (_, i) => i + 1).map((num) => (
                           <button
                             type="button"
                             key={num}
                             onClick={() => {
                               setFormData((prev) => ({
                                 ...prev,
-                                person_count: num,
-                                addon_person_count: prev.addon_person_count > num ? num : prev.addon_person_count
+                                person_count: num
                               }))
                             }}
                             className={`py-2.5 text-xs font-bold rounded-2xl border transition-all duration-300 ${
@@ -1160,53 +1196,82 @@ function BookingFormContent() {
                     </div>
                   )}
 
-                  {!isBasic && tenant.showExtraAddon && (
-                    <div className="space-y-2">
-                      <label className={`flex items-center justify-between p-3.5 rounded-2xl border cursor-pointer transition-all duration-300 ${
-                        formData.need_extra_addon ? `${theme.accentBgLight} ${theme.accentBorder}` : 'bg-zinc-950/60 border-zinc-800/80 hover:border-zinc-700'
-                      }`}>
-                        <div className="flex items-center space-x-3">
-                          <input
-                            type="checkbox"
-                            className={`w-4.5 h-4.5 rounded-md ${theme.checkbox}`}
-                            checked={formData.need_extra_addon}
-                            onChange={(e) => setFormData({ ...formData, need_extra_addon: e.target.checked })}
-                          />
-                          <span className="text-xs text-zinc-200 font-medium">
-                            {tenant.addonLabel.replace(/\s*\(\+Rp\s*[\d.]+\)/gi, '')}
-                          </span>
-                        </div>
-
-                        {formData.need_extra_addon && (
-                          <span className={`text-[11px] font-bold px-2.5 py-1 rounded-xl ${theme.accentSolidBg} text-white shadow-sm transition-all animate-fadeIn`}>
-                            +Rp {(tenant.addonPrice * formData.addon_person_count).toLocaleString('id-ID')}
-                          </span>
-                        )}
+                  {!isBasic && addonServices.length > 0 && (
+                    <div className="space-y-3 mt-4">
+                      <label className="block text-xs font-bold text-zinc-400 uppercase tracking-wider">
+                        Layanan Tambahan / Add-on (Opsional)
                       </label>
+                      <div className="space-y-2">
+                        {addonServices.map((addon) => {
+                          const isSelected = formData.selectedAddonIds.includes(addon.id)
+                          const maxPeople = Number(formData.person_count) || 1
+                          const currentAddonQty = addonQuantities[addon.id] || 1
 
-                      {formData.need_extra_addon && formData.person_count > 1 && (
-                        <div className="p-3 bg-zinc-950/90 border border-zinc-800/80 rounded-2xl space-y-2 animate-fadeIn">
-                          <label className="block text-[10px] font-semibold text-zinc-400 uppercase tracking-wider">
-                            Berapa orang yang memerlukan tambahan ini?
-                          </label>
-                          <div className="flex space-x-2">
-                            {Array.from({ length: formData.person_count }, (_, i) => i + 1).map((cnt) => (
-                              <button
-                                type="button"
-                                key={cnt}
-                                onClick={() => setFormData({ ...formData, addon_person_count: cnt })}
-                                className={`flex-1 py-1.5 text-xs font-bold rounded-xl border transition-all duration-300 ${
-                                  formData.addon_person_count === cnt
-                                    ? `${theme.accentBg} text-white border-transparent shadow-sm`
-                                    : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-zinc-700'
-                                }`}
-                              >
-                                {cnt} Orang
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      )}
+                          return (
+                            <div 
+                              key={addon.id} 
+                              className={`p-3.5 rounded-2xl border transition-all duration-300 ${
+                                isSelected ? `${theme.accentBgLight} ${theme.accentBorder}` : 'bg-zinc-950/60 border-zinc-800/80 hover:border-zinc-700'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between">
+                                <label className="flex items-center space-x-3 cursor-pointer flex-1">
+                                  <input
+                                    type="checkbox"
+                                    className={`w-4.5 h-4.5 rounded-md ${theme.checkbox}`}
+                                    checked={isSelected}
+                                    onChange={(e) => {
+                                      if (e.target.checked) {
+                                        setFormData((prev) => ({
+                                          ...prev,
+                                          selectedAddonIds: [...prev.selectedAddonIds, addon.id]
+                                        }))
+                                        setAddonQuantities((prev) => ({ ...prev, [addon.id]: 1 }))
+                                      } else {
+                                        setFormData((prev) => ({
+                                          ...prev,
+                                          selectedAddonIds: prev.selectedAddonIds.filter((id) => id !== addon.id)
+                                        }))
+                                      }
+                                    }}
+                                  />
+                                  <span className="text-xs text-zinc-200 font-medium">
+                                    {addon.addon_label}
+                                  </span>
+                                </label>
+
+                                {isSelected && (
+                                  <span className={`text-[11px] font-bold px-2.5 py-1 rounded-xl ${theme.accentSolidBg} text-white shadow-sm transition-all`}>
+                                    Rp {(parsePrice(addon.addon_price) * currentAddonQty).toLocaleString('id-ID')}
+                                  </span>
+                                )}
+                              </div>
+
+                              {isSelected && maxPeople > 1 && (
+                                <div className="mt-3 pt-3 border-t border-zinc-800/60 flex items-center justify-between text-xs">
+                                  <span className="text-zinc-400">Berapa orang yang perlu add-on ini?</span>
+                                  <div className="grid grid-cols-5 gap-2">
+                                    {Array.from({ length: tenant.maxPersonPerBooking || 5 }, (_, i) => i + 1).map((num) => (
+                                      <button
+                                        type="button"
+                                        key={num}
+                                        onClick={() => setAddonQuantities((prev) => ({ ...prev, [addon.id]: num }))}
+                                        className={`py-2 px-2 text-xs font-bold rounded-xl border transition-all duration-300 ${
+                                          currentAddonQty === num
+                                            ? `${theme.accentBg} text-white border-transparent shadow-md scale-105`
+                                            : 'bg-zinc-950/60 border-zinc-800/80 text-zinc-400 hover:border-zinc-700'
+                                        }`}
+                                      >
+                                        {num}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
                     </div>
                   )}
 
@@ -1244,7 +1309,6 @@ function BookingFormContent() {
                 </div>
               )}
 
-              {/* STEP 2: SERVICES & SCHEDULE */}
               {step === 2 && (
                 <div className="space-y-4 animate-fadeIn">
                   <h2 className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest">Langkah 2 dari 3: Layanan & Jadwal</h2>
@@ -1261,11 +1325,11 @@ function BookingFormContent() {
 
                     {fetchingServices ? (
                       <p className="text-xs text-zinc-500 animate-pulse text-center py-4">Memuat layanan...</p>
-                    ) : services.length === 0 ? (
+                    ) : mainServices.length === 0 ? (
                       <p className="text-xs text-zinc-500 text-center py-4">Belum ada layanan tersedia.</p>
                     ) : (
                       <div className="grid grid-cols-1 gap-2.5">
-                        {services.map((item) => {
+                        {mainServices.map((item) => {
                           const active = formData.selected_services.includes(item.name)
                           return (
                             <div
@@ -1399,7 +1463,6 @@ function BookingFormContent() {
                 </div>
               )}
 
-              {/* STEP 3: PAYMENT SUMMARY & SELECTION */}
               {step === 3 && (
                 <div className="space-y-4 animate-fadeIn">
                   <h2 className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest">Langkah 3 dari 3: Pembayaran</h2>
@@ -1407,15 +1470,27 @@ function BookingFormContent() {
                   <div className="p-4 bg-zinc-950/80 border border-zinc-800/80 rounded-2xl space-y-2.5 text-xs shadow-inner">
                     <div className="flex justify-between text-zinc-400">
                       <span>Layanan {(!isBasic && formData.person_count > 1) ? `(${formData.person_count} Orang)` : ''}</span>
-                      <span className="font-semibold text-zinc-200">Rp {(grandTotal - (!isBasic && formData.need_extra_addon ? tenant.addonPrice * formData.addon_person_count : 0)).toLocaleString('id-ID')}</span>
+                      <span className="font-semibold text-zinc-200">
+                        Rp {((grandTotal - addonServices.filter((addon) => formData.selectedAddonIds.includes(addon.id)).reduce((sum, addon) => {
+                          const qty = addonQuantities[addon.id] || 1
+                          return sum + (parsePrice(addon.addon_price) * qty)
+                        }, 0))).toLocaleString('id-ID')}
+                      </span>
                     </div>
 
-                    {!isBasic && formData.need_extra_addon && (
-                      <div className="flex justify-between text-zinc-400">
-                        <span>{tenant.addonLabel.replace(/\s*\(\+Rp\s*[\d.]+\)/gi, '')} ({formData.addon_person_count} Orang)</span>
-                        <span className="font-semibold text-zinc-200">Rp {(tenant.addonPrice * formData.addon_person_count).toLocaleString('id-ID')}</span>
-                      </div>
-                    )}
+                    {addonServices
+                      .filter((addon) => formData.selectedAddonIds.includes(addon.id))
+                      .map((addon) => {
+                        const qty = addonQuantities[addon.id] || 1
+                        const subTotalAddon = parsePrice(addon.addon_price) * qty
+                        return (
+                          <div key={addon.id} className="flex justify-between text-zinc-400 text-xs">
+                            <span>{addon.addon_label} {qty > 1 ? `(${qty} orang)` : ''}</span>
+                            <span className="font-semibold text-zinc-200">Rp {subTotalAddon.toLocaleString('id-ID')}</span>
+                          </div>
+                        )
+                      })
+                    }
 
                     <div className="border-t border-zinc-800/80 pt-2.5 flex justify-between font-bold text-white text-sm">
                       <span>Total Biaya</span>
@@ -1492,7 +1567,7 @@ function BookingFormContent() {
         </form>
       </div>
 
-      {/* SERVICE DETAIL MODAL (KHUSUS PAKET PROFESIONAL) */}
+      {/* SERVICE DETAIL MODAL */}
       {isPro && selectedServiceDetail && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
           <div className="bg-zinc-900 border border-zinc-800 rounded-3xl max-w-sm w-full overflow-hidden shadow-2xl relative">
