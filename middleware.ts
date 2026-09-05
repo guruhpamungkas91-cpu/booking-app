@@ -11,33 +11,20 @@ export function middleware(request: NextRequest) {
     url.pathname.startsWith('/api') ||
     url.pathname.includes('.') ||
     hostname.includes('localhost') ||
-    hostname === 'booking-app.vercel.app' // Ganti domain utama lu di sini jika ada
+    hostname === 'booking-app.vercel.app' // Ganti dengan domain utama project Vercel lu kalau ada
   ) {
     return NextResponse.next();
   }
 
-  // 2. Ambil nama subdomain secara otomatis (Contoh: fitri-feb dari fitri-feb.vercel.app)
-  // Kalau lu mau pakai seluruh hostname, tinggal ganti variabel ini jadi `const currentSlug = hostname.toLowerCase()`
+  // 2. Ambil seluruh hostname atau bagian depannya sebagai slug secara otomatis
+  // Contoh: fitri-feb.vercel.app -> tenant slug-nya adalah fitri-feb (atau sesuai nama domain)
   const parts = hostname.split('.');
-  const currentSlug = parts[0].toLowerCase();
+  const tenantSlug = parts[0].toLowerCase();
 
-  // 3. Jika user mengakses halaman utama ('/'), kita rewrite secara dinamis 
-  // ke handler atau halaman dengan membawa slug/hostname tersebut
+  // 3. Jika user akses root ('/'), rewrite otomatis ke dynamic route `/[tenant_slug]`
   if (url.pathname === '/') {
-    // Kalau struktur project lu menggunakan dynamic route [tenant_slug], aktifkan baris bawah ini:
-    // url.pathname = `/${currentSlug}`;
-    
-    // Atau jika frontend lu membaca window.location.hostname langsung di page.tsx,
-    // kita cukup teruskan lewat header atau biarkan rewrite ke root tapi ditangkap kodingan client.
-    // Tapi cara paling aman di Next.js untuk multi-tenant Vercel adalah meneruskan hostname via header:
-    const requestHeaders = new Headers(request.headers);
-    requestHeaders.set('x-tenant-hostname', hostname);
-
-    return NextResponse.next({
-      request: {
-        headers: requestHeaders,
-      },
-    });
+    url.pathname = `/${tenantSlug}`;
+    return NextResponse.rewrite(url);
   }
 
   return NextResponse.next();
