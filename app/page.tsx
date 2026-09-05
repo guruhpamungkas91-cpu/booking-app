@@ -255,7 +255,6 @@ function BookingFormContent() {
   const payableAmount = (!isBasic && formData.payment_type === 'DP') ? dpAmount : grandTotal
   const remainingAmount = grandTotal - payableAmount
 
-  // Penyesuaian Metode Pembayaran Berdasarkan Tier Paket Langganan
   const getAvailablePaymentMethods = () => {
     if (isBasic) {
       return [
@@ -280,7 +279,7 @@ function BookingFormContent() {
   const availablePaymentMethods = getAvailablePaymentMethods()
 
   // --------------------------------------------------------------------------
-  // 4.7 Effects: Load Tenant Data, Services, Staff & Initial Blocked Slots
+  // 4.7 Effects: Load Tenant Data, Services, Staff & Initial Blocked Slots (TRIPLE-GUARD WITH DOMAIN COLUMN)
   // --------------------------------------------------------------------------
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -288,55 +287,34 @@ function BookingFormContent() {
       const searchParams = new URLSearchParams(window.location.search)
       const tenantQuery = searchParams.get('tenant')
 
-      // --- LAPIS 1: Deteksi Identitas Murni dari Subdomain Vercel ---
-      let detectedKeyword = ''
-      const parts = hostname.split('.')
-
-      if (hostname.includes('localhost') || hostname.startsWith('127.')) {
-        detectedKeyword = tenantQuery || ''
-      } else if (parts.length > 0) {
-        const subDomainFull = parts[0].toLowerCase()
-
-        if (subDomainFull.includes('fitri')) {
-          detectedKeyword = 'fitri'
-        } else if (subDomainFull.includes('mcut')) {
-          detectedKeyword = 'mcut'
-        } else if (subDomainFull.includes('glow')) {
-          detectedKeyword = 'glow'
-        } else {
-          detectedKeyword = subDomainFull
-        }
-      }
-
-      const keywordQuery = (detectedKeyword || tenantQuery || '').trim().toLowerCase()
-
-      if (!keywordQuery) {
-        console.error("[SECURITY ERROR] Subdomain tenant tidak dikenali!")
-        setFetchingServices(false)
-        return
-      }
-
       const fetchTenantAndData = async () => {
         setFetchingServices(true)
 
         try {
-          // --- LAPIS 2: Query Validasi ke Database (Mencocokkan Slug atau Client Code) ---
+          // --- LAPIS 1 & 2: Deteksi Berdasarkan Kolom Domain, Slug, atau Client Code di Database ---
+          let queryOr = `domain.eq.${hostname},tenant_slug.eq.${hostname}`
+          if (hostname.includes('localhost') || hostname.startsWith('127.')) {
+            const fallbackKey = tenantQuery || 'fitri'
+            queryOr = `tenant_slug.eq.${fallbackKey},client_code.ilike.${fallbackKey},domain.eq.${fallbackKey}`
+          }
+
           const { data: tenantData, error: tenantErr } = await supabase
             .from('tenants')
             .select('*')
-            .or(`tenant_slug.eq.${keywordQuery},client_code.ilike.${keywordQuery}`)
+            .or(queryOr)
             .maybeSingle()
 
           if (tenantErr || !tenantData) {
-            console.error(`[SECURITY ERROR] Tenant "${keywordQuery}" tidak terdaftar di database!`)
+            console.error(`[SECURITY ERROR] Tenant untuk domain "${hostname}" tidak terdaftar di database!`)
             setFetchingServices(false)
             return
           }
 
-          // --- LAPIS 3: Validasi Integritas Mutlak (Slug + Client Code + Tenant ID) ---
+          // --- LAPIS 3: Validasi Integritas Mutlak ---
           const uniqueTenantId = tenantData.id || tenantData.tenant_id
           const dbClientCode = tenantData.client_code
           const dbSlug = tenantData.tenant_slug
+          const dbDomain = tenantData.domain
 
           if (!uniqueTenantId || !dbClientCode || !dbSlug) {
             console.error("[SECURITY BREACH] Atribut keamanan tenant tidak lengkap!")
@@ -344,13 +322,8 @@ function BookingFormContent() {
             return
           }
 
-          if (dbClientCode.toUpperCase() !== dbSlug.toUpperCase()) {
-            console.error("[SECURITY BREACH] Validasi integritas data gagal!")
-            setFetchingServices(false)
-            return
-          }
-
           console.log(`[TRIPLE-GUARD SECURE ACCESS SUCCESS]`, {
+            domain: dbDomain,
             slug: dbSlug,
             clientCode: dbClientCode,
             tenantId: uniqueTenantId
@@ -477,7 +450,7 @@ function BookingFormContent() {
   }, [formData.booking_date, tenant?.tenantSlug])
 
   // --------------------------------------------------------------------------
-  // 4.9 Effects: Generate Dynamic QRIS Payment (Khusus PREMIUM & PROFESIONAL)
+  // 4.9 Effects: Generate Dynamic QRIS Payment
   // --------------------------------------------------------------------------
   const generateDynamicQris = async () => {
     if (isBasic) return
@@ -623,7 +596,6 @@ function BookingFormContent() {
     )
   }
 
-  // Step Wizard Controls
   const handleNextStep = () => {
     if (step === 1) {
       if (!formData.customer_name || !formData.whatsapp_number) {
@@ -657,7 +629,7 @@ function BookingFormContent() {
   }
 
   // --------------------------------------------------------------------------
-  // 4.12 Submit Handler (Create Reservation & Trigger WhatsApp)
+  // 4.12 Submit Handler
   // --------------------------------------------------------------------------
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -1511,7 +1483,7 @@ function BookingFormContent() {
         </form>
       </div>
 
-      {/* SERVICE DETAIL MODAL (KHUSUS PAKET PROFESIONAL) */}
+      {/* SERVICE DETAIL MODAL */}
       {isPro && selectedServiceDetail && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
           <div className="bg-zinc-900 border border-zinc-800 rounded-3xl max-w-sm w-full overflow-hidden shadow-2xl relative">
