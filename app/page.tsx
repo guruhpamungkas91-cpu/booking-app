@@ -30,6 +30,7 @@ interface StaffItem {
 }
 
 interface TenantData {
+  id?: string;
   clientCode: string
   tenantSlug: string
   name: string
@@ -250,7 +251,6 @@ function BookingFormContent() {
   const payableAmount = (!isBasic && formData.payment_type === 'DP') ? dpAmount : grandTotal
   const remainingAmount = grandTotal - payableAmount
 
-  // Penyesuaian Metode Pembayaran Berdasarkan Tier Paket Langganan
   const getAvailablePaymentMethods = () => {
     if (isBasic) {
       return [
@@ -258,14 +258,12 @@ function BookingFormContent() {
       ]
     }
     if (isPremium) {
-      // Paket Premium: Dihapus opsi E-Wallet (hanya QRIS, Transfer BCA, dan Cash)
       return [
         { id: 'QRIS', label: 'QRIS Instan' },
         { id: 'Transfer BCA', label: 'Transfer BCA' },
         { id: 'Cash / Bayar di Tempat', label: 'Cash / Bayar di Tempat' }
       ]
     }
-    // Paket Profesional: Lengkap dengan E-Wallet
     return [
       { id: 'QRIS', label: 'QRIS Instan' },
       { id: 'Transfer BCA', label: 'Transfer BCA' },
@@ -281,48 +279,77 @@ function BookingFormContent() {
   // --------------------------------------------------------------------------
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const hostname = window.location.hostname
+      const hostname = window.location.hostname.toLowerCase()
       const searchParams = new URLSearchParams(window.location.search)
       const tenantQuery = searchParams.get('tenant')
 
-      const rawSubdomain = hostname.split('.')[0].toLowerCase()
-      const isLocal = rawSubdomain === 'localhost' || rawSubdomain.startsWith('127') || hostname.includes('localhost')
+      let detectedKeyword = ''
+      const parts = hostname.split('.')
 
-      let extractedSlug = rawSubdomain
-      if (rawSubdomain.includes('fitrifeb')) {
-        extractedSlug = 'fitrifeb-lashes'
-      } else {
-        extractedSlug = rawSubdomain.replace('-barbershop', '').replace('-dental', '').replace('-clinic', '')
+      if (hostname.includes('localhost') || hostname.startsWith('127.')) {
+        detectedKeyword = tenantQuery || ''
+      } else if (parts.length > 0) {
+        const subDomainFull = parts[0].toLowerCase()
+
+        if (subDomainFull.includes('fitri')) {
+          detectedKeyword = 'fitri'
+        } else if (subDomainFull.includes('mcut')) {
+          detectedKeyword = 'mcut'
+        } else if (subDomainFull.includes('glow')) {
+          detectedKeyword = 'glow'
+        } else {
+          detectedKeyword = subDomainFull
+        }
       }
 
-      const currentSlug = (tenantQuery || (isLocal ? 'fitrifeb-lashes' : extractedSlug)).trim().toLowerCase()
+      const keywordQuery = (detectedKeyword || tenantQuery || '').trim().toLowerCase()
+
+      if (!keywordQuery) {
+        console.error("[SECURITY ERROR] Subdomain tenant tidak dikenali!")
+        setFetchingServices(false)
+        return
+      }
 
       const fetchTenantAndData = async () => {
         setFetchingServices(true)
 
         try {
-          const { data: tenantData } = await supabase
-            .from('Tenants')
+          const { data: tenantData, error: tenantErr } = await supabase
+            .from('tenants')
             .select('*')
-            .eq('tenant_slug', currentSlug)
+            .or(`tenant_slug.eq.${keywordQuery},client_code.ilike.${keywordQuery}`)
             .maybeSingle()
+
+          if (tenantErr || !tenantData) {
+            console.error(`[SECURITY ERROR] Tenant "${keywordQuery}" tidak terdaftar di database!`)
+            setFetchingServices(false)
+            return
+          }
+
+          const uniqueTenantId = tenantData.id || tenantData.tenant_id
+          const dbClientCode = tenantData.client_code
+          const dbSlug = tenantData.tenant_slug
+
+          if (!uniqueTenantId || !dbClientCode || !dbSlug) {
+            console.error("[SECURITY BREACH] Atribut keamanan tenant tidak lengkap!")
+            setFetchingServices(false)
+            return
+          }
 
           const dbPlan = ((tenantData?.subscription_plan || 'BASIC') as string).toUpperCase() as 'BASIC' | 'PREMIUM' | 'PROFESIONAL'
           const rawCategory = tenantData?.category || 'Layanan'
 
-          const defaultLayout = tenantData?.layout_type || (rawCategory.toLowerCase().includes('barber') ? 'BASIC_SINGLE_PAGE' : 'STEP_WIZARD')
-          const defaultColor = tenantData?.theme_color || (rawCategory.toLowerCase().includes('barber') ? 'amber' : 'rose')
-
           const activeTenant: TenantData = {
-            clientCode: tenantData?.client_code || currentSlug.toUpperCase(),
-            tenantSlug: tenantData?.tenant_slug || currentSlug,
-            name: tenantData?.business_name || tenantData?.name || currentSlug.toUpperCase(),
+            id: uniqueTenantId,
+            clientCode: dbClientCode,
+            tenantSlug: dbSlug,
+            name: tenantData?.business_name || tenantData?.name || dbClientCode,
             adminWa: tenantData?.admin_wa || '',
             subscriptionPlan: dbPlan,
             category: rawCategory,
             staffLabel: tenantData?.staff_label || (rawCategory.toLowerCase().includes('barber') ? 'Capster' : 'Staff / Artist'),
-            layoutType: defaultLayout,
-            themeColor: defaultColor,
+            layoutType: tenantData?.layout_type || (rawCategory.toLowerCase().includes('barber') ? 'BASIC_SINGLE_PAGE' : 'STEP_WIZARD'),
+            themeColor: tenantData?.theme_color || (rawCategory.toLowerCase().includes('barber') ? 'amber' : 'rose'),
             requireConsent: tenantData?.require_consent ?? rawCategory.toLowerCase().includes('lash'),
             showExtraAddon: tenantData?.show_extra_addon ?? rawCategory.toLowerCase().includes('lash'),
             addonLabel: tenantData?.addon_label || 'Perlu lepas eyelash lama (+Rp 30.000)',
@@ -338,11 +365,10 @@ function BookingFormContent() {
 
           setTenant(activeTenant)
 
-          // Fetch Services
           const { data: serviceData } = await supabase
-            .from('Services')
+            .from('services')
             .select('*')
-            .eq('tenant_slug', activeTenant.tenantSlug)
+            .eq('tenant_id', uniqueTenantId)
 
           if (serviceData && serviceData.length > 0) {
             setServices(serviceData)
@@ -351,52 +377,29 @@ function BookingFormContent() {
             setServices([])
           }
 
-          // Fetch Staff
-          if (activeTenant.subscriptionPlan !== 'BASIC') {
-            const { data: staffData } = await supabase
-              .from('Staff')
-              .select('*')
-              .eq('tenant_slug', activeTenant.tenantSlug)
-              .eq('is_active', true)
+          const { data: staffData } = await supabase
+            .from('staff')
+            .select('*')
+            .eq('tenant_id', uniqueTenantId)
+            .eq('is_active', true)
 
-            if (staffData && staffData.length > 0) {
-              setStaffList(staffData)
-              setFormData((prev) => ({ ...prev, selected_staff: staffData[0].name }))
-            } else {
-              setStaffList([])
-            }
+          if (staffData && staffData.length > 0) {
+            setStaffList(staffData)
+            setFormData((prev) => ({ ...prev, selected_staff: staffData[0].name }))
           } else {
-            // Paket BASIC: Dibatasi 1 Staff saja
-            const { data: staffData } = await supabase
-              .from('Staff')
-              .select('*')
-              .eq('tenant_slug', activeTenant.tenantSlug)
-              .eq('is_active', true)
-              .limit(1)
-
-            if (staffData && staffData.length > 0) {
-              setStaffList(staffData)
-              setFormData((prev) => ({ ...prev, selected_staff: staffData[0].name }))
-            } else {
-              setStaffList([])
-            }
+            setStaffList([])
           }
 
-          // Fetch Blocked Slots
-          const { data: blockedData, error: blockedErr } = await supabase
+          const { data: blockedData } = await supabase
             .from('blocked_slots')
             .select('date, start_time')
-            .eq('tenant_slug', activeTenant.tenantSlug)
+            .eq('tenant_id', uniqueTenantId)
 
-          if (blockedErr) console.error("Error fetching blocked_slots:", blockedErr)
-
-          const { data: confirmedReservations, error: resErr } = await supabase
-            .from('Reservations')
+          const { data: confirmedReservations } = await supabase
+            .from('reservations')
             .select('booking_date, booking_time')
-            .eq('tenant_slug', activeTenant.tenantSlug)
+            .eq('tenant_id', uniqueTenantId)
             .eq('status', 'confirmed')
-
-          if (resErr) console.error("Error fetching Reservations:", resErr)
 
           const combinedBlockedSlots = [
             ...(blockedData?.map((item) => ({
@@ -412,7 +415,7 @@ function BookingFormContent() {
           setBlockedSlots(combinedBlockedSlots)
 
         } catch (err) {
-          console.error("Error fetching data:", err)
+          console.error("Error fetching secure data:", err)
         } finally {
           setFetchingServices(false)
         }
@@ -453,7 +456,7 @@ function BookingFormContent() {
   }, [formData.booking_date, tenant?.tenantSlug])
 
   // --------------------------------------------------------------------------
-  // 4.9 Effects: Generate Dynamic QRIS Payment (Khusus PREMIUM & PROFESIONAL)
+  // 4.9 Effects: Generate Dynamic QRIS Payment
   // --------------------------------------------------------------------------
   const generateDynamicQris = async () => {
     if (isBasic) return
@@ -493,10 +496,8 @@ function BookingFormContent() {
   // --------------------------------------------------------------------------
   const handleServiceSelect = (serviceName: string) => {
     if (isBasic) {
-      // Paket BASIC: Hanya bisa 1 jenis layanan
       setFormData((prev) => ({ ...prev, selected_services: [serviceName] }))
     } else {
-      // Paket PREMIUM & PROFESIONAL: Multi-services
       const exists = formData.selected_services.includes(serviceName)
       const updated = exists
         ? formData.selected_services.filter((s) => s !== serviceName)
@@ -506,7 +507,6 @@ function BookingFormContent() {
   }
 
   const isSlotBlocked = (date: string, time: string) => {
-    // Paket Basic tidak menerapkan time-slot blocking
     if (isBasic) return false
     if (!date || !time) return false
 
@@ -520,9 +520,7 @@ function BookingFormContent() {
   }
 
   const isTimeDisabled = (timeString: string, maxQuota: number, currentBookings: number) => {
-    // Untuk Paket BASIC: Semua slot aktif/dapat dipilih (time-slot locking dimatikan)
     if (isBasic) return false
-
     if (isSlotBlocked(formData.booking_date, timeString)) return true
 
     if (tenant.preventDoubleBooking) {
@@ -551,9 +549,6 @@ function BookingFormContent() {
     return false
   }
 
-  // --------------------------------------------------------------------------
-  // 4.11 Sub-component: TimePicker
-  // --------------------------------------------------------------------------
   const TimePicker = ({
     availableSlots,
     selectedTime,
@@ -593,7 +588,6 @@ function BookingFormContent() {
               }`}
             >
               <span>{slot.time}</span>
-              {/* Teks pemberitahuan "Penuh" hanya tampil pada paket Premium & Profesional */}
               {isBooked && (
                 <span className="block text-[9px] text-rose-400 font-normal">Penuh</span>
               )}
@@ -604,7 +598,6 @@ function BookingFormContent() {
     )
   }
 
-  // Step Wizard Controls
   const handleNextStep = () => {
     if (step === 1) {
       if (!formData.customer_name || !formData.whatsapp_number) {
@@ -637,9 +630,6 @@ function BookingFormContent() {
     setStep((prev) => Math.max(prev - 1, 1))
   }
 
-  // --------------------------------------------------------------------------
-  // 4.12 Submit Handler (Create Reservation & Trigger WhatsApp)
-  // --------------------------------------------------------------------------
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
@@ -782,12 +772,8 @@ function BookingFormContent() {
     }
   }
 
-  // --------------------------------------------------------------------------
-  // 4.13 Sub-component: QRIS Section
-  // --------------------------------------------------------------------------
   const renderQrisSection = () => {
     if (isBasic) return null
-
     const qrisSrc = qrisData?.qrUrl || tenant?.qrisUrl
 
     return (
@@ -807,7 +793,6 @@ function BookingFormContent() {
               src={qrisSrc}
               onError={(e) => { 
                 e.currentTarget.onerror = null
-                console.error('Gagal memuat gambar dari URL:', qrisSrc)
               }}
               alt={`QRIS ${tenant?.name || 'Tenant'}`}
               className="w-full h-auto object-cover rounded-xl mx-auto"
@@ -823,9 +808,6 @@ function BookingFormContent() {
     )
   }
 
-  // --------------------------------------------------------------------------
-  // 4.14 Loading View
-  // --------------------------------------------------------------------------
   if (fetchingServices) {
     return (
       <main className="min-h-screen bg-[#09090b] text-white flex items-center justify-center font-sans">
@@ -837,14 +819,10 @@ function BookingFormContent() {
     )
   }
 
-  // --------------------------------------------------------------------------
-  // 4.15 Main JSX Render Area
-  // --------------------------------------------------------------------------
   return (
     <main className="min-h-screen bg-[#09090b] bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(120,119,198,0.15),rgba(255,255,255,0))] text-zinc-100 flex items-center justify-center p-3 sm:p-6 font-sans">
       <div className="max-w-md w-full bg-zinc-900/90 border border-zinc-800/80 rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.7)] overflow-hidden backdrop-blur-xl">
         
-        {/* HEADER SECTION */}
         <div className="relative p-6 text-center bg-gradient-to-b from-zinc-800/40 via-zinc-900/60 to-zinc-900 border-b border-zinc-800/60">
           <div className={`inline-flex items-center justify-center w-12 h-12 rounded-2xl mb-3 border ${theme.iconBg} backdrop-blur-md shadow-lg transform transition-transform hover:scale-105 duration-300`}>
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -854,7 +832,6 @@ function BookingFormContent() {
           <h1 className="text-2xl font-black tracking-tight text-white uppercase drop-shadow-sm">{tenant.name}</h1>
           <p className={`text-[11px] font-bold uppercase tracking-[0.2em] mt-1 ${theme.accentText}`}>{tenant.category}</p>
 
-          {/* Step Indicator */}
           {isWizard && (
             <div className="flex items-center justify-center space-x-2 mt-5">
               {[1, 2, 3].map((s) => (
@@ -869,10 +846,7 @@ function BookingFormContent() {
           )}
         </div>
 
-        {/* FORM CONTENT */}
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
-          
-          {/* LAYOUT A: BASIC SINGLE PAGE */}
           {!isWizard && (
             <div className="space-y-4">
               <div>
@@ -1098,10 +1072,8 @@ function BookingFormContent() {
             </div>
           )}
 
-          {/* LAYOUT B: STEP WIZARD */}
           {isWizard && (
             <>
-              {/* STEP 1: USER DATA */}
               {step === 1 && (
                 <div className="space-y-4 animate-fadeIn">
                   <div className="flex items-center justify-between">
@@ -1244,7 +1216,6 @@ function BookingFormContent() {
                 </div>
               )}
 
-              {/* STEP 2: SERVICES & SCHEDULE */}
               {step === 2 && (
                 <div className="space-y-4 animate-fadeIn">
                   <h2 className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest">Langkah 2 dari 3: Layanan & Jadwal</h2>
@@ -1399,7 +1370,6 @@ function BookingFormContent() {
                 </div>
               )}
 
-              {/* STEP 3: PAYMENT SUMMARY & SELECTION */}
               {step === 3 && (
                 <div className="space-y-4 animate-fadeIn">
                   <h2 className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest">Langkah 3 dari 3: Pembayaran</h2>
@@ -1471,7 +1441,7 @@ function BookingFormContent() {
                   <div className="flex space-x-2.5 pt-2">
                     <button
                       type="button"
-                      onClick={handlePrevStep}
+                      onClick={handlePrevTest => handlePrevStep()}
                       className="w-1/3 py-3.5 rounded-2xl font-bold text-xs bg-zinc-800/80 text-zinc-300 hover:bg-zinc-700 transition-all duration-300 shadow-sm"
                     >
                       &larr; Kembali
@@ -1479,7 +1449,7 @@ function BookingFormContent() {
                     <button
                       type="submit"
                       disabled={loading}
-                      className="w-2/3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold py-3.5 rounded-2xl transition-all duration-300 shadow-xl shadow-emerald-950/50 text-xs flex items-center justify-center space-x-2 tracking-wider uppercase transform active:scale-[0.99]"
+                      className="w-2/3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold py-3.5 rounded-2xl transition-all duration-300 shadow-xl shadow-emerald-950/50 text-xs flex items-center justify-center space-x-2 tracking-wider uppercase tracking-wider transform active:scale-[0.99]"
                     >
                       {loading ? 'Memproses...' : 'Kirim Konfirmasi via WhatsApp'}
                     </button>
@@ -1492,7 +1462,6 @@ function BookingFormContent() {
         </form>
       </div>
 
-      {/* SERVICE DETAIL MODAL (KHUSUS PAKET PROFESIONAL) */}
       {isPro && selectedServiceDetail && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
           <div className="bg-zinc-900 border border-zinc-800 rounded-3xl max-w-sm w-full overflow-hidden shadow-2xl relative">
