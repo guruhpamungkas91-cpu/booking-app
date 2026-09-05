@@ -302,7 +302,7 @@ function BookingFormContent() {
 
         try {
           const { data: tenantData } = await supabase
-            .from('Tenants')
+            .from('tenants')
             .select('*')
             .eq('tenant_slug', currentSlug)
             .maybeSingle()
