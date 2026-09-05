@@ -20,27 +20,31 @@ export async function GET(request: Request) {
 
     const supabase = createClient(supabaseUrl, supabaseKey)
 
-    // 1. Ambil master slot langsung pakai tenant_slug
-    const { data: slotConfigs } = await supabase
-      .from('tenant_slots')
-      .select('time_slot, max_quota')
-      .eq('tenant_slug', tenantSlug)
-      .eq('is_active', true)
+    // JALANKAN SEMUA QUERY SUPABASE SECARA BERSAMAAN (PARALLEL) AGAR KILAT ⚡
+    const [slotConfigsRes, blockedDataRes, bookedDataRes] = await Promise.all([
+      supabase
+        .from('tenant_slots')
+        .select('time_slot, max_quota')
+        .eq('tenant_slug', tenantSlug)
+        .eq('is_active', true),
 
-    // 2. Fetch slot diblokir
-    const { data: blockedData } = await supabase
-      .from('blocked_slots')
-      .select('block_time, start_time')
-      .eq('tenant_slug', tenantSlug)
-      .eq('block_date', date)
+      supabase
+        .from('blocked_slots')
+        .select('block_time, start_time')
+        .eq('tenant_slug', tenantSlug)
+        .eq('block_date', date),
 
-    // 3. Fetch slot terisi dari Reservations
-    const { data: bookedData } = await supabase
-      .from('Reservations')
-      .select('booking_time')
-      .or(`tenant_slug.eq.${tenantSlug},client_code.eq.${tenantSlug}`)
-      .eq('booking_date', date)
-      .neq('status', 'cancelled')
+      supabase
+        .from('Reservations')
+        .select('booking_time')
+        .or(`tenant_slug.eq.${tenantSlug},client_code.eq.${tenantSlug}`)
+        .eq('booking_date', date)
+        .neq('status', 'cancelled')
+    ])
+
+    const slotConfigs = slotConfigsRes.data
+    const blockedData = blockedDataRes.data
+    const bookedData = bookedDataRes.data
 
     const blockedTimes = blockedData ? blockedData.map(item => (item.block_time || item.start_time)?.substring(0, 5)) : []
     const bookedTimes = bookedData ? bookedData.map(item => item.booking_time?.substring(0, 5)) : []
