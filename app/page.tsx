@@ -143,7 +143,7 @@ function BookingFormContent() {
     booking_time: '',
     selected_services: [] as string[],
     selected_staff: '',
-    payment_method: 'QRIS',
+    payment_method: 'Cash / Bayar di Tempat',
     person_count: 1,
     payment_type: 'FULL',
     need_extra_addon: false,
@@ -226,11 +226,11 @@ function BookingFormContent() {
       .filter((s) => formData.selected_services.includes(s.name))
       .reduce((sum, item) => sum + parsePrice(item.price), 0)
 
-    if (isWizard && !isBasic) {
+    if (!isBasic) {
       serviceTotal = serviceTotal * formData.person_count
     }
 
-    const extraFee = isWizard && formData.need_extra_addon 
+    const extraFee = (!isBasic && formData.need_extra_addon)
       ? tenant.addonPrice * formData.addon_person_count 
       : 0
     return serviceTotal + extraFee
@@ -250,16 +250,31 @@ function BookingFormContent() {
   const payableAmount = (!isBasic && formData.payment_type === 'DP') ? dpAmount : grandTotal
   const remainingAmount = grandTotal - payableAmount
 
-  const availablePaymentMethods = isBasic 
-    ? [
-        { id: 'QRIS', label: 'QRIS' },
-        { id: 'Bayar di Tempat', label: 'Cash' },
+  // Penyesuaian Metode Pembayaran Berdasarkan Tier Paket Langganan
+  const getAvailablePaymentMethods = () => {
+    if (isBasic) {
+      return [
+        { id: 'Cash / Bayar di Tempat', label: 'Cash / Bayar di Tempat' }
       ]
-    : [
-        { id: 'QRIS', label: 'QRIS' },
-        { id: 'Transfer BCA', label: 'BCA' },
-        { id: 'Bayar di Tempat', label: 'Cash' },
+    }
+    if (isPremium) {
+      // Paket Premium: Dihapus opsi E-Wallet (hanya QRIS, Transfer BCA, dan Cash)
+      return [
+        { id: 'QRIS', label: 'QRIS Instan' },
+        { id: 'Transfer BCA', label: 'Transfer BCA' },
+        { id: 'Cash / Bayar di Tempat', label: 'Cash / Bayar di Tempat' }
       ]
+    }
+    // Paket Profesional: Lengkap dengan E-Wallet
+    return [
+      { id: 'QRIS', label: 'QRIS Instan' },
+      { id: 'Transfer BCA', label: 'Transfer BCA' },
+      { id: 'E-Wallet', label: 'E-Wallet' },
+      { id: 'Cash / Bayar di Tempat', label: 'Cash / Bayar di Tempat' }
+    ]
+  }
+
+  const availablePaymentMethods = getAvailablePaymentMethods()
 
   // --------------------------------------------------------------------------
   // 4.7 Effects: Load Tenant Data, Services, Staff & Initial Blocked Slots
@@ -305,7 +320,7 @@ function BookingFormContent() {
             adminWa: tenantData?.admin_wa || '',
             subscriptionPlan: dbPlan,
             category: rawCategory,
-            staffLabel: tenantData?.staff_label || (rawCategory.toLowerCase().includes('barber') ? 'Capster' : 'Staff / Dokter'),
+            staffLabel: tenantData?.staff_label || (rawCategory.toLowerCase().includes('barber') ? 'Capster' : 'Staff / Artist'),
             layoutType: defaultLayout,
             themeColor: defaultColor,
             requireConsent: tenantData?.require_consent ?? rawCategory.toLowerCase().includes('lash'),
@@ -351,7 +366,20 @@ function BookingFormContent() {
               setStaffList([])
             }
           } else {
-            setStaffList([])
+            // Paket BASIC: Dibatasi 1 Staff saja
+            const { data: staffData } = await supabase
+              .from('Staff')
+              .select('*')
+              .eq('tenant_slug', activeTenant.tenantSlug)
+              .eq('is_active', true)
+              .limit(1)
+
+            if (staffData && staffData.length > 0) {
+              setStaffList(staffData)
+              setFormData((prev) => ({ ...prev, selected_staff: staffData[0].name }))
+            } else {
+              setStaffList([])
+            }
           }
 
           // Fetch Blocked Slots
@@ -363,12 +391,12 @@ function BookingFormContent() {
           if (blockedErr) console.error("Error fetching blocked_slots:", blockedErr)
 
           const { data: confirmedReservations, error: resErr } = await supabase
-            .from('Reservations')
+            .from('reservations')
             .select('booking_date, booking_time')
             .eq('tenant_slug', activeTenant.tenantSlug)
             .eq('status', 'confirmed')
 
-          if (resErr) console.error("Error fetching Reservations:", resErr)
+          if (resErr) console.error("Error fetching reservations:", resErr)
 
           const combinedBlockedSlots = [
             ...(blockedData?.map((item) => ({
@@ -425,9 +453,10 @@ function BookingFormContent() {
   }, [formData.booking_date, tenant?.tenantSlug])
 
   // --------------------------------------------------------------------------
-  // 4.9 Effects: Generate Dynamic QRIS Payment
+  // 4.9 Effects: Generate Dynamic QRIS Payment (Khusus PREMIUM & PROFESIONAL)
   // --------------------------------------------------------------------------
   const generateDynamicQris = async () => {
+    if (isBasic) return
     setLoadingQris(true)
     try {
       const response = await fetch('/api/qris/generate', {
@@ -454,18 +483,20 @@ function BookingFormContent() {
   }
 
   useEffect(() => {
-    if (formData.payment_method === 'QRIS' && payableAmount > 0) {
+    if (!isBasic && formData.payment_method === 'QRIS' && payableAmount > 0) {
       generateDynamicQris()
     }
-  }, [formData.payment_method, payableAmount, tenant?.qrisUrl])
+  }, [formData.payment_method, payableAmount, tenant?.qrisUrl, isBasic])
 
   // --------------------------------------------------------------------------
   // 4.10 Form Handlers & Slot Logic
   // --------------------------------------------------------------------------
   const handleServiceSelect = (serviceName: string) => {
     if (isBasic) {
+      // Paket BASIC: Hanya bisa 1 jenis layanan
       setFormData((prev) => ({ ...prev, selected_services: [serviceName] }))
     } else {
+      // Paket PREMIUM & PROFESIONAL: Multi-services
       const exists = formData.selected_services.includes(serviceName)
       const updated = exists
         ? formData.selected_services.filter((s) => s !== serviceName)
@@ -475,6 +506,8 @@ function BookingFormContent() {
   }
 
   const isSlotBlocked = (date: string, time: string) => {
+    // Paket Basic tidak menerapkan time-slot blocking
+    if (isBasic) return false
     if (!date || !time) return false
 
     const isSupabaseBlocked = blockedSlots.some(
@@ -487,6 +520,9 @@ function BookingFormContent() {
   }
 
   const isTimeDisabled = (timeString: string, maxQuota: number, currentBookings: number) => {
+    // Untuk Paket BASIC: Semua slot aktif/dapat dipilih (time-slot locking dimatikan)
+    if (isBasic) return false
+
     if (isSlotBlocked(formData.booking_date, timeString)) return true
 
     if (tenant.preventDoubleBooking) {
@@ -528,6 +564,7 @@ function BookingFormContent() {
     onSelectTime: (time: string) => void
   }) => {
     const filteredSlots = availableSlots.filter((slot) => {
+      if (isBasic) return true
       if (!tenant.hideBookedSlots) return true
 
       const isBooked = bookedTimes.includes(slot.time) || slot.bookedCount >= slot.maxQuota
@@ -539,6 +576,7 @@ function BookingFormContent() {
         {filteredSlots.map((slot) => {
           const disabled = isTimeDisabled(slot.time, slot.maxQuota, slot.bookedCount)
           const isSelected = selectedTime === slot.time
+          const isBooked = !isBasic && (bookedTimes.includes(slot.time) || slot.bookedCount >= slot.maxQuota)
 
           return (
             <button
@@ -546,7 +584,7 @@ function BookingFormContent() {
               type="button"
               disabled={disabled}
               onClick={() => onSelectTime(slot.time)}
-              className={`py-2 px-3 rounded-2xl text-xs font-bold transition-all duration-300 border ${
+              className={`py-2 px-3 rounded-2xl text-xs font-bold transition-all duration-300 border relative ${
                 disabled
                   ? 'bg-zinc-950/40 text-zinc-600 border-zinc-800/50 cursor-not-allowed opacity-50'
                   : isSelected
@@ -554,7 +592,11 @@ function BookingFormContent() {
                   : 'bg-zinc-950/80 text-zinc-300 border-zinc-800/80 hover:border-zinc-700 hover:text-white'
               }`}
             >
-              {slot.time}
+              <span>{slot.time}</span>
+              {/* Teks pemberitahuan "Penuh" hanya tampil pada paket Premium & Profesional */}
+              {isBooked && (
+                <span className="block text-[9px] text-rose-400 font-normal">Penuh</span>
+              )}
             </button>
           )
         })}
@@ -622,7 +664,7 @@ function BookingFormContent() {
       booking_date: formData.booking_date,
       booking_time: formData.booking_time,
       service_name: formattedServicesText,
-      staff_name: !isBasic ? formData.selected_staff : null,
+      staff_name: formData.selected_staff || null,
       payment_method: formData.payment_method,
       status: 'pending',
       client_code: tenant.clientCode,
@@ -630,10 +672,10 @@ function BookingFormContent() {
     }
 
     if (isWizard) {
-      insertPayload.person_count = formData.person_count
+      insertPayload.person_count = isBasic ? 1 : formData.person_count
       insertPayload.payment_type = isBasic ? 'FULL' : formData.payment_type
-      insertPayload.need_remove_lash = formData.need_extra_addon
-      insertPayload.addon_person_count = formData.need_extra_addon ? formData.addon_person_count : 0
+      insertPayload.need_remove_lash = !isBasic && formData.need_extra_addon
+      insertPayload.addon_person_count = (!isBasic && formData.need_extra_addon) ? formData.addon_person_count : 0
       insertPayload.has_eye_allergy_consent = formData.has_consent
       insertPayload.eye_shape_notes = formData.custom_notes
     } else {
@@ -669,19 +711,19 @@ function BookingFormContent() {
         `• Tanggal & Jam: ${formData.booking_date} - ${formData.booking_time} WIB\n` +
         `• Layanan: ${formattedServicesText}\n`
 
-      if (isWizard && !isBasic) {
+      if (!isBasic) {
         messageText += `• Jumlah Orang: ${formData.person_count} Orang\n`
       }
 
-      if (formData.need_extra_addon) {
+      if (!isBasic && formData.need_extra_addon) {
         messageText += `• Tambahan: ${tenant.addonLabel.replace(/\s*\(\+Rp\s*[\d.]+\)/gi, '')} (${formData.addon_person_count} Orang)\n`
       }
 
-      if (!isBasic && formData.selected_staff) {
+      if (formData.selected_staff) {
         messageText += `• ${tenant.staffLabel}: ${formData.selected_staff}\n`
       }
 
-      if (isWizard && formData.custom_notes) {
+      if (formData.custom_notes) {
         messageText += `• Catatan Khusus: ${formData.custom_notes}\n`
       }
 
@@ -744,7 +786,8 @@ function BookingFormContent() {
   // 4.13 Sub-component: QRIS Section
   // --------------------------------------------------------------------------
   const renderQrisSection = () => {
-    // Hanya ambil dari API dinamis (qrisData) ATAU dari database Supabase (tenant.qrisUrl)
+    if (isBasic) return null
+
     const qrisSrc = qrisData?.qrUrl || tenant?.qrisUrl
 
     return (
@@ -811,7 +854,7 @@ function BookingFormContent() {
           <h1 className="text-2xl font-black tracking-tight text-white uppercase drop-shadow-sm">{tenant.name}</h1>
           <p className={`text-[11px] font-bold uppercase tracking-[0.2em] mt-1 ${theme.accentText}`}>{tenant.category}</p>
 
-          {/* Step Indicator (If Step Wizard Layout) */}
+          {/* Step Indicator */}
           {isWizard && (
             <div className="flex items-center justify-center space-x-2 mt-5">
               {[1, 2, 3].map((s) => (
@@ -929,14 +972,17 @@ function BookingFormContent() {
                 )}
               </div>
 
-              {!isBasic && staffList.length > 0 && (
+              {staffList.length > 0 && (
                 <div>
-                  <label className="block text-[11px] font-semibold text-zinc-300 uppercase tracking-wider mb-1.5">Pilih {tenant.staffLabel}</label>
+                  <label className="block text-[11px] font-semibold text-zinc-300 uppercase tracking-wider mb-1.5">
+                    {tenant.staffLabel} {isBasic ? '(Sesuai Ketersediaan)' : ''}
+                  </label>
                   <div className="grid grid-cols-2 gap-2.5">
                     {staffList.map((st) => (
                       <button
                         type="button"
                         key={st.id}
+                        disabled={isBasic}
                         onClick={() => setFormData({ ...formData, selected_staff: st.name })}
                         className={`py-2.5 px-3.5 text-xs font-semibold rounded-2xl border transition-all duration-300 text-left ${
                           formData.selected_staff === st.name 
@@ -957,7 +1003,8 @@ function BookingFormContent() {
                   <input
                     type="date"
                     required
-                    className={`w-full px-3.5 py-2.5 bg-zinc-950/80 border border-zinc-800/80 rounded-2xl text-zinc-200 text-xs outline-none transition-all duration-300 ${theme.accentRing}`}
+                    style={{ colorScheme: 'dark' }}
+                    className={`w-full px-3.5 py-2.5 bg-zinc-950/80 border border-zinc-800/80 rounded-2xl text-zinc-200 text-xs outline-none transition-all duration-300 [color-scheme:dark] ${theme.accentRing}`}
                     value={formData.booking_date}
                     onChange={(e) => setFormData({ ...formData, booking_date: e.target.value, booking_time: '' })}
                   />
@@ -1021,7 +1068,7 @@ function BookingFormContent() {
 
               <div className="space-y-1.5">
                 <label className="block text-[11px] font-semibold text-zinc-300 uppercase tracking-wider">Metode Pembayaran</label>
-                <div className={`grid ${isBasic ? 'grid-cols-2' : 'grid-cols-3'} gap-2`}>
+                <div className={`grid ${isBasic ? 'grid-cols-1' : 'grid-cols-2'} gap-2`}>
                   {availablePaymentMethods.map((m) => (
                     <button
                       type="button"
@@ -1039,14 +1086,14 @@ function BookingFormContent() {
                 </div>
               </div>
 
-              {formData.payment_method === 'QRIS' && renderQrisSection()}
+              {!isBasic && formData.payment_method === 'QRIS' && renderQrisSection()}
 
               <button
                 type="submit"
                 disabled={loading}
                 className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold py-3.5 rounded-2xl transition-all duration-300 shadow-xl shadow-emerald-950/50 text-xs mt-4 tracking-wider uppercase transform active:scale-[0.99]"
               >
-                {loading ? 'Memproses...' : 'Konfirmasi via WA'}
+                {loading ? 'Memproses...' : 'Kirim Konfirmasi via WhatsApp'}
               </button>
             </div>
           )}
@@ -1113,7 +1160,7 @@ function BookingFormContent() {
                     </div>
                   )}
 
-                  {tenant.showExtraAddon && (
+                  {!isBasic && tenant.showExtraAddon && (
                     <div className="space-y-2">
                       <label className={`flex items-center justify-between p-3.5 rounded-2xl border cursor-pointer transition-all duration-300 ${
                         formData.need_extra_addon ? `${theme.accentBgLight} ${theme.accentBorder}` : 'bg-zinc-950/60 border-zinc-800/80 hover:border-zinc-700'
@@ -1275,14 +1322,17 @@ function BookingFormContent() {
                     )}
                   </div>
 
-                  {!isBasic && staffList.length > 0 && (
+                  {staffList.length > 0 && (
                     <div>
-                      <label className="block text-[11px] font-semibold text-zinc-300 uppercase tracking-wider mb-1.5">Pilih {tenant.staffLabel}</label>
+                      <label className="block text-[11px] font-semibold text-zinc-300 uppercase tracking-wider mb-1.5">
+                        {tenant.staffLabel} {isBasic ? '(Sesuai Ketersediaan)' : ''}
+                      </label>
                       <div className="grid grid-cols-2 gap-2.5">
                         {staffList.map((st) => (
                           <button
                             type="button"
                             key={st.id}
+                            disabled={isBasic}
                             onClick={() => setFormData({ ...formData, selected_staff: st.name })}
                             className={`py-2.5 px-3.5 text-xs font-semibold rounded-2xl border transition-all duration-300 text-left ${
                               formData.selected_staff === st.name 
@@ -1303,7 +1353,8 @@ function BookingFormContent() {
                       <input
                         type="date"
                         required
-                        className={`w-full px-3.5 py-2.5 bg-zinc-950/80 border border-zinc-800/80 rounded-2xl text-zinc-200 text-xs outline-none transition-all duration-300 ${theme.accentRing}`}
+                        style={{ colorScheme: 'dark' }}
+                        className={`w-full px-3.5 py-2.5 bg-zinc-950/80 border border-zinc-800/80 rounded-2xl text-zinc-200 text-xs outline-none transition-all duration-300 [color-scheme:dark] ${theme.accentRing}`}
                         value={formData.booking_date}
                         onChange={(e) => setFormData({ ...formData, booking_date: e.target.value, booking_time: '' })}
                       />
@@ -1356,10 +1407,10 @@ function BookingFormContent() {
                   <div className="p-4 bg-zinc-950/80 border border-zinc-800/80 rounded-2xl space-y-2.5 text-xs shadow-inner">
                     <div className="flex justify-between text-zinc-400">
                       <span>Layanan {(!isBasic && formData.person_count > 1) ? `(${formData.person_count} Orang)` : ''}</span>
-                      <span className="font-semibold text-zinc-200">Rp {(grandTotal - (formData.need_extra_addon ? tenant.addonPrice * formData.addon_person_count : 0)).toLocaleString('id-ID')}</span>
+                      <span className="font-semibold text-zinc-200">Rp {(grandTotal - (!isBasic && formData.need_extra_addon ? tenant.addonPrice * formData.addon_person_count : 0)).toLocaleString('id-ID')}</span>
                     </div>
 
-                    {formData.need_extra_addon && (
+                    {!isBasic && formData.need_extra_addon && (
                       <div className="flex justify-between text-zinc-400">
                         <span>{tenant.addonLabel.replace(/\s*\(\+Rp\s*[\d.]+\)/gi, '')} ({formData.addon_person_count} Orang)</span>
                         <span className="font-semibold text-zinc-200">Rp {(tenant.addonPrice * formData.addon_person_count).toLocaleString('id-ID')}</span>
@@ -1398,7 +1449,7 @@ function BookingFormContent() {
                     </div>
                   )}
 
-                  <div className={`grid ${isBasic ? 'grid-cols-2' : 'grid-cols-3'} gap-2`}>
+                  <div className={`grid ${isBasic ? 'grid-cols-1' : 'grid-cols-2'} gap-2`}>
                     {availablePaymentMethods.map((m) => (
                       <button
                         type="button"
@@ -1415,7 +1466,7 @@ function BookingFormContent() {
                     ))}
                   </div>
 
-                  {formData.payment_method === 'QRIS' && renderQrisSection()}
+                  {!isBasic && formData.payment_method === 'QRIS' && renderQrisSection()}
 
                   <div className="flex space-x-2.5 pt-2">
                     <button
@@ -1430,7 +1481,7 @@ function BookingFormContent() {
                       disabled={loading}
                       className="w-2/3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold py-3.5 rounded-2xl transition-all duration-300 shadow-xl shadow-emerald-950/50 text-xs flex items-center justify-center space-x-2 tracking-wider uppercase transform active:scale-[0.99]"
                     >
-                      {loading ? 'Memproses...' : 'Konfirmasi via WA'}
+                      {loading ? 'Memproses...' : 'Kirim Konfirmasi via WhatsApp'}
                     </button>
                   </div>
                 </div>
@@ -1441,8 +1492,8 @@ function BookingFormContent() {
         </form>
       </div>
 
-      {/* SERVICE DETAIL MODAL (PRO PLAN) */}
-      {selectedServiceDetail && (
+      {/* SERVICE DETAIL MODAL (KHUSUS PAKET PROFESIONAL) */}
+      {isPro && selectedServiceDetail && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
           <div className="bg-zinc-900 border border-zinc-800 rounded-3xl max-w-sm w-full overflow-hidden shadow-2xl relative">
             
