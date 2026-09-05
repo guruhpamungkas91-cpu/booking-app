@@ -20,29 +20,12 @@ export async function GET(request: Request) {
 
     const supabase = createClient(supabaseUrl, supabaseKey)
 
-    // 0. Ambil tenant_id berdasarkan tenantSlug dari tabel tenants (jika ada tabel tenants)
-    // Atau langsung ambil tenant_slots berdasarkan tenant_id yang sudah kita tahu ('a70d8f4b-0c31-4c14-9ee6-4e209852ac0c' untuk mcut)
-    let tenantId = null
-    const { data: tenantData } = await supabase
-      .from('tenants')
-      .select('id')
-      .eq('slug', tenantSlug)
-      .maybeSingle()
-
-    if (tenantData) {
-      tenantId = tenantData.id
-    } else if (tenantSlug === 'mcut') {
-      tenantId = 'a70d8f4b-0c31-4c14-9ee6-4e209852ac0c' // Fallback hardcode khusus mcut kalau tabel tenants-nya beda kolom
-    }
-
-    // 1. Fetch master slot jam & max_quota dari tabel tenant_slots berdasarkan tenantId
-    let slotConfigQuery = supabase.from('tenant_slots').select('time_slot, max_quota').eq('is_active', true)
-    if (tenantId) {
-      slotConfigQuery = slotConfigQuery.eq('tenant_id', tenantId)
-    } else {
-      slotConfigQuery = slotConfigQuery.eq('tenant_slug', tenantSlug) // Jaga-jaga kalau suatu saat kolom slug ditambahkan
-    }
-    const { data: slotConfigs } = await slotConfigQuery
+    // 1. Ambil master slot langsung pakai tenant_slug
+    const { data: slotConfigs } = await supabase
+      .from('tenant_slots')
+      .select('time_slot, max_quota')
+      .eq('tenant_slug', tenantSlug)
+      .eq('is_active', true)
 
     // 2. Fetch slot diblokir
     const { data: blockedData } = await supabase
@@ -59,11 +42,9 @@ export async function GET(request: Request) {
       .eq('booking_date', date)
       .neq('status', 'cancelled')
 
-    // Mapping data jam
     const blockedTimes = blockedData ? blockedData.map(item => (item.block_time || item.start_time)?.substring(0, 5)) : []
     const bookedTimes = bookedData ? bookedData.map(item => item.booking_time?.substring(0, 5)) : []
     
-    // Kirim juga master slots dan max_quotanya ke frontend supaya pilihan jam bisa muncul!
     const slots = slotConfigs ? slotConfigs.map(s => ({
       time: s.time_slot?.substring(0, 5),
       max_quota: s.max_quota
@@ -71,7 +52,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       success: true,
-      slots, // Data jam operasional dari tenant_slots
+      slots,
       blockedTimes,
       bookedTimes
     })
