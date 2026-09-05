@@ -488,13 +488,18 @@ const fetchTenantAndData = async () => {
           const data = await res.json()
           setBlockedTimes(data.blockedTimes || [])
           setBookedTimes(data.bookedTimes || [])
+          
+          // ✅ TAMBAHKAN INI: Masukkan data slots dari API ke state availableSlots
+          setAvailableSlots(data.slots || []) 
         } else {
           setBlockedTimes([])
           setBookedTimes([])
+          setAvailableSlots([])
         }
       } catch (err) {
         setBlockedTimes([])
         setBookedTimes([])
+        setAvailableSlots([])
       } finally {
         setLoadingSlots(false)
       }
