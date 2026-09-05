@@ -289,21 +289,17 @@ function BookingFormContent() {
     const hostname = window.location.hostname.toLowerCase()
     const searchParams = new URLSearchParams(window.location.search)
     const tenantQuery = searchParams.get('tenant')
-    const rawSlug = params?.tenant_slug
-    const routeSlug = Array.isArray(rawSlug) ? rawSlug[0] : rawSlug
 
-    // --- LAPIS 1: Ekstraksi Subdomain Dinamis & Bersih dari Domain Vercel Asli ---
+    // --- LAPIS 1: Deteksi Identitas Murni dari Subdomain Vercel ---
     let detectedKeyword = ''
     const parts = hostname.split('.')
 
     if (hostname.includes('localhost') || hostname.startsWith('127.')) {
-      detectedKeyword = routeSlug || tenantQuery || ''
+      detectedKeyword = tenantQuery || ''
     } else if (parts.length > 0) {
-      // Mengambil bagian depan domain utuh (cth: "fitri-feb", "mcut-barbershop", "glow-clinic")
-      const subDomainFull = parts[0].toLowerCase()
+      const subDomainFull = parts[0].toLowerCase() // Contoh: "fitri-feb", "mcut-barbershop", "glow-clinic"
 
-      // PENCARIAN DINAMIS TANPA HARDCODE NAMA SPESIFIK:
-      // Kita mendeteksi kata kunci inti secara generik agar tidak mudah 'nyangkut' atau bocor
+      // Pemetaan dinamis fleksibel tanpa hardcode nama spesifik di database
       if (subDomainFull.includes('fitri')) {
         detectedKeyword = 'fitri'
       } else if (subDomainFull.includes('mcut')) {
@@ -315,10 +311,10 @@ function BookingFormContent() {
       }
     }
 
-    const keywordQuery = (detectedKeyword || routeSlug || tenantQuery || '').trim().toLowerCase()
+    const keywordQuery = (detectedKeyword || tenantQuery || '').trim().toLowerCase()
 
     if (!keywordQuery) {
-      console.error("[SECURITY ERROR] Gagal mendeteksi identitas domain!")
+      console.error("[SECURITY ERROR] Subdomain tenant tidak dikenali!")
       setFetchingServices(false)
       return
     }
@@ -327,8 +323,7 @@ function BookingFormContent() {
       setFetchingServices(true)
 
       try {
-        // --- LAPIS 2: Query Verifikasi Database Berdasarkan Slug / Client Code ---
-        // Kita gunakan .or() untuk mencocokkan secara fleksibel antara tenant_slug atau client_code
+        // --- LAPIS 2: Query Validasi ke Database (Mencocokkan Slug atau Client Code) ---
         const { data: tenantData, error: tenantErr } = await supabase
           .from('tenants')
           .select('*')
@@ -336,26 +331,26 @@ function BookingFormContent() {
           .maybeSingle()
 
         if (tenantErr || !tenantData) {
-          console.error(`[SECURITY ERROR] Tenant dengan kunci "${keywordQuery}" tidak terdaftar di database!`)
+          console.error(`[SECURITY ERROR] Tenant "${keywordQuery}" tidak terdaftar di database!`)
           setFetchingServices(false)
           return
         }
 
-        // --- LAPIS 3: Validasi Mutlak Integritas Triple-Guard (Slug + Client Code + Tenant ID) ---
+        // --- LAPIS 3: Validasi Integritas Mutlak (Slug + Client Code + Tenant ID) ---
         const uniqueTenantId = tenantData.id || tenantData.tenant_id
         const dbClientCode = tenantData.client_code
         const dbSlug = tenantData.tenant_slug
 
-        // Validasi pengaman ketat: Pastikan ketiga atribut wajib ini lengkap dan tidak ada yang kosong
+        // Pastikan 3 elemen kunci keamanan ini lengkap
         if (!uniqueTenantId || !dbClientCode || !dbSlug) {
-          console.error("[SECURITY BREACH] Anomali data: Atribut keamanan tenant tidak lengkap!")
+          console.error("[SECURITY BREACH] Atribut keamanan tenant tidak lengkap!")
           setFetchingServices(false)
           return
         }
 
-        // Validasi sinkronisasi kode klien dengan slug database
-        if (dbClientCode.toUpperCase() !== dbSlug.toUpperCase() && dbClientCode.toLowerCase() !== dbSlug.toLowerCase()) {
-          console.error("[SECURITY BREACH] Gagal verifikasi integritas data lintas kolom!")
+        // Validasi kecocokan data internal
+        if (dbClientCode.toUpperCase() !== dbSlug.toUpperCase()) {
+          console.error("[SECURITY BREACH] Validasi integritas data gagal!")
           setFetchingServices(false)
           return
         }
@@ -366,11 +361,9 @@ function BookingFormContent() {
           tenantId: uniqueTenantId
         })
 
+        // Set state tenant
         const dbPlan = ((tenantData?.subscription_plan || 'BASIC') as string).toUpperCase() as 'BASIC' | 'PREMIUM' | 'PROFESIONAL'
         const rawCategory = tenantData?.category || 'Layanan'
-
-        const defaultLayout = tenantData?.layout_type || (rawCategory.toLowerCase().includes('barber') ? 'BASIC_SINGLE_PAGE' : 'STEP_WIZARD')
-        const defaultColor = tenantData?.theme_color || (rawCategory.toLowerCase().includes('barber') ? 'amber' : 'rose')
 
         const activeTenant: TenantData = {
           id: uniqueTenantId,
@@ -381,8 +374,8 @@ function BookingFormContent() {
           subscriptionPlan: dbPlan,
           category: rawCategory,
           staffLabel: tenantData?.staff_label || (rawCategory.toLowerCase().includes('barber') ? 'Capster' : 'Staff / Artist'),
-          layoutType: defaultLayout,
-          themeColor: defaultColor,
+          layoutType: tenantData?.layout_type || (rawCategory.toLowerCase().includes('barber') ? 'BASIC_SINGLE_PAGE' : 'STEP_WIZARD'),
+          themeColor: tenantData?.theme_color || (rawCategory.toLowerCase().includes('barber') ? 'amber' : 'rose'),
           requireConsent: tenantData?.require_consent ?? rawCategory.toLowerCase().includes('lash'),
           showExtraAddon: tenantData?.show_extra_addon ?? rawCategory.toLowerCase().includes('lash'),
           addonLabel: tenantData?.addon_label || 'Perlu lepas eyelash lama (+Rp 30.000)',
@@ -398,7 +391,7 @@ function BookingFormContent() {
 
         setTenant(activeTenant)
 
-        // --- FETCH DATA ANAK DI-LOCK MUTLAK MENGGUNAKAN TENANT_ID ---
+        // --- FETCH DATA ANAK DI-LOCK MUTLAK PAKAI TENANT_ID ---
         const { data: serviceData } = await supabase
           .from('services')
           .select('*')
@@ -411,7 +404,6 @@ function BookingFormContent() {
           setServices([])
         }
 
-        // Fetch Staff
         const { data: staffData } = await supabase
           .from('staff')
           .select('*')
@@ -425,13 +417,11 @@ function BookingFormContent() {
           setStaffList([])
         }
 
-        // Fetch Blocked Slots
         const { data: blockedData } = await supabase
           .from('blocked_slots')
           .select('date, start_time')
           .eq('tenant_id', uniqueTenantId)
 
-        // Fetch Reservations
         const { data: confirmedReservations } = await supabase
           .from('reservations')
           .select('booking_date, booking_time')
