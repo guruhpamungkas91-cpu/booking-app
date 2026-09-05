@@ -18,9 +18,9 @@ export function middleware(request: NextRequest) {
   let tenantSlug = '';
 
   if (hostname.includes('mcut-barbershop')) {
-    tenantSlug = 'mcut'; // Sesuai slug di database Supabase lu
-  } else if (hostname.includes('fitrifeb-lashes')) {
-    tenantSlug = 'fitrifeb';
+    tenantSlug = 'mcut'; 
+  } else if (hostname.includes('fitri-feb')) { // <-- GANTI JADI INI
+    tenantSlug = 'fitri'; // Sesuaikan dengan tenant_slug/client_code si Fitri di database lu
   } else if (hostname.includes('glow-clinic')) {
     tenantSlug = 'glow';
   }
