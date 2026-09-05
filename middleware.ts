@@ -5,36 +5,23 @@ export function middleware(request: NextRequest) {
   const hostname = request.headers.get('host') || '';
   const url = request.nextUrl.clone();
 
-  // Abaikan file internal Next.js atau API agar tidak terganggu
+  // 1. Abaikan file internal Next.js, API, atau localhost / domain utama aplikasi lu
   if (
     url.pathname.startsWith('/_next') ||
     url.pathname.startsWith('/api') ||
-    url.pathname.includes('.')
+    url.pathname.includes('.') ||
+    hostname.includes('localhost') ||
+    hostname === 'booking-app.vercel.app' // <-- Ganti dengan domain utama project Vercel lu jika ada
   ) {
     return NextResponse.next();
   }
 
-  // Contoh pemetaan domain Vercel ke slug tenant di database lu
-  let tenantSlug = '';
-
-  if (hostname.includes('mcut-barbershop')) {
-    tenantSlug = 'mcut'; 
-  } else if (hostname.includes('fitri-feb')) { // <-- GANTI JADI INI
-    tenantSlug = 'fitri'; // Sesuaikan dengan tenant_slug/client_code si Fitri di database lu
-  } else if (hostname.includes('glow-clinic')) {
-    tenantSlug = 'glow';
-  }
-
-  // Jika domain terdeteksi sebagai tenant, arahkan (rewrite) ke halaman dinamis [tenant_slug]
-  if (tenantSlug && url.pathname === '/') {
-    url.pathname = `/${tenantSlug}`;
-    return NextResponse.rewrite(url);
-  }
-
+  // 2. Untuk semua subdomain tenant lain (fitri-feb, mcut-barbershop, glow-clinic, dll),
+  // biarkan masuk tanpa perlu di-hardcode. Nanti frontend yang akan baca hostname-nya 
+  // dan nge-query langsung ke Supabase secara otomatis!
   return NextResponse.next();
 }
 
-// Jalankan middleware untuk seluruh halaman utama, KECUALI file statis/api
 export const config = {
   matcher: ['/((?!api|_next/static|_next/image|favicon.ico).*)'],
 };
