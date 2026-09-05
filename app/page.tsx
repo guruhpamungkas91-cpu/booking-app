@@ -279,7 +279,7 @@ function BookingFormContent() {
   const availablePaymentMethods = getAvailablePaymentMethods()
 
   // --------------------------------------------------------------------------
-  // 4.7 Effects: Load Tenant Data, Services, Staff & Initial Blocked Slots (TRIPLE-GUARD WITH DOMAIN COLUMN)
+  // 4.7 Effects: Load Tenant Data via Domain / Manual Mapping / Supabase
   // --------------------------------------------------------------------------
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -291,43 +291,41 @@ function BookingFormContent() {
         setFetchingServices(true)
 
         try {
-          // --- LAPIS 1 & 2: Deteksi Berdasarkan Kolom Domain, Slug, atau Client Code di Database ---
-          let queryOr = `domain.eq.${hostname},tenant_slug.eq.${hostname}`
-          if (hostname.includes('localhost') || hostname.startsWith('127.')) {
-            const fallbackKey = tenantQuery || 'fitri'
-            queryOr = `tenant_slug.eq.${fallbackKey},client_code.ilike.${fallbackKey},domain.eq.${fallbackKey}`
+          // --- MAPPING MANUAL UNTUK 3 DOMAIN UTAMA (Pasti Ketemu) ---
+          let targetSlug = tenantQuery || ''
+          if (hostname.includes('mcut')) {
+            targetSlug = 'mcut'
+          } else if (hostname.includes('glow')) {
+            targetSlug = 'glow'
+          } else if (hostname.includes('fitri')) {
+            targetSlug = 'fitri'
           }
 
-          const { data: tenantData, error: tenantErr } = await supabase
-            .from('tenants')
-            .select('*')
-            .or(queryOr)
-            .maybeSingle()
+          let query = supabase.from('tenants').select('*')
+          
+          if (targetSlug) {
+            query = query.or(`tenant_slug.eq.${targetSlug},client_code.ilike.${targetSlug},domain.eq.${hostname}`)
+          } else {
+            query = query.or(`domain.eq.${hostname},tenant_slug.eq.${hostname}`)
+          }
+
+          const { data: tenantData, error: tenantErr } = await query.maybeSingle()
 
           if (tenantErr || !tenantData) {
-            console.error(`[SECURITY ERROR] Tenant untuk domain "${hostname}" tidak terdaftar di database!`)
+            console.error(`[SECURITY ERROR] Tenant untuk domain "${hostname}" (Target: ${targetSlug}) tidak ditemukan!`)
             setFetchingServices(false)
             return
           }
 
-          // --- LAPIS 3: Validasi Integritas Mutlak ---
           const uniqueTenantId = tenantData.id || tenantData.tenant_id
           const dbClientCode = tenantData.client_code
           const dbSlug = tenantData.tenant_slug
-          const dbDomain = tenantData.domain
 
           if (!uniqueTenantId || !dbClientCode || !dbSlug) {
             console.error("[SECURITY BREACH] Atribut keamanan tenant tidak lengkap!")
             setFetchingServices(false)
             return
           }
-
-          console.log(`[TRIPLE-GUARD SECURE ACCESS SUCCESS]`, {
-            domain: dbDomain,
-            slug: dbSlug,
-            clientCode: dbClientCode,
-            tenantId: uniqueTenantId
-          })
 
           const dbPlan = ((tenantData?.subscription_plan || 'BASIC') as string).toUpperCase() as 'BASIC' | 'PREMIUM' | 'PROFESIONAL'
           const rawCategory = tenantData?.category || 'Layanan'
@@ -358,7 +356,7 @@ function BookingFormContent() {
 
           setTenant(activeTenant)
 
-          // --- FETCH DATA ANAK DI-LOCK MUTLAK PAKAI TENANT_ID ---
+          // --- FETCH DATA ANAK BERDASARKAN TENANT_ID ---
           const { data: serviceData } = await supabase
             .from('services')
             .select('*')
