@@ -426,63 +426,48 @@ export default function AdminDashboard() {
   }
 
   // ============================================================================
-  // 9. RESERVATION DATA OPERATIONS
+  // 9. RESERVATION DATA OPERATIONS (REVISED & CLEAN)
   // ============================================================================
+  
   const fetchReservations = useCallback(async () => {
-    setLoading(true)
-    const { data: { user } } = await supabase.auth.getUser()
-
-    if (!user && !tenantId) {
-      setLoading(false)
-      return
-    }
-
-    let activeTenantId = tenantId
-    if (!activeTenantId && user) {
-      const { data: tenantData } = await supabase
-        .from('tenants')
-        .select('id, tenant_slug')
-        .eq('admin_email', user.email)
-        .maybeSingle()
-
-      if (tenantData) {
-        activeTenantId = tenantData.id
-        setTenantId(tenantData.id)
-        setTenantCode(tenantData.tenant_slug)
-        await fetchTenantDetail(tenantData.tenant_slug)
-      }
-    }
-
-    let query = supabase.from('reservations').select('*')
-    if (activeTenantId) {
-      query = query.eq('tenant_id', activeTenantId)
-    }
+    if (!tenantId) return; // Hentikan jika tenantId belum terekam
     
-    const { data, error } = await query.order('created_at', { ascending: false })
+    setLoading(true);
+
+    const { data, error } = await supabase
+      .from('reservations')
+      .select('*')
+      .eq('tenant_id', tenantId) // Filter langsung menggunakan tenantId dinamis
+      .order('created_at', { ascending: false });
 
     if (error) {
-      alert('Gagal mengambil data: ' + error.message)
+      alert('Gagal mengambil data reservasi: ' + error.message);
     } else {
-      setReservations(data || [])
-      setFilteredReservations(data || [])
+      setReservations(data || []);
+      setFilteredReservations(data || []);
+      
+      // Sinkronisasi otomatis ke blocked_slots setiap data berhasil ditarik
+      if (data && data.length > 0) {
+        syncConfirmedSlotsToBlocked();
+      }
     }
-    setLoading(false)
-  }, [tenantId, fetchTenantDetail])
+    setLoading(false);
+  }, [tenantId]);
 
   const syncConfirmedSlotsToBlocked = useCallback(async () => {
-    if (!tenantId) return
+    if (!tenantId) return;
 
     const confirmedList = reservations.filter((r) => {
-      const s = (r.status || '').toLowerCase()
-      return s === 'confirmed' || s === 'dikonfirmasi'
-    })
+      const s = (r.status || '').toLowerCase();
+      return s === 'confirmed' || s === 'dikonfirmasi';
+    });
 
-    if (confirmedList.length === 0) return
+    if (confirmedList.length === 0) return;
 
     for (const item of confirmedList) {
       const exists = blockedSlots.some(
         (b) => b.block_date === item.booking_date && b.block_time === item.booking_time
-      )
+      );
 
       if (!exists) {
         await supabase.from('blocked_slots').insert([
@@ -492,68 +477,71 @@ export default function AdminDashboard() {
             block_time: item.booking_time,
             reason: `Otomatis: Booking Confirmed (${item.customer_name})`
           }
-        ])
+        ]);
       }
     }
-    fetchBlockedSlots()
-  }, [reservations, blockedSlots, tenantId, fetchBlockedSlots])
+    
+    if (typeof fetchBlockedSlots === 'function') {
+      fetchBlockedSlots();
+    }
+  }, [reservations, blockedSlots, tenantId, fetchBlockedSlots]);
 
   const updateStatusInDB = async (id: number, newStatus: string) => {
     const { error } = await supabase
       .from('reservations')
       .update({ status: newStatus })
-      .eq('id', id)
+      .eq('id', id);
 
     if (error) {
-      alert('Gagal update status: ' + error.message)
+      alert('Gagal update status: ' + error.message);
     } else {
-      await fetchReservations()
+      await fetchReservations();
       if (newStatus === 'confirmed') {
-        syncConfirmedSlotsToBlocked()
+        syncConfirmedSlotsToBlocked();
       }
     }
-  }
+  };
 
   const handleStatusChange = (item: Reservation, newStatus: string) => {
     if ((newStatus === 'cancelled' || newStatus === 'cancelled_need_refund') && subscriptionPlan === 'PROFESIONAL') {
-      setCancelModalItem(item)
+      setCancelModalItem(item);
     } else {
-      updateStatusInDB(item.id, newStatus)
+      updateStatusInDB(item.id, newStatus);
     }
-  }
+  };
 
   const handleConfirmCancel = async (needRefund: boolean) => {
-    if (!cancelModalItem) return
-    const statusText = needRefund ? 'cancelled_need_refund' : 'cancelled'
-    await updateStatusInDB(cancelModalItem.id, statusText)
-    setCancelModalItem(null)
-  }
+    if (!cancelModalItem) return;
+    const statusText = needRefund ? 'cancelled_need_refund' : 'cancelled';
+    await updateStatusInDB(cancelModalItem.id, statusText);
+    setCancelModalItem(null);
+  };
 
   const handleCompleteRefund = async (id: number) => {
-    const isConfirmed = window.confirm('Apakah kamu yakin refund untuk pesanan ini sudah ditransfer balik ke pelanggan?')
-    if (!isConfirmed) return
-    await updateStatusInDB(id, 'cancelled_refunded')
-  }
+    const isConfirmed = window.confirm('Apakah kamu yakin refund untuk pesanan ini sudah ditransfer balik ke pelanggan?');
+    if (!isConfirmed) return;
+    await updateStatusInDB(id, 'cancelled_refunded');
+  };
 
   const handleDelete = async (id: number, customerName: string) => {
     const isConfirmed = window.confirm(
       `Apakah kamu yakin ingin menghapus data reservasi atas nama "${customerName}"?`
-    )
+    );
 
-    if (!isConfirmed) return
+    if (!isConfirmed) return;
 
     const { error } = await supabase
       .from('reservations')
       .delete()
-      .eq('id', id)
+      .eq('id', id);
 
     if (error) {
-      alert('Gagal menghapus data: ' + error.message)
+      alert('Gagal menghapus data: ' + error.message);
     } else {
-      setReservations((prev) => prev.filter((item) => item.id !== id))
-      alert('Data reservasi berhasil dihapus!')
+      setReservations((prev) => prev.filter((item) => item.id !== id));
+      alert('Data reservasi berhasil dihapus!');
     }
-  }
+  };
 
   // ============================================================================
   // 10. STATS & REPORT CALCULATIONS
@@ -1087,6 +1075,14 @@ export default function AdminDashboard() {
       initSession()
     }
   }, [tenantSlug, fetchTenantDetail])
+
+  // Tambahkan tepat di bawah useEffect initSession kamu
+  useEffect(() => {
+  if (tenantId) {
+    fetchReservations();
+    fetchBlockedSlots();
+  }
+}, [tenantId]);
 
   // ============================================================================
   // 14. DYNAMIC THEME SYSTEM COMPUTATION
