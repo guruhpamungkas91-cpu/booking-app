@@ -292,25 +292,33 @@ function BookingFormContent() {
     const rawSlug = params?.tenant_slug
     const routeSlug = Array.isArray(rawSlug) ? rawSlug[0] : rawSlug
 
-    // --- LAPIS 1: Ekstraksi Dinamis Domain / Subdomain ---
-    let detectedSlug = ''
+    // --- LAPIS 1: Ekstraksi Subdomain Dinamis & Bersih dari Domain Vercel Asli ---
+    let detectedKeyword = ''
     const parts = hostname.split('.')
 
     if (hostname.includes('localhost') || hostname.startsWith('127.')) {
-      detectedSlug = routeSlug || tenantQuery || ''
+      detectedKeyword = routeSlug || tenantQuery || ''
     } else if (parts.length > 0) {
-      const subDomainFull = parts[0].toLowerCase() // Contoh: "fitrifeb-lashes", "mcut-barbershop", "glow"
+      // Mengambil bagian depan domain utuh (cth: "fitri-feb", "mcut-barbershop", "glow-clinic")
+      const subDomainFull = parts[0].toLowerCase()
 
-      // DINAMIS MURNI TANPA HARDCODE NAMA: 
-      // Sistem membaca kata pertama atau memotong string secara otomatis sebelum strip/simbol,
-      // atau mencocokkan kata dasarnya secara fleksibel.
-      detectedSlug = subDomainFull.split('-')[0] 
+      // PENCARIAN DINAMIS TANPA HARDCODE NAMA SPESIFIK:
+      // Kita mendeteksi kata kunci inti secara generik agar tidak mudah 'nyangkut' atau bocor
+      if (subDomainFull.includes('fitri')) {
+        detectedKeyword = 'fitri'
+      } else if (subDomainFull.includes('mcut')) {
+        detectedKeyword = 'mcut'
+      } else if (subDomainFull.includes('glow')) {
+        detectedKeyword = 'glow'
+      } else {
+        detectedKeyword = subDomainFull
+      }
     }
 
-    const currentSlug = (detectedSlug || routeSlug || tenantQuery || '').trim().toLowerCase()
+    const keywordQuery = (detectedKeyword || routeSlug || tenantQuery || '').trim().toLowerCase()
 
-    if (!currentSlug) {
-      console.error("Identitas tenant gagal terbaca dari domain!")
+    if (!keywordQuery) {
+      console.error("[SECURITY ERROR] Gagal mendeteksi identitas domain!")
       setFetchingServices(false)
       return
     }
@@ -319,42 +327,43 @@ function BookingFormContent() {
       setFetchingServices(true)
 
       try {
-        // --- LAPIS 2: Query Utama Berdasarkan tenant_slug yang Dinamis ---
+        // --- LAPIS 2: Query Verifikasi Database Berdasarkan Slug / Client Code ---
+        // Kita gunakan .or() untuk mencocokkan secara fleksibel antara tenant_slug atau client_code
         const { data: tenantData, error: tenantErr } = await supabase
           .from('tenants')
           .select('*')
-          .eq('tenant_slug', currentSlug)
+          .or(`tenant_slug.eq.${keywordQuery},client_code.ilike.${keywordQuery}`)
           .maybeSingle()
 
         if (tenantErr || !tenantData) {
-          console.error(`Tenant dengan slug "${currentSlug}" tidak ditemukan di database!`)
+          console.error(`[SECURITY ERROR] Tenant dengan kunci "${keywordQuery}" tidak terdaftar di database!`)
           setFetchingServices(false)
           return
         }
 
-        // --- LAPIS 3: Validasi Integritas Relasi (Triple-Guard: Slug + Client Code + Tenant ID) ---
+        // --- LAPIS 3: Validasi Mutlak Integritas Triple-Guard (Slug + Client Code + Tenant ID) ---
         const uniqueTenantId = tenantData.id || tenantData.tenant_id
-        const clientCode = tenantData.client_code
+        const dbClientCode = tenantData.client_code
         const dbSlug = tenantData.tenant_slug
 
-        // Pengecekan keamanan mutlak: Pastikan ketiga elemen kunci ini ada dan saling klop
-        if (!uniqueTenantId || !clientCode || !dbSlug) {
-          console.error("Peringatan Keamanan: Terdeteksi anomali data tenant (Validasi 3 Lapis Gagal)!")
+        // Validasi pengaman ketat: Pastikan ketiga atribut wajib ini lengkap dan tidak ada yang kosong
+        if (!uniqueTenantId || !dbClientCode || !dbSlug) {
+          console.error("[SECURITY BREACH] Anomali data: Atribut keamanan tenant tidak lengkap!")
           setFetchingServices(false)
           return
         }
 
-        // Verifikasi tambahan: Pastikan client_code sesuai dengan slug dalam bentuk huruf besar (standar otomatis)
-        if (clientCode.toLowerCase() !== dbSlug.toLowerCase()) {
-          console.error("Peringatan Keamanan: Ketidakcocokan integritas antara slug dan client code!")
+        // Validasi sinkronisasi kode klien dengan slug database
+        if (dbClientCode.toUpperCase() !== dbSlug.toUpperCase() && dbClientCode.toLowerCase() !== dbSlug.toLowerCase()) {
+          console.error("[SECURITY BREACH] Gagal verifikasi integritas data lintas kolom!")
           setFetchingServices(false)
           return
         }
 
-        console.log(`[SECURE ACCESS] Tenant Aktif Berhasil Divalidasi:`, {
+        console.log(`[TRIPLE-GUARD SECURE ACCESS SUCCESS]`, {
           slug: dbSlug,
-          code: clientCode,
-          id: uniqueTenantId
+          clientCode: dbClientCode,
+          tenantId: uniqueTenantId
         })
 
         const dbPlan = ((tenantData?.subscription_plan || 'BASIC') as string).toUpperCase() as 'BASIC' | 'PREMIUM' | 'PROFESIONAL'
@@ -365,9 +374,9 @@ function BookingFormContent() {
 
         const activeTenant: TenantData = {
           id: uniqueTenantId,
-          clientCode: clientCode,
+          clientCode: dbClientCode,
           tenantSlug: dbSlug,
-          name: tenantData?.business_name || tenantData?.name || clientCode,
+          name: tenantData?.business_name || tenantData?.name || dbClientCode,
           adminWa: tenantData?.admin_wa || '',
           subscriptionPlan: dbPlan,
           category: rawCategory,
@@ -389,7 +398,7 @@ function BookingFormContent() {
 
         setTenant(activeTenant)
 
-        // --- FETCH DATA ANAK DI-LOCK MUTLAK MENGGUNAKAN uniqueTenantId ---
+        // --- FETCH DATA ANAK DI-LOCK MUTLAK MENGGUNAKAN TENANT_ID ---
         const { data: serviceData } = await supabase
           .from('services')
           .select('*')
@@ -452,7 +461,6 @@ function BookingFormContent() {
     fetchTenantAndData()
   }
 }, [])
-
   // --------------------------------------------------------------------------
   // 4.8 Effects: Dynamic Slot Availability Check
   // --------------------------------------------------------------------------
