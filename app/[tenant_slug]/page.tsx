@@ -309,15 +309,14 @@ function BookingFormContent() {
       const tenantQuery = searchParams.get('tenant')
 
       let detectedKeyword = ''
-      const parts = hostname.split('.')
 
       if (hostname.includes('localhost') || hostname.startsWith('127.')) {
-        detectedKeyword = routerSlug || tenantQuery || ''
-      } else if (parts.length > 0) {
-        detectedKeyword = parts[0].toLowerCase()
+      detectedKeyword = routerSlug || tenantQuery || ''
+      } else {
+      detectedKeyword = hostname.toLowerCase() // <-- Ambil seluruh hostname (misal: mcut-barbershop.vercel.app)
       }
 
-      const keywordQuery = (detectedKeyword || tenantQuery || routerSlug || '').trim().toLowerCase()
+const keywordQuery = (detectedKeyword || tenantQuery || routerSlug || '').trim().toLowerCase()
 
       if (!keywordQuery) {
         setFetchingServices(false)
@@ -331,7 +330,7 @@ function BookingFormContent() {
           const { data: tenantData, error: tenantErr } = await supabase
             .from('tenants')
             .select('*')
-            .or(`tenant_slug.eq.${keywordQuery},client_code.ilike.${keywordQuery}`)
+            .or(`domain.eq.${keywordQuery},tenant_slug.eq.${keywordQuery},client_code.ilike.${keywordQuery}`)
             .maybeSingle()
 
           if (tenantErr || !tenantData) {
