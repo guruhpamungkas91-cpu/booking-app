@@ -328,9 +328,9 @@ const keywordQuery = (detectedKeyword || tenantQuery || routerSlug || '').trim()
 
         try {
           const { data: tenantData, error: tenantErr } = await supabase
-            .from('tenants')
+          .from('tenants')
             .select('*')
-            .or(`domain.eq.${keywordQuery},tenant_slug.eq.${keywordQuery},client_code.ilike.${keywordQuery}`)
+            .or(`domain.eq.${keywordQuery},domain_url.eq.${keywordQuery},tenant_slug.eq.${keywordQuery},client_code.ilike.${keywordQuery}`)
             .maybeSingle()
 
           if (tenantErr || !tenantData) {
