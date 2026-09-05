@@ -17,7 +17,7 @@ export async function POST(request: Request) {
 
     const supabase = createClient(supabaseUrl, supabaseKey)
 
-    // 1. Cek dulu apakah slot jam yang dipilih diblokir/libur
+    // 1. Cek dulu apakah slot jam yang dipilih diblokir/libur oleh admin
     const { data: checkBlocked, error: checkErr } = await supabase
       .from('blocked_slots')
       .select('id')
@@ -26,10 +26,6 @@ export async function POST(request: Request) {
       .eq('start_time', body.booking_time)
       .maybeSingle()
 
-    if (checkErr) {
-      console.error('Error Cek Blocked Slot:', checkErr)
-    }
-
     if (checkBlocked) {
       return NextResponse.json(
         { error: 'Maaf, tanggal dan jam ini sudah diblokir oleh admin.' },
@@ -37,7 +33,19 @@ export async function POST(request: Request) {
       )
     }
 
-    // 2. Sanitasi payload
+    // 2. AMBIL MAX QUOTA DINAMIS DARI DATABASE TENANT_SLOTS
+    // Ini kuncinya supaya usaha A (kuota > 1) dan usaha B (kuota 1) bisa dibedakan!
+    const { data: slotConfig, error: slotConfigErr } = await supabase
+      .from('tenant_slots')
+      .select('max_quota')
+      .eq('tenant_slug', body.tenant_slug) // atau pakai tenant_id jika relasinya pakai ID
+      .eq('time_slot', body.booking_time)
+      .maybeSingle()
+
+    // Jika tenant tidak setting slot khusus, fallback default ke 1
+    const targetMaxQuota = slotConfig?.max_quota || 1
+
+    // 3. Sanitasi payload
     const payload = {
       customer_name: body.customer_name || '',
       whatsapp_number: body.whatsapp_number || '',
@@ -57,12 +65,12 @@ export async function POST(request: Request) {
       eye_shape_notes: body.eye_shape_notes || null
     }
 
-    // 3. PANGGIL SUPABASE RPC (Aman dari Double Booking / Race Condition)
+    // 4. PANGGIL SUPABASE RPC DENGAN QUOTA DINAMIS
     const { data: rpcData, error: rpcError } = await supabase.rpc('book_slot_safely', {
       p_tenant_slug: payload.tenant_slug,
       p_booking_date: payload.booking_date,
       p_booking_time: payload.booking_time,
-      p_max_quota: 1, // Sesuaikan kuota per jam (bisa diatur dinamis jika diperlukan)
+      p_max_quota: targetMaxQuota, // <--- Menggunakan kuota dinamis sesuai settingan usaha!
       p_customer_data: payload
     })
 
@@ -71,18 +79,17 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: rpcError.message }, { status: 400 })
     }
 
-    // Cek hasil validasi dari fungsi database
     if (!rpcData.success) {
       return NextResponse.json({ error: rpcData.message }, { status: 400 })
     }
 
     return NextResponse.json({ success: true, data: rpcData }, { status: 200 })
 
-    } catch (err: any) {
-      console.error('Server Internal Error:', err)
-      return NextResponse.json(
-        { error: err.message || 'Internal Server Error' },
-        { status: 500 }
-      )
-    }
+  } catch (err: any) {
+    console.error('Server Internal Error:', err)
+    return NextResponse.json(
+      { error: err.message || 'Internal Server Error' },
+      { status: 500 }
+    )
+  }
 }
