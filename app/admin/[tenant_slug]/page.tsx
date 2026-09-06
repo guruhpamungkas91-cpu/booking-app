@@ -487,6 +487,9 @@ export default function AdminDashboard() {
   }, [reservations, blockedSlots, tenantId, fetchBlockedSlots]);
 
   const updateStatusInDB = async (id: number, newStatus: string) => {
+    // 1. Cari data reservasi yang mau di-update berdasarkan ID sebelum di-update di DB
+    const targetReservation = reservations.find((r) => r.id === id);
+
     const { error } = await supabase
       .from('reservations')
       .update({ status: newStatus })
@@ -495,9 +498,41 @@ export default function AdminDashboard() {
     if (error) {
       alert('Gagal update status: ' + error.message);
     } else {
+      // 2. Jika status diubah menjadi CONFIRMED -> Masukkan ke blocked_slots
+      if (newStatus === 'confirmed' || newStatus === 'dikonfirmasi') {
+        if (targetReservation && tenantId) {
+          const exists = blockedSlots.some(
+            (b) => b.block_date === targetReservation.booking_date && b.block_time === targetReservation.booking_time
+          );
+          if (!exists) {
+            await supabase.from('blocked_slots').insert([
+              {
+                tenant_id: tenantId,
+                block_date: targetReservation.booking_date,
+                block_time: targetReservation.booking_time,
+                reason: `Otomatis: Booking Confirmed (${targetReservation.customer_name})`
+              }
+            ]);
+          }
+        }
+      } 
+      
+      // 3. Jika status diubah menjadi CANCELLED -> Hapus dari blocked_slots agar jamnya buka kembali
+      else if (newStatus.includes('cancelled')) {
+        if (targetReservation && tenantId) {
+          await supabase
+            .from('blocked_slots')
+            .delete()
+            .eq('tenant_id', tenantId)
+            .eq('block_date', targetReservation.booking_date)
+            .eq('block_time', targetReservation.booking_time);
+        }
+      }
+
+      // 4. Refresh data terbaru di state dashboard
       await fetchReservations();
-      if (newStatus === 'confirmed') {
-        syncConfirmedSlotsToBlocked();
+      if (typeof fetchBlockedSlots === 'function') {
+        fetchBlockedSlots();
       }
     }
   };
@@ -1058,6 +1093,10 @@ export default function AdminDashboard() {
       setTenantCode(currentTenant.tenant_slug)
       setControlCenterLabel(currentTenant.control_center_label || 'Control Center')
       setSelectedTheme((currentTenant.theme_color || 'purple') as ThemeMode)
+      
+      // 👉 TAMBAHKAN INI AGAR STATE SINKRON DARI DATABASE SAAT REFRESH
+      setPreventDoubleBooking(currentTenant.prevent_double_booking ?? true)
+      setHideBookedSlots(currentTenant.hide_booked_slots ?? false) // atau ikuti default database lu
     } else if (currentTenant) {
       // Belum login, set data publik tenant untuk form login
       setTenantId(currentTenant.id)
@@ -1066,6 +1105,10 @@ export default function AdminDashboard() {
       setTenantCode(currentTenant.tenant_slug)
       setControlCenterLabel(currentTenant.control_center_label || 'Control Center')
       setSelectedTheme((currentTenant.theme_color || 'purple') as ThemeMode)
+      // 👉 TAMBAHKAN JUGA DI SINI UNTUK MODE PUBLIC/VIEWER
+      setPreventDoubleBooking(currentTenant.prevent_double_booking ?? true)
+      setHideBookedSlots(currentTenant.hide_booked_slots ?? false)
+
     }
 
     setIsInitializing(false)

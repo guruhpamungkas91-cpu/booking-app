@@ -41,34 +41,37 @@ interface StaffItem {
 }
 
 interface TenantData {
-  id?: string
-  clientCode: string
-  tenantSlug: string
-  name: string
-  adminWa: string
-  subscriptionPlan: 'BASIC' | 'PREMIUM' | 'PROFESIONAL'
-  category: string
-  staffLabel: string
-  layoutType: 'BASIC_SINGLE_PAGE' | 'STEP_WIZARD'
-  themeColor: 'rose' | 'amber' | 'teal' | 'indigo' | 'emerald' | string
-  requireConsent: boolean
-  showExtraAddon: boolean
-  addonLabel: string
-  addonPrice: number
-  dpType: 'FIXED' | 'PERCENTAGE'
-  dpValue: number
+  id?: number | string
+  clientCode?: string
+  tenantSlug?: string
+  name?: string
+  adminWa?: string
+  subscriptionPlan?: string
+  category?: string
+  staffLabel?: string
+  layoutType?: string
+  themeColor?: string
+  requireConsent?: boolean
+  showExtraAddon?: boolean
+  addonLabel?: string
+  addonPrice?: number
+  dpType?: string
+  dpValue?: number
   waGatewayUrl?: string
   waApiKey?: string
   qrisUrl?: string
-  preventDoubleBooking: boolean
-  hideBookedSlots: boolean
-  maxPersonPerBooking: number // Dideklarasikan di sini agar tidak error
+  preventDoubleBooking?: boolean
+  hideBookedSlots?: boolean
+  maxPersonPerBooking?: number
+  enableAutoDisableTimeSlots?: boolean
+  enableSlotBlocking?: boolean
 }
 
 interface TimeSlot {
   time: string
-  maxQuota: number
-  bookedCount: number
+  maxQuota?: number
+  max_quota?: number
+  bookedCount?: number
 }
 
 // ============================================================================
@@ -108,14 +111,16 @@ function BookingFormContent() {
     showExtraAddon: false,
     addonLabel: '', 
     addonPrice: 0,   
-    dpType: 'PERCENTAGE', // Fallback default jika kosong
-    dpValue: 50,          // Fallback default jika kosong
+    dpType: 'PERCENTAGE',
+    dpValue: 50,          
     waGatewayUrl: '',
     waApiKey: '',
     qrisUrl: '',
     preventDoubleBooking: true,
     hideBookedSlots: false,
-    maxPersonPerBooking: 5 // Fallback default maksimal orang per booking
+    maxPersonPerBooking: 5,
+    enableAutoDisableTimeSlots: true,
+    enableSlotBlocking: true
   })
 
   // --------------------------------------------------------------------------
@@ -143,13 +148,11 @@ function BookingFormContent() {
   // --------------------------------------------------------------------------
   // 4.3 State Management (Availability & Slots)
   // --------------------------------------------------------------------------
-    const [blockedSlots, setBlockedSlots] = useState<{ block_date: string; block_time: string }[]>([])
-    const [blockedTimes, setBlockedTimes] = useState<string[]>([])
-    const [bookedTimes, setBookedTimes] = useState<string[]>([])
-    const [loadingSlots, setLoadingSlots] = useState<boolean>(false)
-
-    // Diubah jadi array kosong agar dinamis ditarik dari database tenant_slots!
-    const [availableSlots, setAvailableSlots] = useState<TimeSlot[]>([])
+  const [blockedSlots, setBlockedSlots] = useState<{ block_date: string; block_time: string }[]>([])
+  const [blockedTimes, setBlockedTimes] = useState<string[]>([])
+  const [bookedReservations, setBookedReservations] = useState<any[]>([])
+  const [loadingSlots, setLoadingSlots] = useState<boolean>(false)
+  const [availableSlots, setAvailableSlots] = useState<TimeSlot[]>([])
 
   // --------------------------------------------------------------------------
   // 4.4 State Management (User Form Inputs)
@@ -160,7 +163,7 @@ function BookingFormContent() {
     booking_date: '',
     booking_time: '',
     selected_services: [] as string[],
-    selectedAddonIds: [] as number[], // Multi-select add-on ID
+    selectedAddonIds: [] as number[],
     selected_staff: '',
     payment_method: 'Cash / Bayar di Tempat',
     person_count: 1,
@@ -169,9 +172,7 @@ function BookingFormContent() {
     custom_notes: ''
   })
   
-  // State kuantitas orang per add-on
   const [addonQuantities, setAddonQuantities] = useState<{ [key: number]: number }>({})
-
   const [loading, setLoading] = useState(false)
   
   // --------------------------------------------------------------------------
@@ -182,7 +183,6 @@ function BookingFormContent() {
   const isPremium = tenant.subscriptionPlan === 'PREMIUM'
   const isPro = tenant.subscriptionPlan === 'PROFESIONAL'
 
-  // Dynamic Theme Styling Generator
   const getThemeClasses = (color: string) => {
     switch (color) {
       case 'rose':
@@ -232,7 +232,7 @@ function BookingFormContent() {
     }
   }
 
-  const theme = getThemeClasses(tenant.themeColor)
+  const theme = getThemeClasses(tenant.themeColor || 'rose')
 
   // --------------------------------------------------------------------------
   // 4.6 Calculations (Pricing, DP & Payment Methods)
@@ -266,10 +266,11 @@ function BookingFormContent() {
 
   const calculateDP = () => {
     if (isBasic) return grandTotal
+    const dpVal = tenant.dpValue ?? 50
     if (tenant.dpType === 'FIXED') {
-      return tenant.dpValue > grandTotal ? grandTotal : tenant.dpValue
+      return dpVal > grandTotal ? grandTotal : dpVal
     }
-    return Math.round(grandTotal * (tenant.dpValue / 100))
+    return Math.round(grandTotal * (dpVal / 100))
   }
 
   const dpAmount = calculateDP()
@@ -278,9 +279,7 @@ function BookingFormContent() {
 
   const getAvailablePaymentMethods = () => {
     if (isBasic) {
-      return [
-        { id: 'Cash / Bayar di Tempat', label: 'Cash / Bayar di Tempat' }
-      ]
+      return [{ id: 'Cash / Bayar di Tempat', label: 'Cash / Bayar di Tempat' }]
     }
     if (isPremium) {
       return [
@@ -311,56 +310,46 @@ function BookingFormContent() {
       let detectedKeyword = ''
 
       if (hostname.includes('localhost') || hostname.startsWith('127.')) {
-      detectedKeyword = routerSlug || tenantQuery || ''
+        detectedKeyword = routerSlug || tenantQuery || ''
       } else {
-      detectedKeyword = hostname.toLowerCase() // <-- Ambil seluruh hostname (misal: mcut-barbershop.vercel.app)
+        detectedKeyword = hostname.toLowerCase()
       }
 
       const keywordQuery = (detectedKeyword || tenantQuery || routerSlug || '').trim().toLowerCase()
 
-if (!keywordQuery) {
-  setFetchingServices(false)
-  return
-}
+      if (!keywordQuery) {
+        setFetchingServices(false)
+        return
+      }
 
-const fetchTenantAndData = async () => {
-  setFetchingServices(true)
+      const fetchTenantAndData = async () => {
+        setFetchingServices(true)
 
-  try {
-    console.log("1. Keyword yang dicari:", keywordQuery)
+        try {
+          const { data: tenantData, error: tenantErr } = await supabase
+            .from('tenants')
+            .select('*')
+            .or(`domain.eq.${keywordQuery},domain_url.eq.${keywordQuery},tenant_slug.eq.${keywordQuery},client_code.ilike.${keywordQuery}`)
+            .maybeSingle()
 
-    const { data: tenantData, error: tenantErr } = await supabase
-      .from('tenants')
-      .select('*')
-      .or(`domain.eq.${keywordQuery},domain_url.eq.${keywordQuery},tenant_slug.eq.${keywordQuery},client_code.ilike.${keywordQuery}`)
-      .maybeSingle()
+          if (tenantErr || !tenantData) {
+            setFetchingServices(false)
+            return
+          }
 
-    console.log("2. Hasil query tenant:", { tenantData, tenantErr })
+          const uniqueTenantId = tenantData.id || tenantData.tenant_id
+          const dbClientCode = tenantData.client_code
+          const dbSlug = tenantData.tenant_slug
 
-    if (tenantErr || !tenantData) {
-      console.error("Tenant error atau tidak ditemukan:", tenantErr)
-      setFetchingServices(false)
-      return
-    }
+          if (!uniqueTenantId || !dbClientCode || !dbSlug) {
+            setFetchingServices(false)
+            return
+          }
 
-    const uniqueTenantId = tenantData.id || tenantData.tenant_id
-    const dbClientCode = tenantData.client_code
-    const dbSlug = tenantData.tenant_slug
-
-    console.log("3. Data dicek:", { uniqueTenantId, dbClientCode, dbSlug })
-
-    if (!uniqueTenantId || !dbClientCode || !dbSlug) {
-      console.error("Data tenant ada yang kosong!")
-      setFetchingServices(false)
-      return
-    }
-
-    // CEK VALIDASI INI
-    if (dbClientCode.toUpperCase() !== dbSlug.toUpperCase()) {
-      console.error("GAGAL DI VALIDASI CLIENT CODE vs SLUG:", dbClientCode, "vs", dbSlug)
-      setFetchingServices(false)
-      return
-    }
+          if (dbClientCode.toUpperCase() !== dbSlug.toUpperCase()) {
+            setFetchingServices(false)
+            return
+          }
 
           const dbPlan = ((tenantData?.subscription_plan || 'BASIC') as string).toUpperCase() as 'BASIC' | 'PREMIUM' | 'PROFESIONAL'
           const rawCategory = tenantData?.category || 'Layanan'
@@ -387,12 +376,13 @@ const fetchTenantAndData = async () => {
             qrisUrl: tenantData?.qris_url || '',
             preventDoubleBooking: tenantData?.prevent_double_booking ?? true,
             hideBookedSlots: tenantData?.hide_booked_slots ?? false,
-            maxPersonPerBooking: tenantData?.max_person_per_booking || 5, // Ditarik dari database tenant
+            maxPersonPerBooking: tenantData?.max_person_per_booking || 5,
+            enableAutoDisableTimeSlots: tenantData?.enable_auto_disable_time_slots ?? true,
+            enableSlotBlocking: tenantData?.enable_slot_blocking ?? true
           }
 
           setTenant(activeTenant)
 
-          // Fetch Slot Dinamis Supabase
           const { data: slotData } = await supabase
             .from('tenant_slots')
             .select('time_slot, max_quota')
@@ -402,13 +392,14 @@ const fetchTenantAndData = async () => {
 
           if (slotData && slotData.length > 0) {
             const formattedSlots: TimeSlot[] = slotData.map((s) => ({
-              time: s.time_slot.substring(0, 5), // Format 'HH:MM'
+              time: s.time_slot.substring(0, 5),
               maxQuota: s.max_quota,
+              max_quota: s.max_quota,
               bookedCount: 0
             }))
             setAvailableSlots(formattedSlots)
           } else {
-            setAvailableSlots([]) // Fallback jika tenant belum setting jam
+            setAvailableSlots([])
           }
 
           const { data: serviceData } = await supabase
@@ -446,9 +437,10 @@ const fetchTenantAndData = async () => {
 
           const { data: confirmedReservations } = await supabase
             .from('reservations')
-            .select('booking_date, booking_time')
+            .select('booking_date, booking_time, status')
             .eq('tenant_id', uniqueTenantId)
-            .eq('status', 'confirmed')
+            .neq('status', 'cancelled')
+            .neq('status', 'refunded')
 
           const combinedBlockedSlots = [
             ...(blockedData?.map((item) => ({
@@ -483,22 +475,26 @@ const fetchTenantAndData = async () => {
     const fetchAvailability = async () => {
       setLoadingSlots(true)
       try {
-        const res = await fetch(`/api/availability?date=${formData.booking_date}&tenant_slug=${tenant.tenantSlug}`)
+        const staffParam = formData.selected_staff ? `&staff=${encodeURIComponent(formData.selected_staff)}` : ''
+        const res = await fetch(`/api/availability?date=${formData.booking_date}&tenant_slug=${tenant.tenantSlug}${staffParam}`)
+        
         if (res.ok) {
           const data = await res.json()
           setBlockedTimes(data.blockedTimes || [])
-          setBookedTimes(data.bookedTimes || [])
-          
-          // ✅ TAMBAHKAN INI: Masukkan data slots dari API ke state availableSlots
+          // Hanya ambil reservasi yang aktif (abaikan cancelled/refunded)
+          const activeBookings = (data.bookedReservations || []).filter(
+            (b: any) => b.status !== 'cancelled' && b.status !== 'refunded'
+          )
+          setBookedReservations(activeBookings)
           setAvailableSlots(data.slots || []) 
         } else {
           setBlockedTimes([])
-          setBookedTimes([])
+          setBookedReservations([])
           setAvailableSlots([])
         }
       } catch (err) {
         setBlockedTimes([])
-        setBookedTimes([])
+        setBookedReservations([])
         setAvailableSlots([])
       } finally {
         setLoadingSlots(false)
@@ -506,7 +502,7 @@ const fetchTenantAndData = async () => {
     }
 
     fetchAvailability()
-  }, [formData.booking_date, tenant?.tenantSlug])
+  }, [formData.booking_date, formData.selected_staff, tenant?.tenantSlug])
 
   // --------------------------------------------------------------------------
   // 4.9 Effects: Generate Dynamic QRIS Payment
@@ -563,39 +559,49 @@ const fetchTenantAndData = async () => {
     if (isBasic) return false
     if (!date || !time) return false
 
-    const isSupabaseBlocked = blockedSlots.some(
-      (slot) => slot.block_date === date && slot.block_time === time
-    )
-
+    // Periksa apakah slot ini diblokir manual di tabel blocked_slots
     const isManualApiBlocked = blockedTimes.includes(time)
 
-    return isSupabaseBlocked || isManualApiBlocked
+    return isManualApiBlocked
   }
 
-  const isTimeDisabled = (timeString: string, maxQuota: number, currentBookings: number) => {
+  const isTimeDisabled = (timeString: string, maxQuota: number) => {
     if (isBasic) return false
 
     if (isSlotBlocked(formData.booking_date, timeString)) return true
 
+    // Filter reservasi aktif pada jam tersebut (abaikan cancelled dan refunded)
+    const activeBookingsAtThisTime = bookedReservations.filter(
+      b => b.time === timeString && b.status !== 'cancelled' && b.status !== 'refunded'
+    )
+
+    const totalBookingsCount = activeBookingsAtThisTime.length
+
+    // Jika Prevent Double Booking AKTIF (TRUE)
     if (tenant.preventDoubleBooking) {
-      const isBooked = bookedTimes.includes(timeString)
-      const isQuotaFull = currentBookings >= maxQuota
-      if (isBooked || isQuotaFull) return true
+      if (totalBookingsCount >= maxQuota) return true
+      if (formData.selected_staff) {
+        const isStaffBooked = activeBookingsAtThisTime.some(
+          b => (b.staff === formData.selected_staff || b.staff_name === formData.selected_staff) &&
+               b.status !== 'cancelled' && b.status !== 'refunded'
+        )
+        if (isStaffBooked) return true
+      }
+    } else {
+      // Jika Prevent Double Booking MATI (FALSE):
+      if (totalBookingsCount >= maxQuota) {
+        return true
+      }
     }
 
-    if (formData.booking_date) {
+    // Cek auto disable berdasarkan waktu jam sekarang (jika hari ini)
+    if (tenant.enableAutoDisableTimeSlots && formData.booking_date) {
       const selectedDate = new Date(formData.booking_date)
       const now = new Date()
-
-      if (
-        selectedDate.getFullYear() === now.getFullYear() &&
-        selectedDate.getMonth() === now.getMonth() &&
-        selectedDate.getDate() === now.getDate()
-      ) {
+      if (selectedDate.toDateString() === now.toDateString()) {
         const [hours, minutes] = timeString.split(':').map(Number)
         const slotTime = new Date()
         slotTime.setHours(hours, minutes, 0, 0)
-
         if (slotTime < now) return true
       }
     }
@@ -615,20 +621,33 @@ const fetchTenantAndData = async () => {
     selectedTime: string
     onSelectTime: (time: string) => void
   }) => {
-    const filteredSlots = availableSlots.filter((slot) => {
-      if (isBasic) return true
-      if (!tenant.hideBookedSlots) return true
-
-      const isBooked = bookedTimes.includes(slot.time) || slot.bookedCount >= slot.maxQuota
-      return !isBooked
+    const displayedSlots = availableSlots.filter((slot) => {
+      const slotQuota = slot.maxQuota ?? slot.max_quota ?? 2
+      const disabled = isTimeDisabled(slot.time, slotQuota)
+      
+      if (tenant.hideBookedSlots && disabled) {
+        return false
+      }
+      return true
     })
 
     return (
       <div className="grid grid-cols-3 gap-2 mt-2">
-        {filteredSlots.map((slot) => {
-          const disabled = isTimeDisabled(slot.time, slot.maxQuota, slot.bookedCount)
+        {displayedSlots.map((slot) => {
+          const slotQuota = slot.maxQuota ?? slot.max_quota ?? 2
+          const disabled = isTimeDisabled(slot.time, slotQuota)
           const isSelected = selectedTime === slot.time
-          const isBooked = !isBasic && (bookedTimes.includes(slot.time) || slot.bookedCount >= slot.maxQuota)
+          
+          const activeBookings = bookedReservations.filter(
+            b => b.time === slot.time && b.status !== 'cancelled' && b.status !== 'refunded'
+          )
+          const totalBookings = activeBookings.length
+          
+          const isStaffBooked = (formData.selected_staff && tenant.preventDoubleBooking)
+            ? activeBookings.some(b => (b.staff === formData.selected_staff || b.staff_name === formData.selected_staff) && b.status !== 'cancelled' && b.status !== 'refunded')
+            : false
+            
+          const isBookedBadge = !isBasic && (totalBookings >= slotQuota || isStaffBooked)
 
           return (
             <button
@@ -645,7 +664,7 @@ const fetchTenantAndData = async () => {
               }`}
             >
               <span>{slot.time}</span>
-              {isBooked && (
+              {isBookedBadge && (
                 <span className="block text-[9px] text-rose-400 font-normal">Penuh</span>
               )}
             </button>
@@ -823,7 +842,7 @@ const fetchTenantAndData = async () => {
         }
       }
 
-      const adminPhone = tenant.adminWa
+      const adminPhone = tenant.adminWa || ''
       const formattedPhone = formatWaNumber(adminPhone)
 
       const waUrl = `https://wa.me/${formattedPhone}?text=${encodeURIComponent(messageText)}`
