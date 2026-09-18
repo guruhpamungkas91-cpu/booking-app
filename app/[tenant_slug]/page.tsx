@@ -454,7 +454,10 @@ function BookingFormContent({ initialTenant }: { initialTenant?: TenantData }) {
       if (hostname.includes('localhost') || hostname.startsWith('127.')) {
         detectedKeyword = routerSlug || tenantQuery || ''
       } else {
-        detectedKeyword = hostname.toLowerCase()
+        // Ambil bagian paling depan dari hostname (misal: "glow" dari "glow.bookingpage.site")
+        const parts = hostname.toLowerCase().split('.')
+        // Sesuaikan dengan struktur domain Anda, jika subdomain ada di bagian pertama:
+        detectedKeyword = parts.length > 2 ? parts[0] : hostname.toLowerCase()
       }
 
       const keywordQuery = (detectedKeyword || tenantQuery || routerSlug || '').trim().toLowerCase()
