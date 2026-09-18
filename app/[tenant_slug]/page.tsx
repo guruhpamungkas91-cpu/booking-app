@@ -186,6 +186,8 @@ function BookingFormContent({ initialTenant }: { initialTenant?: TenantData }) {
     enableSlotBlocking: true,
     enable_multi_staff: false,
     enable_multi_service: true,
+    enable_notes: true,
+    enableNotes: true,
     addons: []
   })
 
