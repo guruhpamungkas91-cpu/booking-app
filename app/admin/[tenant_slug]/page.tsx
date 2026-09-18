@@ -8,22 +8,35 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useState, useMemo, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { isPostgrestError } from '@/lib/errorHandler';
 
 // ============================================================================
 // 2. TYPES & INTERFACES
 // ============================================================================
-interface Reservation {
+interface Tenant {
+  id?: string;
+  name?: string;
+  custom_dashboard_theme?: string;
+  [key: string]: any; // Boleh pakai index signature jika propertinya dinamis banget, tapi lebih baik didefinisikan eksplisit
+}
+
+export interface Reservation {
   id: number
   created_at: string
   customer_name: string
   whatsapp_number: string
   service_name: string
   staff_name?: string
+  staff?: string // Ditambahkan untuk backward compatibility data lama
   booking_date: string
   booking_time: string
   payment_method?: string
   status: string
   tenant_id?: string
+  total_price?: number
+  item_price?: number // Ditambahkan untuk mengamankan fungsi getItemPrice
+  price?: number      // Ditambahkan sebagai alternatif properti harga
+  [key: string]: any  // Index signature pengaman untuk properti dinamis lain dari database
 }
 
 interface BlockedSlot {
@@ -31,15 +44,45 @@ interface BlockedSlot {
   created_at?: string
   tenant_id?: string
   block_date: string
+  block_end_date?: string;
   block_time: string
   reason?: string
 }
 
+interface BusinessDataItem {
+  label: string;
+  value: string;
+  amount: string;
+  rawAmount: number;
+}
+
+interface StaffItem {
+  name: string;
+  count: number;
+}
+
 type SortField = 'booking_date' | 'booking_time' | 'customer_name' | 'service_name' | 'staff_name' | 'price' | 'payment_method' | 'status'
 type SortOrder = 'asc' | 'desc'
-type SubscriptionPlanType = 'BASIC' | 'PREMIUM' | 'PROFESIONAL'
+type SubscriptionPlanType = 'PROFESIONAL' | 'ULTIMATE'
 type BusinessType = 'eyelash' | 'barber'
-type ThemeMode = 'purple' | 'pink' | 'amber' | 'emerald' | 'blue'
+type ThemeMode = 'purple' | 'pink' | 'amber' | 'emerald' | 'blue' | 'indigo' | 'green';
+
+// Deklarasikan objek warna di luar komponen agar bersih dari error scope
+const GLOBAL_THEME_3D_COLORS: Record<ThemeMode, { top: string; body: string; glow: string }> = {
+  purple: { top: 'from-purple-400 to-indigo-300', body: 'from-purple-600/80 via-indigo-500/70 to-zinc-950/90', glow: 'shadow-[0_0_20px_rgba(168,85,247,0.3)]' },
+  pink: { top: 'from-pink-400 to-rose-300', body: 'from-pink-600/80 via-rose-500/70 to-zinc-950/90', glow: 'shadow-[0_0_20px_rgba(244,63,94,0.3)]' },
+  amber: { top: 'from-amber-400 to-yellow-300', body: 'from-amber-600/80 via-yellow-500/70 to-zinc-950/90', glow: 'shadow-[0_0_20px_rgba(245,158,11,0.3)]' },
+  emerald: { top: 'from-emerald-400 to-teal-300', body: 'from-emerald-600/80 via-teal-500/70 to-zinc-950/90', glow: 'shadow-[0_0_20px_rgba(16,185,129,0.3)]' },
+  blue: { top: 'from-blue-400 to-cyan-300', body: 'from-blue-600/80 via-cyan-500/70 to-zinc-950/90', glow: 'shadow-[0_0_20px_rgba(59,130,246,0.3)]' },
+  indigo: { top: 'from-blue-400 to-indigo-300', body: 'from-blue-600/80 via-indigo-500/70 to-zinc-950/90', glow: 'shadow-[0_0_20px_rgba(99,102,241,0.3)]' },
+  green: { top: 'from-emerald-400 to-teal-300', body: 'from-emerald-600/80 via-teal-500/70 to-zinc-950/90', glow: 'shadow-[0_0_20px_rgba(16,185,129,0.3)]' },
+};
+
+// 💡 TIPS: Karena isi theme3DColors dan themeStaff3DColors sama persis dengan GLOBAL_THEME_3D_COLORS,
+// Kamu bisa langsung mapping ke sana, atau tulis manual seperti di bawah ini persis di bawah GLOBAL_THEME_3D_COLORS:
+
+const theme3DColors = GLOBAL_THEME_3D_COLORS;
+const themeStaff3DColors = GLOBAL_THEME_3D_COLORS;
 
 // ============================================================================
 // 3. HELPER FUNCTIONS & CONSTANTS
@@ -62,23 +105,66 @@ const SERVICE_PRICES: Record<string, number> = {
 // 4. MAIN DASHBOARD COMPONENT & STATES
 // ============================================================================
 export default function AdminDashboard() {
+  console.log("🔥 HALAMAN ADMIN BERHASIL DIRENDER OLEH NEXT.JS!");
   const params = useParams()
   const tenantSlug = (params?.tenant_slug as string) || ''
 
   const [isInitializing, setIsInitializing] = useState<boolean>(true)
   
-  // State dasar
   const [brandTitle, setBrandTitle] = useState<string>('Memuat...')
   const [businessType, setBusinessType] = useState<string>('barbershop')
   const [staffLabel, setStaffLabel] = useState<string>('Staff')
-  const [selectedTheme, setSelectedTheme] = useState<ThemeMode>('purple')
+  const [staffList, setStaffList] = useState<any[]>([]);
   const [controlCenterLabel, setControlCenterLabel] = useState<string>('Control Center')
 
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [tenantId, setTenantId] = useState<string>('')
   const [tenantCode, setTenantCode] = useState<string>('')
+  const [currentTenant, setCurrentTenant] = useState<Tenant | null>(null);
+  const [financialReportsEnabled, setFinancialReportsEnabled] = useState<boolean>(false)
+  
+  const [businessFilter, setBusinessFilter] = useState<string>('bulanan');
+  const [businessMonth, setBusinessMonth] = useState(String(new Date().getMonth() + 1));
+  const [businessYear, setBusinessYear] = useState(String(new Date().getFullYear()));
+
+  // State baru untuk Performa Staff (biar punya filter bulan & tahun sendiri)
+  const [staffMonth, setStaffMonth] = useState(String(new Date().getMonth() + 1));
+  const [staffYear, setStaffYear] = useState(String(new Date().getFullYear()));
+  
+  const [businessPerformanceEnabled, setBusinessPerformanceEnabled] = useState<boolean>(true);
+  const [staffPerformanceEnabled, setStaffPerformanceEnabled] = useState<boolean>(false)
+  const [slotBlockingEnabled, setSlotBlockingEnabled] = useState<boolean>(true)
+  const [enableMaintenanceFeature, setEnableMaintenanceFeature] = useState<boolean>(false) 
+  const [isMaintenanceMode, setIsMaintenanceMode] = useState<boolean>(false) 
+  const [maintenanceMessage, setMaintenanceMessage] = useState('')
 
   const [subscriptionPlan, setSubscriptionPlan] = useState<SubscriptionPlanType>('PROFESIONAL')
+  const [isSuperAdminToggleActive, setIsSuperAdminToggleActive] = useState<boolean>(false)
+  const [isCustomThemeActive, setIsCustomThemeActive] = useState<boolean>(false)
+  
+  const [enableCustomTheme, setEnableCustomTheme] = useState<boolean>(false);
+
+  const [selectedMode, setSelectedMode] = useState<'dark' | 'light'>(() => {
+    if (typeof window !== 'undefined') {
+      const savedMode = localStorage.getItem('admin_theme_mode');
+      if (savedMode === 'light' || savedMode === 'dark') return savedMode;
+    }
+    return 'dark';
+  });
+
+  const [selectedTheme, setSelectedTheme] = useState<ThemeMode>(() => {
+    if (typeof window !== 'undefined') {
+      const savedTheme = localStorage.getItem('admin_color_theme');
+      if (savedTheme) return savedTheme as ThemeMode;
+    }
+    return 'purple';
+  });
+
+  useEffect(() => {
+    if (currentTenant) {
+      setEnableCustomTheme(Boolean(currentTenant.custom_dashboard_theme));
+    }
+  }, [currentTenant]);
 
   const [emailInput, setEmailInput] = useState('')
   const [passwordInput, setPasswordInput] = useState('')
@@ -87,13 +173,19 @@ export default function AdminDashboard() {
   const [filteredReservations, setFilteredReservations] = useState<Reservation[]>([])
   const [loading, setLoading] = useState(false)
 
-  // STATE BLOCK SLOT DETAILED LOGIC
   const [blockedSlots, setBlockedSlots] = useState<BlockedSlot[]>([])
   const [blockDateInput, setBlockDateInput] = useState('')
+  const [blockStartDate, setBlockStartDate] = useState('')
+  const [blockEndDate, setBlockEndDate] = useState('')
+  const [blockMode, setBlockMode] = useState('fullday')
   const [blockTimeInput, setBlockTimeInput] = useState('10:00')
   const [reasonPreset, setReasonPreset] = useState('Libur Lebaran')
   const [blockReasonInput, setBlockReasonInput] = useState('')
   const [isBlocking, setIsBlocking] = useState(false)
+
+  const [isReservationsModalOpen, setIsReservationsModalOpen] = useState(false);
+  const [customerReservations, setCustomerReservations] = useState<BlockedSlot[]>([]);
+  const [isLoadingReservations, setIsLoadingReservations] = useState(false);
 
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
@@ -101,14 +193,6 @@ export default function AdminDashboard() {
   const [statusFilter, setStatusFilter] = useState('all')
   const [serviceFilter, setServiceFilter] = useState('all')
   const [paymentFilter, setPaymentFilter] = useState('all')
-
-  const [autoWaReminder, setAutoWaReminder] = useState<boolean>(true)
-  const [isUpdatingWaToggle, setIsUpdatingWaToggle] = useState<boolean>(false)
-
-  // STATE FEATURE BOOKING TOGGLES
-  const [preventDoubleBooking, setPreventDoubleBooking] = useState<boolean>(true)
-  const [hideBookedSlots, setHideBookedSlots] = useState<boolean>(true)
-  const [isUpdatingBookingToggle, setIsUpdatingBookingToggle] = useState<boolean>(false)
 
   const [limit, setLimit] = useState<number | 'all'>(10)
   const [currentPage, setCurrentPage] = useState<number>(1)
@@ -126,33 +210,32 @@ export default function AdminDashboard() {
   // ============================================================================
   // 5. AUXILIARY UTILITY FUNCTIONS
   // ============================================================================
-  const sanitizeClientCode = (code?: string) => {
-    if (!code) return ''
-    return code.replace(/[^a-zA-Z0-9]/g, '').toLowerCase()
-  }
-
-  const getServicePrice = (serviceName?: string): number => {
+  const getServicePrice = useCallback((serviceName?: string): number => {
     if (!serviceName) return businessType === 'eyelash' ? 120000 : 50000
     if (serviceName.includes(',')) {
-      const parts = serviceName.split(',').map((s) => s.trim().toLowerCase());
-      
+      const parts = serviceName.split(',').map((s) => s.trim().toLowerCase())
       return parts.reduce((acc, curr) => {
         const matchedKey = Object.keys(SERVICE_PRICES).find(
           (key) => key.toLowerCase() === curr
-        );
-        
+        )
         const price = matchedKey 
           ? SERVICE_PRICES[matchedKey] 
-          : (businessType === 'eyelash' ? 120000 : 50000);
-          
-        return acc + price;
-      }, 0);
+          : (businessType === 'eyelash' ? 120000 : 50000)
+        return acc + price
+      }, 0)
     }
     const matchedKey = Object.keys(SERVICE_PRICES).find(
       (key) => key.toLowerCase() === serviceName.trim().toLowerCase()
-    );
-    return matchedKey ? SERVICE_PRICES[matchedKey] : (businessType === 'eyelash' ? 120000 : 50000);
-  }
+    )
+    return matchedKey ? SERVICE_PRICES[matchedKey] : (businessType === 'eyelash' ? 120000 : 50000)
+  }, [businessType])
+
+  const getItemPrice = useCallback((item: Reservation): number => {
+    if (item.total_price !== undefined && item.total_price !== null && item.total_price > 0) {
+      return item.total_price
+    }
+    return getServicePrice(item.service_name)
+  }, [getServicePrice])
 
   const formatDateID = (dateStr: string) => {
     if (!dateStr) return ''
@@ -186,122 +269,51 @@ export default function AdminDashboard() {
     }
   }
 
-  // 1. Fungsi Fetch Tenant yang aman dari error UUID & Slug
   const fetchTenantDetail = useCallback(async (searchKey: string) => {
     try {
-      if (!searchKey) return;
-      
-      const target = searchKey.trim();
-      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(target);
+      if (!searchKey) return
+      const target = searchKey.trim()
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(target)
 
-      let query = supabase.from('tenants').select('*');
-
+      let query = supabase.from('tenants').select('*')
       if (isUuid) {
-        query = query.eq('id', target);
+        query = query.eq('id', target)
       } else {
-        query = query.or(`tenant_slug.eq.${target.toLowerCase()},domain_url.eq.${target.toLowerCase()}`);
+        query = query.or(`tenant_slug.eq.${target.toLowerCase()},domain_url.eq.${target.toLowerCase()}`)
       }
 
-      const { data, error } = await query.maybeSingle();
-
+      const { data, error } = await query.maybeSingle()
       if (error) {
-        console.error('Supabase error:', error);
-        return;
+        console.error('Supabase error:', error)
+        return
       }
 
       if (data) {
-        setTenantId(data.id);
-        setBrandTitle(data.business_name || data.name || target);
-        
-        const dbCategory = (data.category || 'barbershop').toLowerCase();
-        setBusinessType(dbCategory);
-        setTenantCode(data.tenant_slug);
-
-        setStaffLabel(data.staff_label || 'Capster / Staff');
-        setControlCenterLabel(data.control_center_label || '💈 Barber Control Center');
-        setSelectedTheme((data.theme_color || 'purple') as ThemeMode);
+        setTenantId(data.id)
+        setBrandTitle(data.business_name || data.name || target)
+        const dbCategory = (data.category || 'barbershop').toLowerCase()
+        setBusinessType(dbCategory)
+        setTenantCode(data.tenant_slug)
+        setStaffLabel(data.staff_label || 'Capster / Staff')
+        setControlCenterLabel(data.control_center_label || '💈 Barber Control Center')
+        if (!localStorage.getItem('admin_color_theme') && data.theme_color) {
+          setSelectedTheme(data.theme_color as ThemeMode);
+        }
+        setFinancialReportsEnabled(Boolean(data.financial_reports))
+        if (data.subscription_plan) {
+          const rawPlan = data.subscription_plan.toUpperCase()
+          setSubscriptionPlan(rawPlan === 'ULTIMATE' ? 'ULTIMATE' : 'PROFESIONAL')
+        }
+        if (data.is_active !== undefined) {
+          setIsSuperAdminToggleActive(Boolean(data.is_active))
+        } else if (data.super_admin_toggle !== undefined) {
+          setIsSuperAdminToggleActive(Boolean(data.super_admin_toggle))
+        }
       }
     } catch (err) {
-      console.error('Error fetching tenant details:', err);
+      console.error('Error fetching tenant details:', err)
     }
-  }, []);
-
-  const handleToggleWaReminder = async (newStatus: boolean) => {
-    if (!tenantId) {
-      alert('Tenant ID tidak ditemukan.')
-      return
-    }
-
-    const previousStatus = autoWaReminder
-    setAutoWaReminder(newStatus)
-    setIsUpdatingWaToggle(true)
-
-    try {
-      const response = await fetch('/api/tenant', {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          tenant_id: tenantId,
-          auto_wa_reminder: newStatus,
-        }),
-      })
-
-      const text = await response.text()
-      const resData = text ? JSON.parse(text) : {}
-
-      if (!response.ok || (resData && resData.success === false)) {
-        throw new Error(resData?.message || 'Gagal mengubah status WA Reminder')
-      }
-    } catch (error: any) {
-      alert(`Gagal mengupdate pengingat WhatsApp: ${error.message}`)
-      setAutoWaReminder(previousStatus)
-    } finally {
-      setIsUpdatingWaToggle(false)
-    }
-  }
-
-  const handleToggleBookingSetting = async (field: 'prevent_double_booking' | 'hide_booked_slots', newStatus: boolean) => {
-    if (!tenantId) {
-      alert('Tenant ID tidak ditemukan.')
-      return
-    }
-
-    const prevDoubleBooking = preventDoubleBooking
-    const prevHideSlots = hideBookedSlots
-
-    if (field === 'prevent_double_booking') setPreventDoubleBooking(newStatus)
-    if (field === 'hide_booked_slots') setHideBookedSlots(newStatus)
-
-    setIsUpdatingBookingToggle(true)
-
-    try {
-      const response = await fetch('/api/tenant', {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          tenant_id: tenantId,
-          [field]: newStatus,
-        }),
-      })
-
-      const text = await response.text()
-      const resData = text ? JSON.parse(text) : {}
-
-      if (!response.ok || (resData && resData.success === false)) {
-        throw new Error(resData?.message || `Error status: ${response.status}`)
-      }
-    } catch (error: any) {
-      alert(`Gagal mengupdate pengaturan booking: ${error.message}`)
-      setPreventDoubleBooking(prevDoubleBooking)
-      setHideBookedSlots(prevHideSlots)
-    } finally {
-      setIsUpdatingBookingToggle(false)
-    }
-  }
+  }, [])
 
   // ============================================================================
   // 7. AUTHENTICATION HANDLERS
@@ -322,14 +334,12 @@ export default function AdminDashboard() {
       return
     }
 
-    // 👉 TARUH DI SINI (UNTUK FORM LOGIN)
     if (!currentTenant.admin_email || currentTenant.admin_email.toLowerCase() !== emailInput.toLowerCase()) {
-      alert(`Akses Ditolak! Akun "${emailInput}" tidak memiliki izin untuk mengelola tenant ini.`);
-      setLoading(false);
-      return;
+      alert(`Akses Ditolak! Akun "${emailInput}" tidak memiliki izin untuk mengelola tenant ini.`)
+      setLoading(false)
+      return
     }
 
-    // Jika lolos, baru jalankan login Supabase Auth
     const { data, error } = await supabase.auth.signInWithPassword({
       email: emailInput,
       password: passwordInput,
@@ -344,7 +354,19 @@ export default function AdminDashboard() {
       setBusinessType((currentTenant.category || 'barbershop').toLowerCase())
       setTenantCode(currentTenant.tenant_slug)
       setControlCenterLabel(currentTenant.control_center_label || 'Control Center')
-      setSelectedTheme((currentTenant.theme_color || 'purple') as ThemeMode)
+      const savedColorTheme = typeof window !== 'undefined' ? localStorage.getItem('admin_color_theme') : null;
+      if (!savedColorTheme) {
+        setSelectedTheme((currentTenant.theme_color || 'purple') as ThemeMode);
+      }
+      if (currentTenant.subscription_plan) {
+        const rawPlan = currentTenant.subscription_plan.toUpperCase()
+        setSubscriptionPlan(rawPlan === 'ULTIMATE' ? 'ULTIMATE' : 'PROFESIONAL')
+      }
+      if (currentTenant.super_admin_toggle !== undefined) {
+        setIsSuperAdminToggleActive(Boolean(currentTenant.super_admin_toggle))
+      } else if (currentTenant.is_super_admin_active !== undefined) {
+        setIsSuperAdminToggleActive(Boolean(currentTenant.is_super_admin_active))
+      }
     }
     setLoading(false)
   }
@@ -360,53 +382,77 @@ export default function AdminDashboard() {
   const fetchBlockedSlots = useCallback(async () => {
     if (!tenantId) return
     const { data, error } = await supabase
-      .from('blocked_slots')
-      .select('*')
-      .eq('tenant_id', tenantId)
-      .order('block_date', { ascending: true })
+    .from('blocked_slots')
+    .select('*')
+    .eq('tenant_slug', tenantSlug)
+    .not('reason', 'ilike', '%Otomatis: Booking Confirmed%')
+    .order('block_date', { ascending: true });
 
     if (!error && data) {
       setBlockedSlots(data)
     }
-  }, [tenantId])
+  }, [tenantId, tenantSlug])
 
   const handleAddBlockSlot = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!blockDateInput || !blockTimeInput) {
-      alert('Pilih tanggal dan jam yang ingin diblokir!')
-      return
+    e.preventDefault();
+    if (!blockStartDate || !blockEndDate) {
+      alert("Pilih tanggal yang ingin diblokir!");
+      return;
     }
-
-    if (!tenantId) {
-      alert('Tenant ID belum teridentifikasi!')
-      return
+    if (blockEndDate < blockStartDate) {
+      alert("Tanggal selesai tidak boleh lebih awal dari tanggal mulai!");
+      return;
     }
+    setIsBlocking(true);
 
-    const finalReason = reasonPreset === 'Lainnya' 
-      ? (blockReasonInput || 'Di-block Admin') 
-      : reasonPreset
+    try {
+      const finalReason = reasonPreset === 'Lainnya' 
+        ? blockReasonInput 
+        : (blockReasonInput ? `${reasonPreset} - ${blockReasonInput}` : reasonPreset);
 
-    setIsBlocking(true)
-    const { error } = await supabase
-      .from('blocked_slots')
-      .insert([
-        {
-          tenant_id: tenantId,
-          block_date: blockDateInput,
-          block_time: blockTimeInput,
-          reason: finalReason
-        }
-      ])
+      const payload = {
+        tenant_id: tenantId, 
+        tenant_slug: tenantSlug,
+        date: blockStartDate,
+        block_date: blockStartDate,
+        block_end_date: blockEndDate,
+        block_time: blockMode === 'custom_time' ? blockTimeInput : null,
+        start_time: blockMode === 'custom_time' ? blockTimeInput : null,
+        reason: finalReason,
+        created_at: new Date().toISOString(),
+      };
 
-    if (error) {
-      alert('Gagal memblokir slot: ' + error.message)
-    } else {
-      alert(`Berhasil memblokir slot jam ${blockTimeInput} WIB pada tanggal ${blockDateInput} (${finalReason})`)
-      setBlockReasonInput('')
-      fetchBlockedSlots()
+      const { error } = await supabase
+        .from('blocked_slots')
+        .insert([payload]);
+
+      if (error) throw error;
+
+      setBlockStartDate('');
+      setBlockEndDate('');
+      setBlockTimeInput('09:00');
+      setBlockReasonInput('');
+      
+      if (typeof fetchBlockedSlots === 'function') {
+        fetchBlockedSlots();
+      }
+
+      alert("Berhasil memblokir slot/tanggal!");
+    } catch (err: unknown) {
+      let errorMsg = "Terjadi kesalahan yang tidak diketahui.";
+      if (isPostgrestError(err)) {
+        errorMsg = err.message || err.details || err.hint;
+      } else if (err instanceof Error) {
+        errorMsg = err.message;
+      } else {
+        errorMsg = String(err);
+      }
+      console.error("Gagal memblokir slot:", err);
+      alert("Gagal menyimpan data: " + errorMsg);
+    } finally {
+      setIsBlocking(false);
     }
-    setIsBlocking(false)
-  }
+  };
 
   const handleDeleteBlockSlot = async (id?: number) => {
     if (!id) return
@@ -425,99 +471,128 @@ export default function AdminDashboard() {
     }
   }
 
-  // ============================================================================
-  // 9. RESERVATION DATA OPERATIONS (REVISED & CLEAN)
-  // ============================================================================
-  
-  const fetchReservations = useCallback(async () => {
-    if (!tenantId) return; // Hentikan jika tenantId belum terekam
-    
-    setLoading(true);
-
-    const { data, error } = await supabase
-      .from('reservations')
-      .select('*')
-      .eq('tenant_id', tenantId) // Filter langsung menggunakan tenantId dinamis
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      alert('Gagal mengambil data reservasi: ' + error.message);
-    } else {
-      setReservations(data || []);
-      setFilteredReservations(data || []);
-      
-      // Sinkronisasi otomatis ke blocked_slots setiap data berhasil ditarik
-      if (data && data.length > 0) {
-        syncConfirmedSlotsToBlocked();
-      }
-    }
-    setLoading(false);
-  }, [tenantId]);
-
-  const syncConfirmedSlotsToBlocked = useCallback(async () => {
+  const fetchCustomerReservations = useCallback(async () => {
     if (!tenantId) return;
+    setIsLoadingReservations(true);
+    try {
+      const { data, error } = await supabase
+        .from('blocked_slots')
+        .select('*')
+        .eq('tenant_slug', tenantSlug)
+        .ilike('reason', '%Otomatis: Booking Confirmed%')
+        .order('block_date', { ascending: false });
 
-    const confirmedList = reservations.filter((r) => {
-      const s = (r.status || '').toLowerCase();
-      return s === 'confirmed' || s === 'dikonfirmasi';
-    });
+      if (error) throw error;
+      setCustomerReservations(data || []);
+    } catch (err: unknown) {
+      console.error("Gagal memuat reservasi pelanggan:", err);
+    } finally {
+      setIsLoadingReservations(false);
+    }
+  }, [tenantId, tenantSlug]);
 
-    if (confirmedList.length === 0) return;
+  // ============================================================================
+  // 9. RESERVATION DATA OPERATIONS
+  // ============================================================================
+  const syncConfirmedSlotsToBlocked = useCallback(async (currentReservations: Reservation[]) => {
+    if (!tenantId) return
+    const confirmedList = currentReservations.filter((r) => {
+      const s = (r.status || '').toLowerCase()
+      return s === 'confirmed' || s === 'dikonfirmasi'
+    })
 
-    for (const item of confirmedList) {
-      const exists = blockedSlots.some(
-        (b) => b.block_date === item.booking_date && b.block_time === item.booking_time
-      );
+    if (confirmedList.length === 0) return
+
+    const { data: latestBlocked } = await supabase
+      .from('blocked_slots')
+      .select('block_date, block_time')
+      .eq('tenant_id', tenantId)
+
+    const existingSlots = latestBlocked || []
+    let hasNewInsert = false
+
+    for (let i = 0; i < confirmedList.length; i++) {
+      const item = confirmedList[i]
+      const exists = existingSlots.some((b) => {
+        return b.block_date === item.booking_date && b.block_time === item.booking_time
+      })
 
       if (!exists) {
         await supabase.from('blocked_slots').insert([
           {
             tenant_id: tenantId,
+            tenant_slug: tenantSlug,
             block_date: item.booking_date,
+            date: item.booking_date,
             block_time: item.booking_time,
-            reason: `Otomatis: Booking Confirmed (${item.customer_name})`
+            start_time: item.booking_time,
+            reason: `Otomatis: Booking Confirmed (${item.customer_name || 'Pelanggan'})`
           }
-        ]);
+        ])
+        hasNewInsert = true
       }
     }
-    
-    if (typeof fetchBlockedSlots === 'function') {
-      fetchBlockedSlots();
+
+    if (hasNewInsert && typeof fetchBlockedSlots === 'function') {
+      fetchBlockedSlots()
     }
-  }, [reservations, blockedSlots, tenantId, fetchBlockedSlots]);
+  }, [tenantId, tenantSlug, fetchBlockedSlots])
+
+  const fetchReservations = useCallback(async () => {
+    if (!tenantId) return
+    setLoading(true)
+
+    const { data, error } = await supabase
+      .from('reservations')
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .order('created_at', { ascending: false })
+
+    if (error) {
+      alert('Gagal mengambil data reservasi: ' + error.message)
+    } else {
+      const fetchedData = data || []
+      setReservations(fetchedData)
+      setFilteredReservations(fetchedData)
+
+      if (fetchedData.length > 0) {
+        syncConfirmedSlotsToBlocked(fetchedData)
+      }
+    }
+    setLoading(false)
+  }, [tenantId, syncConfirmedSlotsToBlocked])
 
   const updateStatusInDB = async (id: number, newStatus: string) => {
-    // 1. Cari data reservasi yang mau di-update berdasarkan ID sebelum di-update di DB
-    const targetReservation = reservations.find((r) => r.id === id);
+    const targetReservation = reservations.find((r) => r.id === id)
 
     const { error } = await supabase
       .from('reservations')
       .update({ status: newStatus })
-      .eq('id', id);
+      .eq('id', id)
 
     if (error) {
-      alert('Gagal update status: ' + error.message);
+      alert('Gagal update status: ' + error.message)
     } else {
-      // 2. Jika status diubah menjadi CONFIRMED -> Masukkan ke blocked_slots
       if (newStatus === 'confirmed' || newStatus === 'dikonfirmasi') {
         if (targetReservation && tenantId) {
           const exists = blockedSlots.some(
             (b) => b.block_date === targetReservation.booking_date && b.block_time === targetReservation.booking_time
-          );
+          )
           if (!exists) {
             await supabase.from('blocked_slots').insert([
               {
                 tenant_id: tenantId,
+                tenant_slug: tenantSlug,
                 block_date: targetReservation.booking_date,
+                date: targetReservation.booking_date,
                 block_time: targetReservation.booking_time,
+                start_time: targetReservation.booking_time,
                 reason: `Otomatis: Booking Confirmed (${targetReservation.customer_name})`
               }
-            ]);
+            ])
           }
         }
       } 
-      
-      // 3. Jika status diubah menjadi CANCELLED -> Hapus dari blocked_slots agar jamnya buka kembali
       else if (newStatus.includes('cancelled')) {
         if (targetReservation && tenantId) {
           await supabase
@@ -525,68 +600,66 @@ export default function AdminDashboard() {
             .delete()
             .eq('tenant_id', tenantId)
             .eq('block_date', targetReservation.booking_date)
-            .eq('block_time', targetReservation.booking_time);
+            .eq('block_time', targetReservation.booking_time)
         }
       }
 
-      // 4. Refresh data terbaru di state dashboard
-      await fetchReservations();
+      await fetchReservations()
       if (typeof fetchBlockedSlots === 'function') {
-        fetchBlockedSlots();
+        fetchBlockedSlots()
       }
     }
-  };
+  }
 
   const handleStatusChange = (item: Reservation, newStatus: string) => {
-    if ((newStatus === 'cancelled' || newStatus === 'cancelled_need_refund') && subscriptionPlan === 'PROFESIONAL') {
-      setCancelModalItem(item);
-    } else {
-      updateStatusInDB(item.id, newStatus);
+    if (newStatus === 'cancelled' || newStatus === 'cancelled_need_refund') {
+      setCancelModalItem(item)
+      return
     }
-  };
+    updateStatusInDB(item.id, newStatus)
+  }
 
   const handleConfirmCancel = async (needRefund: boolean) => {
-    if (!cancelModalItem) return;
-    const statusText = needRefund ? 'cancelled_need_refund' : 'cancelled';
-    await updateStatusInDB(cancelModalItem.id, statusText);
-    setCancelModalItem(null);
-  };
+    if (!cancelModalItem) return
+    const statusText = needRefund ? 'cancelled_need_refund' : 'cancelled'
+    await updateStatusInDB(cancelModalItem.id, statusText)
+    setCancelModalItem(null)
+  }
 
   const handleCompleteRefund = async (id: number) => {
-    const isConfirmed = window.confirm('Apakah kamu yakin refund untuk pesanan ini sudah ditransfer balik ke pelanggan?');
-    if (!isConfirmed) return;
-    await updateStatusInDB(id, 'cancelled_refunded');
-  };
+    const isConfirmed = window.confirm('Apakah kamu yakin refund untuk pesanan ini sudah ditransfer balik ke pelanggan?')
+    if (!isConfirmed) return
+    await updateStatusInDB(id, 'cancelled_refunded')
+  }
 
-  const handleDelete = async (id: number, customerName: string) => {
-    const isConfirmed = window.confirm(
-      `Apakah kamu yakin ingin menghapus data reservasi atas nama "${customerName}"?`
-    );
-
-    if (!isConfirmed) return;
+  const handleDelete = useCallback(async (id: number, customerName: string) => {
+    const isConfirmed = window.confirm(`Apakah kamu yakin ingin menghapus data reservasi atas nama "${customerName}"?`)
+    if (!isConfirmed) return
 
     const { error } = await supabase
       .from('reservations')
       .delete()
-      .eq('id', id);
+      .eq('id', id)
 
     if (error) {
-      alert('Gagal menghapus data: ' + error.message);
+      alert('Gagal menghapus data: ' + error.message)
     } else {
-      setReservations((prev) => prev.filter((item) => item.id !== id));
-      alert('Data reservasi berhasil dihapus!');
+      await fetchReservations()
+      if (typeof fetchBlockedSlots === 'function') {
+        fetchBlockedSlots()
+      }
     }
-  };
+  }, [fetchReservations, fetchBlockedSlots])
 
   // ============================================================================
-  // 10. STATS & REPORT CALCULATIONS
+  // 10. STATS & REPORT CALCULATIONS (DENGAN DATA AKTUAL UNTUK GRAFIK)
   // ============================================================================
   const stats = useMemo(() => {
     const totalBookings = reservations.length
 
     const totalRevenue = reservations.reduce((sum, item) => {
       if (isCompleted(item.status)) {
-        return sum + getServicePrice(item.service_name)
+        return sum + getItemPrice(item)
       }
       return sum
     }, 0)
@@ -615,10 +688,10 @@ export default function AdminDashboard() {
     const staffPerformance: Record<string, number> = {}
     reservations.forEach((item) => {
       if (isCompleted(item.status) && item.staff_name) {
-        const staffName = item.staff_name.trim()
-        staffPerformance[staffName] = (staffPerformance[staffName] || 0) + 1
+        const staffName = item.staff_name.trim();
+        staffPerformance[staffName] = (staffPerformance[staffName] || 0) + 1;
       }
-    })
+    });
 
     const staffList = Object.keys(staffPerformance)
       .map((name) => ({
@@ -648,14 +721,103 @@ export default function AdminDashboard() {
       topStaffCount,
       staffList,
     }
-  }, [reservations, businessType])
+  }, [reservations, getItemPrice])
+
+  // Data Aktual untuk Grafik Omzet Usaha
+  const actualBusinessData = useMemo<BusinessDataItem[]>(() => {
+    const completedRes = reservations.filter(r => isCompleted(r.status));
+    
+    if (businessFilter === 'mingguan') {
+      const map: Record<string, number> = { 'Sen': 0, 'Sel': 0, 'Rab': 0, 'Kam': 0, 'Jum': 0, 'Sab': 0, 'Min': 0 };
+      const countMap: Record<string, number> = { 'Sen': 0, 'Sel': 0, 'Rab': 0, 'Kam': 0, 'Jum': 0, 'Sab': 0, 'Min': 0 };
+      
+      completedRes.forEach(r => {
+        if (!r.booking_date) return;
+        const d = new Date(r.booking_date);
+        const dayIdx = d.getDay();
+        const dayNames = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
+        const name = dayNames[dayIdx];
+        map[name] = (map[name] || 0) + getItemPrice(r);
+        countMap[name] = (countMap[name] || 0) + 1;
+      });
+
+      const barKeys = [
+        { label: 'Sen', key: 'Sen' },
+        { label: 'Sel', key: 'Sel' },
+        { label: 'Rab', key: 'Rab' },
+        { label: 'Kam', key: 'Kam' },
+        { label: 'Jum', key: 'Jum' },
+        { label: 'Sab', key: 'Sab' },
+        { label: 'Min', key: 'Min' },
+      ];
+
+      const maxVal = Math.max(...barKeys.map(b => map[b.key]), 1);
+      
+      return barKeys.map(b => {
+        const amt = map[b.key];
+        const formattedAmt = amt >= 1000000 ? `Rp ${(amt / 1000000).toFixed(1)}jt` : amt >= 1000 ? `Rp ${(amt / 1000).toFixed(0)}rb` : `Rp ${amt}`;
+        return { 
+          label: b.label, 
+          value: `${countMap[b.key]} transaksi`,
+          amount: formattedAmt, 
+          rawAmount: amt 
+        };
+      });
+
+    } else if (businessFilter === 'bulanan') {
+      const weekMap = [0, 0, 0, 0];
+      const weekCounts = [0, 0, 0, 0];
+      
+      completedRes.forEach(r => {
+        if (!r.booking_date) return;
+        const dayNum = new Date(r.booking_date).getDate();
+        const weekIdx = Math.min(Math.floor((dayNum - 1) / 7), 3);
+        weekMap[weekIdx] += getItemPrice(r);
+        weekCounts[weekIdx] += 1;
+      });
+
+      const maxVal = Math.max(...weekMap, 1);
+      
+      return weekMap.map((amt, idx) => {
+        const formattedAmt = amt >= 1000000 ? `Rp ${(amt / 1000000).toFixed(1)}jt` : amt >= 1000 ? `Rp ${(amt / 1000).toFixed(0)}rb` : `Rp ${amt}`;
+        return { 
+          label: `Minggu ${idx + 1}`, 
+          value: `${weekCounts[idx]} trs`, 
+          amount: formattedAmt, 
+          rawAmount: amt // 👈 Ditambahkan
+        };
+      });
+
+    } else {
+      const qMap = [0, 0, 0, 0];
+      const qCounts = [0, 0, 0, 0];
+      
+      completedRes.forEach(r => {
+        if (!r.booking_date) return;
+        const month = new Date(r.booking_date).getMonth();
+        const qIdx = Math.floor(month / 3);
+        qMap[qIdx] += getItemPrice(r);
+        qCounts[qIdx] += 1;
+      });
+
+      const maxVal = Math.max(...qMap, 1);
+      
+      return qMap.map((amt, idx) => {
+        const formattedAmt = amt >= 1000000 ? `Rp ${(amt / 1000000).toFixed(1)}jt` : amt >= 1000 ? `Rp ${(amt / 1000).toFixed(0)}rb` : `Rp ${amt}`;
+        return { 
+          label: `Q${idx + 1}`, 
+          value: `${qCounts[idx]} trs`, 
+          amount: formattedAmt, 
+          rawAmount: amt // 👈 Ditambahkan
+        };
+      });
+    }
+  }, [reservations, businessFilter, getItemPrice]);
 
   const reportData = useMemo(() => {
     let weekInfo = { startStr: '', endStr: '' }
-
     const dateFiltered = reservations.filter((item) => {
       const itemDate = item.booking_date
-
       if (reportPeriod === 'daily') return itemDate === reportDate
       if (reportPeriod === 'weekly') {
         weekInfo = getWeekRangeFromStart(reportDate)
@@ -681,7 +843,7 @@ export default function AdminDashboard() {
     let totalRefund = 0
 
     financialItems.forEach((item) => {
-      const price = getServicePrice(item.service_name)
+      const price = getItemPrice(item)
       const s = (item.status || '').toLowerCase()
 
       if (isCompleted(s)) {
@@ -702,17 +864,12 @@ export default function AdminDashboard() {
       count: financialItems.length,
       weekInfo: reportPeriod === 'weekly' ? getWeekRangeFromStart(reportDate) : null,
     }
-  }, [reservations, reportPeriod, reportDate, reportStartDate, reportEndDate, businessType])
+  }, [reservations, reportPeriod, reportDate, reportStartDate, reportEndDate, getItemPrice])
 
   // ============================================================================
   // 11. EXPORT & PRINT HANDLERS
   // ============================================================================
   const exportReportToCSV = () => {
-    if (subscriptionPlan === 'BASIC') {
-      alert('Fitur Penarikan Laporan Excel hanya tersedia untuk Paket Premium & Profesional.')
-      return
-    }
-
     if (reportData.items.length === 0) {
       alert('Tidak ada transaksi Completed / Refund pada periode laporan ini!')
       return
@@ -747,7 +904,6 @@ export default function AdminDashboard() {
       <body>
         <div class="title">LAPORAN KEUANGAN & OMZET NETTO - ${displayBrand}</div>
         <div class="subtitle">Periode: ${labelPeriode} | Tanggal Cetak: ${new Date().toLocaleDateString('id-ID')}</div>
-        
         <table>
           <thead>
             <tr>
@@ -765,10 +921,9 @@ export default function AdminDashboard() {
           <tbody>
             ${reportData.items
               .map((item, index) => {
-                const harga = getServicePrice(item.service_name)
+                const harga = getItemPrice(item)
                 const s = (item.status || '').toLowerCase()
                 const isRefund = s === 'cancelled_refunded' || s === 'cancelled_need_refund'
-
                 return `
                 <tr>
                   <td class="center">${index + 1}</td>
@@ -781,14 +936,11 @@ export default function AdminDashboard() {
                   <td class="center" style="color: ${isRefund ? '#dc2626' : '#059669'}; font-weight: bold;">
                     ${isCompleted(s) ? 'COMPLETED' : 'CANCELLED (REFUND)'}
                   </td>
-                  <td class="num">
-                    Rp ${harga.toLocaleString('id-ID')}
-                  </td>
+                  <td class="num">Rp ${harga.toLocaleString('id-ID')}</td>
                 </tr>
               `
               })
               .join('')}
-            
             <tr class="total-row">
               <td colspan="8" style="text-align: right;">TOTAL OMZET BRUTO:</td>
               <td class="num" style="color: #059669;">Rp ${reportData.grossRevenue.toLocaleString('id-ID')}</td>
@@ -818,11 +970,6 @@ export default function AdminDashboard() {
   }
 
   const handlePrintPDF = () => {
-    if (subscriptionPlan !== 'PROFESIONAL') {
-      alert('Fitur Cetak / PDF Laporan eksklusif hanya tersedia untuk Paket Profesional.')
-      return
-    }
-
     if (reportData.items.length === 0) {
       alert('Tidak ada transaksi Completed / Refund pada periode laporan ini!')
       return
@@ -870,14 +1017,12 @@ export default function AdminDashboard() {
           <h1>${displayBrand}</h1>
           <p>LAPORAN KEUANGAN & OMZET NETTO</p>
         </div>
-
         <table class="info-table">
           <tr>
             <td><strong>Periode Laporan:</strong> ${labelPeriode}</td>
             <td class="right"><strong>Tanggal Cetak:</strong> ${new Date().toLocaleDateString('id-ID')}</td>
           </tr>
         </table>
-
         <table class="data-table">
           <thead>
             <tr>
@@ -894,10 +1039,9 @@ export default function AdminDashboard() {
           <tbody>
             ${reportData.items
               .map((item, index) => {
-                const harga = getServicePrice(item.service_name)
+                const harga = getItemPrice(item)
                 const s = (item.status || '').toLowerCase()
                 const isRefund = s === 'cancelled_refunded' || s === 'cancelled_need_refund'
-
                 return `
                 <tr>
                   <td class="center">${index + 1}</td>
@@ -909,16 +1053,13 @@ export default function AdminDashboard() {
                   <td class="center bold" style="color: ${isRefund ? '#dc2626' : '#059669'};">
                     ${isCompleted(s) ? 'COMPLETED' : 'REFUND'}
                   </td>
-                  <td class="right bold">
-                    Rp ${harga.toLocaleString('id-ID')}
-                  </td>
+                  <td class="right bold">Rp ${harga.toLocaleString('id-ID')}</td>
                 </tr>
               `
               })
               .join('')}
           </tbody>
         </table>
-
         <div class="summary-box">
           <table class="summary-table">
             <tr>
@@ -935,22 +1076,17 @@ export default function AdminDashboard() {
             </tr>
           </table>
         </div>
-
         <div class="footer">
           <p>Dicetak oleh Admin ${displayBrand}</p>
           <div class="signature-space"></div>
           <p>__________________________</p>
         </div>
-
         <script>
-          window.onload = function() {
-            window.print();
-          }
+          window.onload = function() { window.print() }
         </script>
       </body>
       </html>
     `
-
     printWindow.document.write(printHtml)
     printWindow.document.close()
   }
@@ -970,8 +1106,19 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     let result = [...reservations]
+    const isModeStandard = !isSuperAdminToggleActive
 
-    if (subscriptionPlan !== 'BASIC') {
+    if (isModeStandard) {
+      result = result.slice(0, 5)
+    } else {
+      if (subscriptionPlan === 'PROFESIONAL') {
+        result = result.slice(0, 5)
+      } else if (subscriptionPlan === 'ULTIMATE') {
+        // Full access
+      }
+    }
+
+    if (!isModeStandard) {
       if (startDate) result = result.filter((item) => item.booking_date >= startDate)
       if (endDate) result = result.filter((item) => item.booking_date <= endDate)
       if (serviceFilter !== 'all') result = result.filter((item) => item.service_name === serviceFilter)
@@ -998,7 +1145,7 @@ export default function AdminDashboard() {
 
     if (paymentFilter !== 'all') result = result.filter((item) => (item.payment_method || 'QRIS') === paymentFilter)
 
-    if (subscriptionPlan !== 'BASIC') {
+    if (!isModeStandard) {
       result.sort((a, b) => {
         let valA: any = ''
         let valB: any = ''
@@ -1019,8 +1166,8 @@ export default function AdminDashboard() {
           valA = (a.staff_name || '').toLowerCase()
           valB = (b.staff_name || '').toLowerCase()
         } else if (sortField === 'price') {
-          valA = getServicePrice(a.service_name)
-          valB = getServicePrice(b.service_name)
+          valA = getItemPrice(a)
+          valB = getItemPrice(b)
         } else if (sortField === 'payment_method') {
           valA = (a.payment_method || 'QRIS').toLowerCase()
           valB = (b.payment_method || 'QRIS').toLowerCase()
@@ -1037,21 +1184,21 @@ export default function AdminDashboard() {
 
     setFilteredReservations(result)
     setCurrentPage(1)
-  }, [startDate, endDate, statusFilter, serviceFilter, paymentFilter, searchTerm, sortField, sortOrder, reservations, subscriptionPlan])
+  }, [startDate, endDate, statusFilter, serviceFilter, paymentFilter, searchTerm, sortField, sortOrder, reservations, subscriptionPlan, isSuperAdminToggleActive, getItemPrice])
 
   const totalPages = useMemo(() => {
-    if (limit === 'all' || subscriptionPlan === 'BASIC') return 1
+    if (limit === 'all' || !isSuperAdminToggleActive) return 1
     return Math.ceil(filteredReservations.length / limit) || 1
-  }, [filteredReservations.length, limit, subscriptionPlan])
+  }, [filteredReservations.length, limit, isSuperAdminToggleActive])
 
   const displayedReservations = useMemo(() => {
-    if (limit === 'all' || subscriptionPlan === 'BASIC') return filteredReservations
+    if (limit === 'all' || !isSuperAdminToggleActive) return filteredReservations
     const startIndex = (currentPage - 1) * limit
     return filteredReservations.slice(startIndex, startIndex + limit)
-  }, [filteredReservations, currentPage, limit, subscriptionPlan])
+  }, [filteredReservations, currentPage, limit, isSuperAdminToggleActive])
 
   const handleSort = (field: SortField) => {
-    if (subscriptionPlan === 'BASIC') return
+    if (!isSuperAdminToggleActive) return
     if (sortField === field) {
       setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')
     } else {
@@ -1061,198 +1208,265 @@ export default function AdminDashboard() {
   }
 
   // ============================================================================
-  // 13. LIFECYCLE EFFECTS
+  // 13. LIFECYCLE EFFECTS (DIPERBAIKI & AMAN DARI INFINITE LOOP)
   // ============================================================================
   useEffect(() => {
+    let isMounted = true;
+
     const initSession = async () => {
-    setIsInitializing(true)
-    const { data } = await supabase.auth.getSession()
-    
-    const { data: currentTenant } = await supabase
-      .from('tenants')
-      .select('*')
-      .eq('tenant_slug', tenantSlug)
-      .maybeSingle()
-
-    if (data?.session && currentTenant) {
-      const userEmail = data.session.user.email
-
-      // 👉 TARUH DI SINI (UNTUK VALIDASI SESI SAAT RELOAD)
-      if (!currentTenant.admin_email || currentTenant.admin_email.toLowerCase() !== userEmail?.toLowerCase()) {
-        await supabase.auth.signOut();
-        setIsAuthenticated(false);
-        setIsInitializing(false);
-        alert(`Akses Ditolak! Akun "${userEmail}" tidak memiliki izin untuk mengelola tenant ini.`);
-        return;
-      }
-
-      setIsAuthenticated(true)
-      setTenantId(currentTenant.id)
-      setBrandTitle(currentTenant.business_name || currentTenant.name)
-      setBusinessType((currentTenant.category || 'barbershop').toLowerCase())
-      setTenantCode(currentTenant.tenant_slug)
-      setControlCenterLabel(currentTenant.control_center_label || 'Control Center')
-      setSelectedTheme((currentTenant.theme_color || 'purple') as ThemeMode)
+      if (!tenantSlug) return;
       
-      // 👉 TAMBAHKAN INI AGAR STATE SINKRON DARI DATABASE SAAT REFRESH
-      setPreventDoubleBooking(currentTenant.prevent_double_booking ?? true)
-      setHideBookedSlots(currentTenant.hide_booked_slots ?? false) // atau ikuti default database lu
-    } else if (currentTenant) {
-      // Belum login, set data publik tenant untuk form login
-      setTenantId(currentTenant.id)
-      setBrandTitle(currentTenant.business_name || currentTenant.name)
-      setBusinessType((currentTenant.category || 'barbershop').toLowerCase())
-      setTenantCode(currentTenant.tenant_slug)
-      setControlCenterLabel(currentTenant.control_center_label || 'Control Center')
-      setSelectedTheme((currentTenant.theme_color || 'purple') as ThemeMode)
-      // 👉 TAMBAHKAN JUGA DI SINI UNTUK MODE PUBLIC/VIEWER
-      setPreventDoubleBooking(currentTenant.prevent_double_booking ?? true)
-      setHideBookedSlots(currentTenant.hide_booked_slots ?? false)
+      try {
+        setIsInitializing(true)
+        
+        // 1. Ambil data tenant
+        const { data: currentTenant, error: tenantError } = await supabase
+          .from('tenants')
+          .select('*')
+          .eq('tenant_slug', tenantSlug)
+          .maybeSingle()
 
+        if (tenantError) {
+          console.error("Error fetching tenant:", tenantError);
+        }
+
+        if (!currentTenant) {
+          if (isMounted) {
+            setIsInitializing(false);
+          }
+          return;
+        }
+
+        if (isMounted) {
+          setCurrentTenant(currentTenant)
+          setTenantId(currentTenant.id)
+          setBrandTitle(currentTenant.business_name || currentTenant.name)
+          setBusinessType((currentTenant.category || 'barbershop').toLowerCase())
+          setTenantCode(currentTenant.tenant_slug)
+          setControlCenterLabel(currentTenant.control_center_label || 'Control Center')
+
+          const savedColorTheme = typeof window !== 'undefined' ? localStorage.getItem('admin_color_theme') : null;
+          if (!savedColorTheme) {
+            setSelectedTheme((currentTenant.theme_color || 'purple') as ThemeMode);
+          }
+
+          setFinancialReportsEnabled(Boolean(currentTenant.financial_reports))
+          setStaffPerformanceEnabled(Boolean(currentTenant.staff_performance))
+          setBusinessPerformanceEnabled(Boolean(currentTenant.business_performance ?? true));
+          setSlotBlockingEnabled(currentTenant.enable_slot_blocking ?? false);
+          
+          setEnableMaintenanceFeature(Boolean(currentTenant.is_system_maintenance || currentTenant.enable_maintenance_feature))
+          setIsMaintenanceMode(Boolean(currentTenant.is_maintenance_mode))
+          setMaintenanceMessage(currentTenant.maintenance_message || '')
+
+          if (currentTenant.subscription_plan) {
+            setSubscriptionPlan(currentTenant.subscription_plan.toUpperCase() === 'ULTIMATE' ? 'ULTIMATE' : 'PROFESIONAL')
+          }
+
+          const activeToggle = currentTenant.super_admin_toggle ?? currentTenant.is_super_admin_active ?? currentTenant.is_active;
+          if (activeToggle !== undefined) {
+            setIsSuperAdminToggleActive(Boolean(activeToggle));
+          }
+
+          if (currentTenant.custom_dashboard_theme !== undefined) {
+            setIsCustomThemeActive(Boolean(currentTenant.custom_dashboard_theme))
+          }
+        }
+
+        // 2. Cek Sesi Auth User
+        const { data: authData } = await supabase.auth.getSession()
+        
+        if (authData?.session) {
+          const userEmail = authData.session.user.email
+          if (currentTenant.admin_email && currentTenant.admin_email.toLowerCase() !== userEmail?.toLowerCase()) {
+            await supabase.auth.signOut()
+            if (isMounted) {
+              setIsAuthenticated(false)
+              alert(`Akses Ditolak! Akun "${userEmail}" tidak memiliki izin untuk mengelola tenant ini.`)
+            }
+          } else {
+            if (isMounted) {
+              setIsAuthenticated(true)
+            }
+          }
+        }
+
+      } catch (err) {
+        console.error("Initialization error:", err);
+      } finally {
+        if (isMounted) {
+          setIsInitializing(false)
+        }
+      }
     }
 
-    setIsInitializing(false)
-  }
+    initSession();
 
-    if (tenantSlug) {
-      initSession()
-    }
-  }, [tenantSlug, fetchTenantDetail])
+    return () => {
+      isMounted = false;
+    };
+  }, [tenantSlug])
 
-  // Tambahkan tepat di bawah useEffect initSession kamu
+  // Efek terpisah khusus untuk fetch data turunan saat tenantId sudah ada
   useEffect(() => {
-  if (tenantId) {
-    fetchReservations();
-    fetchBlockedSlots();
-  }
-}, [tenantId]);
+    if (tenantId) {
+      fetchReservations()
+      fetchBlockedSlots()
+    }
+  }, [tenantId]) // Sengaja fungsi fetch tidak dimasukkan ke dependency untuk mencegah infinite loop
 
   // ============================================================================
   // 14. DYNAMIC THEME SYSTEM COMPUTATION
   // ============================================================================
-  const themeStyles = useMemo(() => {
-    if (subscriptionPlan === 'BASIC') {
+  const isDark = selectedMode === 'dark';
+
+  const getUltimateThemeStyles = () => {
+    if (!enableCustomTheme) {
       return {
-        mainBg: 'bg-zinc-950',
-        bgGlow: 'hidden',
-        bgGlowSecondary: 'hidden',
-        cardBg: 'bg-zinc-900/90 border-zinc-800',
-        textAccent: 'text-purple-300',
-        borderAccent: 'border-purple-500/20',
-        focusBorder: 'focus:border-purple-500',
-        badgeBg: 'bg-zinc-800 text-zinc-300 border-zinc-700',
-        buttonPrimary: 'bg-purple-600 hover:bg-purple-500 text-white',
-        btnActivePeriod: 'bg-purple-600 text-white',
-        headerGradient: 'bg-zinc-950 border-zinc-800',
+        bg: 'bg-zinc-950 text-zinc-300',
+        cardBg: 'bg-zinc-900/60 border border-zinc-800 text-zinc-200 shadow-none backdrop-blur-none',
+        headerBg: 'bg-zinc-900/90 text-zinc-100 border-zinc-800 shadow-none backdrop-blur-none',
+        accentText: 'text-zinc-100',
+        badge: 'bg-zinc-800 border-zinc-700 text-zinc-400 shadow-none',
+        buttonPrimary: 'bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-semibold border border-zinc-700 shadow-none',
+        btnActivePeriod: 'bg-zinc-800 text-zinc-200 border border-zinc-700 shadow-none',
+        focusBorder: 'focus:border-zinc-600 focus:ring-1 focus:ring-zinc-700',
+        badgeBg: 'bg-zinc-800 text-zinc-300 border-zinc-700'
+      };
+    }
+
+    if (isDark) {
+      switch (selectedTheme) {
+        case 'purple':
+          return {
+            bg: 'bg-[#0f071e] text-purple-50',
+            cardBg: 'bg-gradient-to-br from-purple-950/45 via-zinc-950/90 to-slate-950/95 border-purple-500/40 shadow-[0_0_35px_rgba(168,85,247,0.2)] hover:shadow-[0_0_45px_rgba(168,85,247,0.35)] backdrop-blur-2xl ring-1 ring-purple-500/20',
+            headerBg: 'bg-gradient-to-r from-purple-950/70 via-zinc-950/95 to-indigo-950/60 border-purple-500/50 shadow-[0_0_40px_rgba(168,85,247,0.25)] backdrop-blur-3xl ring-1 ring-purple-500/30',
+            accentText: 'text-purple-400',
+            badge: 'bg-purple-500/25 border-purple-400/50 text-purple-200 shadow-sm shadow-purple-500/20',
+            buttonPrimary: 'bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-700 hover:from-purple-500 hover:to-indigo-500 text-white font-black shadow-lg shadow-purple-600/40 hover:shadow-purple-600/60',
+            btnActivePeriod: 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md shadow-purple-600/30',
+            focusBorder: 'focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20',
+            badgeBg: 'bg-purple-500/20 text-purple-200 border-purple-400/50'
+          };
+        case 'pink':
+          return {
+            bg: 'bg-[#1a0815] text-pink-50',
+            cardBg: 'bg-gradient-to-br from-pink-950/45 via-zinc-950/90 to-slate-950/95 border-pink-500/40 shadow-[0_0_35px_rgba(236,72,153,0.2)] hover:shadow-[0_0_45px_rgba(236,72,153,0.35)] backdrop-blur-2xl ring-1 ring-pink-500/20',
+            headerBg: 'bg-gradient-to-r from-pink-950/70 via-zinc-950/95 to-rose-950/60 border-pink-500/50 shadow-[0_0_40px_rgba(236,72,153,0.25)] backdrop-blur-3xl ring-1 ring-pink-500/30',
+            accentText: 'text-pink-400',
+            badge: 'bg-pink-500/25 border-pink-400/50 text-pink-200 shadow-sm shadow-pink-500/20',
+            buttonPrimary: 'bg-gradient-to-r from-pink-500 via-rose-500 to-pink-600 hover:from-pink-400 hover:to-rose-400 text-white font-black shadow-lg shadow-pink-500/30 hover:shadow-pink-500/50',
+            btnActivePeriod: 'bg-gradient-to-r from-pink-500 to-rose-600 text-white shadow-md shadow-pink-500/30',
+            focusBorder: 'focus:border-pink-500 focus:ring-2 focus:ring-pink-500/20',
+            badgeBg: 'bg-pink-500/20 text-pink-200 border-pink-400/50'
+          };
+        case 'amber':
+          return {
+            bg: 'bg-[#1a1205] text-amber-50',
+            cardBg: 'bg-gradient-to-br from-amber-950/45 via-zinc-950/90 to-slate-950/95 border-amber-500/40 shadow-[0_0_35px_rgba(245,158,11,0.2)] hover:shadow-[0_0_45px_rgba(245,158,11,0.35)] backdrop-blur-2xl ring-1 ring-amber-500/20',
+            headerBg: 'bg-gradient-to-r from-amber-950/70 via-zinc-950/95 to-yellow-950/60 border-amber-500/50 shadow-[0_0_40px_rgba(245,158,11,0.25)] backdrop-blur-3xl ring-1 ring-amber-500/30',
+            accentText: 'text-amber-400',
+            badge: 'bg-amber-500/25 border-amber-400/50 text-amber-200 shadow-sm shadow-amber-500/20',
+            buttonPrimary: 'bg-gradient-to-r from-amber-400 via-amber-500 to-yellow-500 hover:from-amber-300 hover:to-yellow-400 text-zinc-950 font-black shadow-lg shadow-amber-500/30 hover:shadow-amber-500/50',
+            btnActivePeriod: 'bg-gradient-to-r from-amber-400 to-yellow-500 text-zinc-950 font-extrabold shadow-md shadow-amber-500/30',
+            focusBorder: 'focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20',
+            badgeBg: 'bg-amber-500/20 text-amber-200 border-amber-400/50'
+          };
+        case 'emerald':
+          return {
+            bg: 'bg-[#051a12] text-emerald-50',
+            cardBg: 'bg-gradient-to-br from-emerald-950/45 via-zinc-950/90 to-slate-950/95 border-emerald-500/40 shadow-[0_0_35px_rgba(16,185,129,0.2)] hover:shadow-[0_0_45px_rgba(16,185,129,0.35)] backdrop-blur-2xl ring-1 ring-emerald-500/20',
+            headerBg: 'bg-gradient-to-r from-emerald-950/70 via-zinc-950/95 to-teal-950/60 border-emerald-500/50 shadow-[0_0_40px_rgba(16,185,129,0.25)] backdrop-blur-3xl ring-1 ring-emerald-500/30',
+            accentText: 'text-emerald-400',
+            badge: 'bg-emerald-500/25 border-emerald-400/50 text-emerald-200 shadow-sm shadow-emerald-500/20',
+            buttonPrimary: 'bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 hover:from-emerald-400 hover:to-teal-400 text-white font-black shadow-lg shadow-emerald-500/30 hover:shadow-emerald-500/50',
+            btnActivePeriod: 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-md shadow-emerald-500/30',
+            focusBorder: 'focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20',
+            badgeBg: 'bg-emerald-500/20 text-emerald-200 border-emerald-400/50'
+          };
+        default:
+          return {
+            bg: 'bg-[#05141a] text-cyan-50',
+            cardBg: 'bg-gradient-to-br from-cyan-950/45 via-zinc-950/90 to-slate-950/95 border-cyan-500/40 shadow-[0_0_35px_rgba(6,182,212,0.2)] hover:shadow-[0_0_45px_rgba(6,182,212,0.35)] backdrop-blur-2xl ring-1 ring-cyan-500/20',
+            headerBg: 'bg-gradient-to-r from-cyan-950/70 via-zinc-950/95 to-blue-950/60 border-cyan-500/50 shadow-[0_0_40px_rgba(6,182,212,0.25)] backdrop-blur-3xl ring-1 ring-cyan-500/30',
+            accentText: 'text-cyan-400',
+            badge: 'bg-cyan-500/25 border-cyan-400/50 text-cyan-200 shadow-sm shadow-cyan-500/20',
+            buttonPrimary: 'bg-gradient-to-r from-cyan-500 via-blue-600 to-cyan-600 hover:from-cyan-400 hover:to-blue-500 text-white font-black shadow-lg shadow-cyan-600/30 hover:shadow-cyan-600/50',
+            btnActivePeriod: 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-md shadow-cyan-600/30',
+            focusBorder: 'focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20',
+            badgeBg: 'bg-cyan-500/20 text-cyan-200 border-cyan-400/50'
+          };
+      }
+    } else {
+      switch (selectedTheme) {
+        case 'purple':
+          return {
+            bg: 'bg-gradient-to-br from-purple-50/80 via-slate-100 to-indigo-50/60 text-slate-900',
+            cardBg: 'bg-white/95 border-purple-200/90 shadow-[0_12px_40px_rgba(168,85,247,0.12)] hover:shadow-[0_18px_50px_rgba(168,85,247,0.2)] backdrop-blur-xl',
+            headerBg: 'bg-white/95 border-purple-300 shadow-[0_15px_45px_rgba(168,85,247,0.15)] backdrop-blur-xl',
+            accentText: 'text-purple-600',
+            badge: 'bg-purple-100 border-purple-300 text-purple-700 shadow-sm',
+            buttonPrimary: 'bg-purple-600 hover:bg-purple-500 text-white font-black shadow-lg shadow-purple-600/30',
+            btnActivePeriod: 'bg-purple-600 text-white shadow-md shadow-purple-600/20',
+            focusBorder: 'focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20',
+            badgeBg: 'bg-purple-100 text-purple-800 border-purple-300'
+          };
+        case 'pink':
+          return {
+            bg: 'bg-gradient-to-br from-pink-50/80 via-slate-100 to-rose-50/60 text-slate-900',
+            cardBg: 'bg-white/95 border-pink-200/90 shadow-[0_12px_40px_rgba(236,72,153,0.12)] hover:shadow-[0_18px_50px_rgba(236,72,153,0.2)] backdrop-blur-xl',
+            headerBg: 'bg-white/95 border-pink-300 shadow-[0_15px_45px_rgba(236,72,153,0.15)] backdrop-blur-xl',
+            accentText: 'text-pink-600',
+            badge: 'bg-pink-100 border-pink-300 text-pink-700 shadow-sm',
+            buttonPrimary: 'bg-pink-600 hover:bg-pink-500 text-white font-black shadow-lg shadow-pink-600/30',
+            btnActivePeriod: 'bg-pink-600 text-white shadow-md shadow-pink-600/20',
+            focusBorder: 'focus:border-pink-500 focus:ring-2 focus:ring-pink-500/20',
+            badgeBg: 'bg-pink-100 text-pink-800 border-pink-300'
+          };
+        case 'amber':
+          return {
+            bg: 'bg-gradient-to-br from-amber-50/80 via-slate-100 to-orange-50/60 text-slate-900',
+            cardBg: 'bg-white/95 border-amber-200/90 shadow-[0_12px_40px_rgba(245,158,11,0.12)] hover:shadow-[0_18px_50px_rgba(245,158,11,0.2)] backdrop-blur-xl',
+            headerBg: 'bg-white/95 border-amber-300 shadow-[0_15px_45px_rgba(245,158,11,0.15)] backdrop-blur-xl',
+            accentText: 'text-amber-600',
+            badge: 'bg-amber-100 border-amber-300 text-amber-800 shadow-sm',
+            buttonPrimary: 'bg-amber-500 hover:bg-amber-400 text-zinc-950 font-black shadow-lg shadow-amber-500/30',
+            btnActivePeriod: 'bg-amber-500 text-zinc-950 font-extrabold shadow-md shadow-amber-500/20',
+            focusBorder: 'focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20',
+            badgeBg: 'bg-amber-100 text-amber-900 border-amber-300'
+          };
+        case 'emerald':
+          return {
+            bg: 'bg-gradient-to-br from-emerald-50/80 via-slate-100 to-teal-50/60 text-slate-900',
+            cardBg: 'bg-white/95 border-emerald-200/90 shadow-[0_12px_40px_rgba(16,185,129,0.12)] hover:shadow-[0_18px_50px_rgba(16,185,129,0.2)] backdrop-blur-xl',
+            headerBg: 'bg-white/95 border-emerald-300 shadow-[0_15px_45px_rgba(16,185,129,0.15)] backdrop-blur-xl',
+            accentText: 'text-emerald-600',
+            badge: 'bg-emerald-100 border-emerald-300 text-emerald-700 shadow-sm',
+            buttonPrimary: 'bg-emerald-600 hover:bg-emerald-500 text-white font-black shadow-lg shadow-emerald-600/30',
+            btnActivePeriod: 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20',
+            focusBorder: 'focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20',
+            badgeBg: 'bg-emerald-100 text-emerald-800 border-emerald-300'
+          };
+        default:
+          return {
+            bg: 'bg-gradient-to-br from-sky-50/80 via-slate-100 to-cyan-50/60 text-slate-900',
+            cardBg: 'bg-white/95 border-sky-200/90 shadow-[0_12px_40px_rgba(14,165,233,0.12)] hover:shadow-[0_18px_50px_rgba(14,165,233,0.2)] backdrop-blur-xl',
+            headerBg: 'bg-white/95 border-sky-300 shadow-[0_15px_45px_rgba(14,165,233,0.15)] backdrop-blur-xl',
+            accentText: 'text-sky-600',
+            badge: 'bg-sky-100 border-sky-300 text-sky-700 shadow-sm',
+            buttonPrimary: 'bg-cyan-600 hover:bg-cyan-500 text-white font-black shadow-lg shadow-cyan-600/30',
+            btnActivePeriod: 'bg-cyan-600 text-white shadow-md shadow-cyan-600/20',
+            focusBorder: 'focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20',
+            badgeBg: 'bg-sky-100 text-sky-800 border-sky-300'
+          };
       }
     }
+  };
 
-    const isPro = subscriptionPlan === 'PROFESIONAL'
-
-    switch (selectedTheme) {
-      case 'pink':
-        return {
-          mainBg: isPro ? 'bg-[#0f040b]' : 'bg-[#0b0510]',
-          bgGlow: isPro ? 'bg-pink-600/30' : 'bg-pink-600/10',
-          bgGlowSecondary: isPro ? 'bg-rose-500/20' : 'hidden',
-          cardBg: isPro 
-            ? 'bg-gradient-to-b from-pink-950/30 via-zinc-950/80 to-zinc-950/90 backdrop-blur-3xl border-pink-500/30 shadow-[0_8px_32px_0_rgba(236,72,153,0.15)] ring-1 ring-pink-500/20' 
-            : 'bg-zinc-950/70 border-pink-500/30',
-          textAccent: 'text-pink-400',
-          borderAccent: isPro ? 'border-pink-500/40 shadow-pink-950/50' : 'border-pink-500/30',
-          focusBorder: 'focus:border-pink-500 focus:ring-2 focus:ring-pink-500/20',
-          badgeBg: 'bg-pink-500/15 text-pink-300 border-pink-500/40 shadow-sm shadow-pink-500/20',
-          buttonPrimary: isPro 
-            ? 'bg-gradient-to-r from-pink-500 via-rose-500 to-pink-600 hover:from-pink-400 hover:to-rose-400 text-white font-black shadow-lg shadow-pink-500/30 hover:shadow-pink-500/50' 
-            : 'bg-pink-600 hover:bg-pink-500 text-white',
-          btnActivePeriod: 'bg-gradient-to-r from-pink-500 to-rose-600 text-white shadow-md shadow-pink-500/30',
-          headerGradient: isPro 
-            ? 'bg-gradient-to-r from-pink-950/90 via-zinc-950/90 to-rose-950/70 border-pink-500/50 shadow-2xl shadow-pink-950/50 ring-1 ring-pink-500/30' 
-            : 'bg-gradient-to-r from-pink-950/40 via-zinc-950/90 to-rose-950/20 border-pink-500/30',
-        }
-      case 'amber':
-        return {
-          mainBg: isPro ? 'bg-[#0d0a03]' : 'bg-[#090702]',
-          bgGlow: isPro ? 'bg-amber-500/25' : 'bg-amber-600/10',
-          bgGlowSecondary: isPro ? 'bg-yellow-600/15' : 'hidden',
-          cardBg: isPro 
-            ? 'bg-gradient-to-b from-amber-950/30 via-zinc-950/80 to-zinc-950/90 backdrop-blur-3xl border-amber-500/30 shadow-[0_8px_32px_0_rgba(245,158,11,0.15)] ring-1 ring-amber-500/20' 
-            : 'bg-zinc-950/70 border-amber-500/30',
-          textAccent: 'text-amber-400',
-          borderAccent: isPro ? 'border-amber-500/40 shadow-amber-950/50' : 'border-amber-500/30',
-          focusBorder: 'focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20',
-          badgeBg: 'bg-amber-500/15 text-amber-300 border-amber-500/40 shadow-sm shadow-amber-500/20',
-          buttonPrimary: isPro 
-            ? 'bg-gradient-to-r from-amber-400 via-amber-500 to-yellow-500 hover:from-amber-300 hover:to-yellow-400 text-zinc-950 font-black shadow-lg shadow-amber-500/30 hover:shadow-amber-500/50' 
-            : 'bg-amber-500 hover:bg-amber-400 text-zinc-950',
-          btnActivePeriod: 'bg-gradient-to-r from-amber-400 to-yellow-500 text-zinc-950 font-extrabold shadow-md shadow-amber-500/30',
-          headerGradient: isPro 
-            ? 'bg-gradient-to-r from-amber-950/90 via-zinc-950/90 to-yellow-950/70 border-amber-500/50 shadow-2xl shadow-amber-950/50 ring-1 ring-amber-500/30' 
-            : 'bg-gradient-to-r from-amber-950/40 via-zinc-950/90 to-amber-950/20 border-amber-500/30',
-        }
-      case 'emerald':
-        return {
-          mainBg: isPro ? 'bg-[#020d08]' : 'bg-[#020805]',
-          bgGlow: isPro ? 'bg-emerald-500/25' : 'bg-emerald-600/10',
-          bgGlowSecondary: isPro ? 'bg-teal-600/15' : 'hidden',
-          cardBg: isPro 
-            ? 'bg-gradient-to-b from-emerald-950/30 via-zinc-950/80 to-zinc-950/90 backdrop-blur-3xl border-emerald-500/30 shadow-[0_8px_32px_0_rgba(16,185,129,0.15)] ring-1 ring-emerald-500/20' 
-            : 'bg-zinc-950/70 border-emerald-500/30',
-          textAccent: 'text-emerald-400',
-          borderAccent: isPro ? 'border-emerald-500/40 shadow-emerald-950/50' : 'border-emerald-500/30',
-          focusBorder: 'focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20',
-          badgeBg: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40 shadow-sm shadow-emerald-500/20',
-          buttonPrimary: isPro 
-            ? 'bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 hover:from-emerald-400 hover:to-teal-400 text-white font-black shadow-lg shadow-emerald-500/30 hover:shadow-emerald-500/50' 
-            : 'bg-emerald-600 hover:bg-emerald-500 text-white',
-          btnActivePeriod: 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-md shadow-emerald-500/30',
-          headerGradient: isPro 
-            ? 'bg-gradient-to-r from-emerald-950/90 via-zinc-950/90 to-teal-950/70 border-emerald-500/50 shadow-2xl shadow-emerald-950/50 ring-1 ring-emerald-500/30' 
-            : 'bg-gradient-to-r from-emerald-950/40 via-zinc-950/90 to-teal-950/20 border-emerald-500/30',
-        }
-      case 'blue':
-        return {
-          mainBg: isPro ? 'bg-[#030914]' : 'bg-[#02050b]',
-          bgGlow: isPro ? 'bg-blue-600/30' : 'bg-blue-600/10',
-          bgGlowSecondary: isPro ? 'bg-indigo-600/20' : 'hidden',
-          cardBg: isPro 
-            ? 'bg-gradient-to-b from-blue-950/30 via-zinc-950/80 to-zinc-950/90 backdrop-blur-3xl border-blue-500/30 shadow-[0_8px_32px_0_rgba(59,130,246,0.15)] ring-1 ring-blue-500/20' 
-            : 'bg-zinc-950/70 border-blue-500/30',
-          textAccent: 'text-blue-400',
-          borderAccent: isPro ? 'border-blue-500/40 shadow-blue-950/50' : 'border-blue-500/30',
-          focusBorder: 'focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20',
-          badgeBg: 'bg-blue-500/15 text-blue-300 border-blue-500/40 shadow-sm shadow-blue-500/20',
-          buttonPrimary: isPro 
-            ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-500 hover:to-indigo-500 text-white font-black shadow-lg shadow-blue-600/30 hover:shadow-blue-600/50' 
-            : 'bg-blue-600 hover:bg-blue-500 text-white',
-          btnActivePeriod: 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-600/30',
-          headerGradient: isPro 
-            ? 'bg-gradient-to-r from-blue-950/90 via-zinc-950/90 to-indigo-950/70 border-blue-500/50 shadow-2xl shadow-blue-950/50 ring-1 ring-blue-950/30' 
-            : 'bg-gradient-to-r from-blue-950/40 via-zinc-950/90 to-indigo-950/20 border-blue-500/30',
-        }
-      case 'purple':
-      default:
-        return {
-          mainBg: isPro ? 'bg-[#09040e]' : 'bg-[#06040a]',
-          bgGlow: isPro ? 'bg-purple-600/30' : 'bg-purple-600/10',
-          bgGlowSecondary: isPro ? 'bg-indigo-600/20' : 'hidden',
-          cardBg: isPro 
-            ? 'bg-gradient-to-b from-purple-950/30 via-zinc-950/80 to-zinc-950/90 backdrop-blur-3xl border-purple-500/30 shadow-[0_8px_32px_0_rgba(168,85,247,0.15)] ring-1 ring-purple-500/20' 
-            : 'bg-zinc-950/70 border-purple-500/30',
-          textAccent: 'text-purple-300',
-          borderAccent: isPro ? 'border-purple-500/40 shadow-purple-950/50' : 'border-purple-500/30',
-          focusBorder: 'focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20',
-          badgeBg: 'bg-purple-500/20 text-purple-200 border-purple-400/50 shadow-sm shadow-purple-500/20',
-          buttonPrimary: isPro 
-            ? 'bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-700 hover:from-purple-500 hover:to-indigo-500 text-white font-black shadow-lg shadow-purple-600/40 hover:shadow-purple-600/60' 
-            : 'bg-purple-600 hover:bg-purple-500 text-white',
-          btnActivePeriod: 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md shadow-purple-600/30',
-          headerGradient: isPro 
-            ? 'bg-gradient-to-r from-purple-950/90 via-zinc-950/90 to-indigo-950/70 border-purple-500/50 shadow-2xl shadow-purple-950/50 ring-1 ring-purple-500/30' 
-            : 'bg-gradient-to-r from-purple-950/40 via-zinc-950/90 to-indigo-950/20 border-purple-500/30',
-        }
-    }
-  }, [selectedTheme, subscriptionPlan])
+  const currentTheme = getUltimateThemeStyles();
+  const activeColor3D = GLOBAL_THEME_3D_COLORS[selectedTheme] || GLOBAL_THEME_3D_COLORS.purple;
+  const activeStaffColor3D = GLOBAL_THEME_3D_COLORS[selectedTheme] || GLOBAL_THEME_3D_COLORS.purple;
 
   // ============================================================================
   // 15. INITIAL LOADING UI STATE
@@ -1273,7 +1487,6 @@ export default function AdminDashboard() {
   // ============================================================================
   if (!isAuthenticated) {
     const isEyelash = businessType === 'eyelash'
-
     return (
       <main className={`min-h-screen flex items-center justify-center p-4 font-sans text-zinc-100 relative overflow-hidden transition-colors duration-500 ${
         isEyelash ? 'bg-[#0b0510]' : 'bg-[#06040a]'
@@ -1294,7 +1507,6 @@ export default function AdminDashboard() {
                 : 'bg-gradient-to-r from-purple-500/20 via-indigo-500/20 to-purple-600/10 text-purple-300 border-purple-500/30'
             }`}>
               <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${isEyelash ? 'bg-pink-400' : 'bg-purple-400'}`}></span>
-              {/* Ganti teks hardcode di bawah ini dengan state controlCenterLabel: */}
               {controlCenterLabel}
             </span>
             <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight uppercase bg-gradient-to-b from-white via-zinc-200 to-purple-200/60 bg-clip-text text-transparent mt-2">
@@ -1350,99 +1562,102 @@ export default function AdminDashboard() {
 
   const isEyelash = businessType === 'eyelash'
   const isProfesional = subscriptionPlan === 'PROFESIONAL'
+  const isUltimate = subscriptionPlan === 'ULTIMATE'
 
   // ============================================================================
   // 17. MAIN DASHBOARD UI (AUTHENTICATED)
   // ============================================================================
   return (
-    <div className={`min-h-screen p-3 sm:p-6 md:p-8 text-zinc-100 font-sans relative transition-colors duration-700 ${themeStyles.mainBg}`}>
-      {isProfesional && (
-        <>
-          <div className={`fixed -top-40 left-1/4 w-[450px] sm:w-[750px] h-[450px] sm:h-[750px] rounded-full blur-[140px] sm:blur-[180px] pointer-events-none transition-all duration-1000 animate-pulse ${themeStyles.bgGlow}`}></div>
-          <div className={`fixed bottom-0 right-10 w-[350px] sm:w-[500px] h-[350px] sm:h-[500px] rounded-full blur-[140px] pointer-events-none transition-all duration-1000 ${themeStyles.bgGlowSecondary}`}></div>
-        </>
-      )}
+    <main className={`min-h-screen p-3 sm:p-6 md:p-8 font-sans relative transition-all duration-700 ${currentTheme.bg}`}>
+      <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
+        <div className={`absolute -top-[10%] -left-[10%] w-[650px] h-[650px] rounded-full blur-[180px] opacity-35 transition-all duration-700 ${isDark ? 'bg-purple-600/30' : 'bg-cyan-400/30'}`}></div>
+        <div className={`absolute top-[40%] -right-[10%] w-[750px] h-[750px] rounded-full blur-[200px] opacity-35 transition-all duration-700 ${isDark ? 'bg-indigo-600/30' : 'bg-purple-300/40'}`}></div>
+      </div>
 
       <div className="w-full max-w-[1400px] mx-auto space-y-4 sm:space-y-6 relative z-10">
 
         {/* 17.1 HEADER SECTION */}
-        <div className={`flex flex-col md:flex-row justify-between items-start md:items-center p-4 sm:p-6 md:p-7 rounded-2xl sm:rounded-3xl transition-all duration-300 gap-4 ${themeStyles.headerGradient}`}>
+        <div className={`flex flex-col md:flex-row justify-between items-start md:items-center p-4 sm:p-6 md:p-7 rounded-3xl transition-all duration-500 gap-4 border backdrop-blur-2xl ${
+          enableCustomTheme ? currentTheme.headerBg : 'bg-zinc-950 text-zinc-100 border-zinc-800'
+        }`}>
           <div>
             <div className="flex items-center space-x-3 flex-wrap gap-y-2">
-              {/* Menggunakan controlCenterLabel secara dinamis, atau pisahkan teks/ikon jika disimpan terpisah */}
-              <h1 className="text-xl sm:text-2xl md:text-3xl font-black text-white tracking-tight uppercase bg-gradient-to-r from-white via-zinc-200 to-zinc-400 bg-clip-text text-transparent flex items-center gap-2">
-                <span>{controlCenterLabel}</span>
+              <h1 className="text-xl sm:text-2xl md:text-3xl font-bold tracking-tight uppercase flex items-center gap-2">
+                <span className={enableCustomTheme && !isDark ? 'text-slate-900' : 'text-white'}>{controlCenterLabel}</span>
               </h1>
-              
-              <span className={`text-[9px] sm:text-[10px] font-black px-3.5 py-1.5 rounded-full border tracking-widest transition-all uppercase flex items-center gap-1.5 ${
-                isProfesional
-                  ? 'bg-gradient-to-r from-amber-400/20 via-yellow-500/20 to-amber-600/30 border-amber-400/80 text-amber-300 shadow-lg shadow-amber-500/20 ring-1 ring-amber-400/40 animate-pulse'
-                  : subscriptionPlan === 'PREMIUM'
-                  ? themeStyles.badgeBg
-                  : 'bg-zinc-800/80 border-zinc-700 text-zinc-400'
+              <span className={`text-[9px] sm:text-[10px] font-black px-3.5 py-1.5 rounded-full border tracking-widest uppercase flex items-center gap-1.5 ${
+                enableCustomTheme ? currentTheme.badge : 'bg-zinc-900 text-zinc-400 border-zinc-800'
               }`}>
-                {isProfesional && '👑 '}
-                {subscriptionPlan === 'PREMIUM' && '⭐ '}
-                {subscriptionPlan} PLAN
+                {subscriptionPlan} SYSTEM
               </span>
             </div>
-            <p className="text-[11px] sm:text-xs text-zinc-300 mt-1 font-medium">
-              Kelola dan pantau pesanan masuk secara real-time untuk <span className="text-white font-bold">{brandTitle}</span>
+            <p className={`text-[11px] sm:text-xs mt-1 font-medium ${isDark ? 'text-zinc-400' : 'text-slate-500'}`}>
+              Kelola dan pantau pesanan masuk secara real-time untuk <span className={`font-bold ${isDark ? 'text-white' : 'text-slate-800'}`}>{brandTitle}</span>
             </p>
           </div>
 
           <div className="flex flex-wrap items-center justify-between md:justify-end gap-3 w-full md:w-auto">
-            {subscriptionPlan !== 'BASIC' && (
-              <div className="flex items-center gap-2 bg-zinc-950/80 border border-zinc-700/80 p-1.5 px-3 rounded-2xl shadow-inner backdrop-blur-xl">
-                <span className="text-[10px] font-black text-zinc-300 uppercase tracking-wider hidden sm:inline">Theme:</span>
-                <div className="flex items-center gap-1.5">
-                  <button
-                    onClick={() => setSelectedTheme('purple')}
-                    className={`w-6 h-6 rounded-full bg-purple-600 border-2 transition-all ${selectedTheme === 'purple' ? 'border-white scale-110 shadow-lg shadow-purple-500/80 ring-2 ring-purple-400' : 'border-transparent opacity-50 hover:opacity-100'}`}
-                    title="Tema Ungu (Luxury Purple)"
-                  />
-                  <button
-                    onClick={() => setSelectedTheme('pink')}
-                    className={`w-6 h-6 rounded-full bg-pink-500 border-2 transition-all ${selectedTheme === 'pink' ? 'border-white scale-110 shadow-lg shadow-pink-500/80 ring-2 ring-pink-400' : 'border-transparent opacity-50 hover:opacity-100'}`}
-                    title="Tema Pink (Glamour Pink)"
-                  />
-                  <button
-                    onClick={() => setSelectedTheme('amber')}
-                    className={`w-6 h-6 rounded-full bg-amber-400 border-2 transition-all ${selectedTheme === 'amber' ? 'border-white scale-110 shadow-lg shadow-amber-500/80 ring-2 ring-amber-300' : 'border-transparent opacity-50 hover:opacity-100'}`}
-                    title="Tema Amber/Gold (Royale Gold)"
-                  />
-                  <button
-                    onClick={() => setSelectedTheme('emerald')}
-                    className={`w-6 h-6 rounded-full bg-emerald-500 border-2 transition-all ${selectedTheme === 'emerald' ? 'border-white scale-110 shadow-lg shadow-emerald-500/80 ring-2 ring-emerald-400' : 'border-transparent opacity-50 hover:opacity-100'}`}
-                    title="Tema Hijau Emerald (Cyber Emerald)"
-                  />
-                  <button
-                    onClick={() => setSelectedTheme('blue')}
-                    className={`w-6 h-6 rounded-full bg-blue-500 border-2 transition-all ${selectedTheme === 'blue' ? 'border-white scale-110 shadow-lg shadow-blue-500/80 ring-2 ring-blue-400' : 'border-transparent opacity-50 hover:opacity-100'}`}
-                    title="Tema Biru (Neon Sapphire)"
-                  />
-                </div>
+            <div className={`flex items-center gap-3 p-2 px-3.5 rounded-2xl border backdrop-blur-xl shadow-sm ${isDark ? 'bg-zinc-950/85 border-zinc-800' : 'bg-white/85 border-slate-200'}`}>
+              <div className="flex items-center bg-black/10 dark:bg-white/10 p-1 rounded-xl">
+                <button
+                  onClick={() => {
+                    setSelectedMode('dark');
+                    localStorage.setItem('admin_theme_mode', 'dark');
+                  }}
+                  className={`px-2.5 py-1 text-[10px] font-bold rounded-lg transition-all ${isDark ? 'bg-purple-600 text-white shadow-md' : 'text-zinc-500 hover:text-zinc-800'}`}
+                >
+                  🌙 Dark
+                </button>
+                <button
+                  onClick={() => {
+                    setSelectedMode('light');
+                    localStorage.setItem('admin_theme_mode', 'light');
+                  }}
+                  className={`px-2.5 py-1 text-[10px] font-bold rounded-lg transition-all ${!isDark ? 'bg-amber-400 text-slate-950 shadow-md' : 'text-zinc-400 hover:text-zinc-200'}`}
+                >
+                  ☀️ Light
+                </button>
               </div>
-            )}
+
+              {enableCustomTheme && (
+                <>
+                  <div className="h-4 w-[1px] bg-zinc-300 dark:bg-zinc-700"></div>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => { setSelectedTheme('purple'); localStorage.setItem('admin_color_theme', 'purple'); }}
+                      className={`w-5 h-5 rounded-full bg-purple-600 border-2 transition-all ${selectedTheme === 'purple' ? 'border-white scale-125 shadow-md ring-2 ring-purple-400' : 'border-transparent opacity-60 hover:opacity-100'}`}
+                    />
+                    <button
+                      onClick={() => { setSelectedTheme('pink'); localStorage.setItem('admin_color_theme', 'pink'); }}
+                      className={`w-5 h-5 rounded-full bg-pink-500 border-2 transition-all ${selectedTheme === 'pink' ? 'border-white scale-125 shadow-md ring-2 ring-pink-400' : 'border-transparent opacity-60 hover:opacity-100'}`}
+                    />
+                    <button
+                      onClick={() => { setSelectedTheme('amber'); localStorage.setItem('admin_color_theme', 'amber'); }}
+                      className={`w-5 h-5 rounded-full bg-amber-400 border-2 transition-all ${selectedTheme === 'amber' ? 'border-white scale-125 shadow-md ring-2 ring-amber-300' : 'border-transparent opacity-60 hover:opacity-100'}`}
+                    />
+                    <button
+                      onClick={() => { setSelectedTheme('emerald'); localStorage.setItem('admin_color_theme', 'emerald'); }}
+                      className={`w-5 h-5 rounded-full bg-emerald-500 border-2 transition-all ${selectedTheme === 'emerald' ? 'border-white scale-125 shadow-md ring-2 ring-emerald-400' : 'border-transparent opacity-60 hover:opacity-100'}`}
+                    />
+                    <button
+                      onClick={() => { setSelectedTheme('blue'); localStorage.setItem('admin_color_theme', 'blue'); }}
+                      className={`w-5 h-5 rounded-full bg-cyan-500 border-2 transition-all ${selectedTheme === 'blue' ? 'border-white scale-125 shadow-md ring-2 ring-cyan-300' : 'border-transparent opacity-60 hover:opacity-100'}`}
+                    />
+                  </div>
+                </>
+              )}
+            </div>
 
             <div className="flex items-center space-x-2">
               <button
-                onClick={() => {
-                  fetchReservations()
-                  if (subscriptionPlan !== 'BASIC') {
-                    fetchBlockedSlots()
-                  }
-                }}
-                className="bg-zinc-900/90 hover:bg-zinc-800 text-zinc-200 border border-zinc-700/80 hover:border-zinc-500 px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl font-bold transition-all text-[11px] sm:text-xs flex items-center gap-1.5 sm:gap-2 shadow-lg active:scale-95"
+                onClick={() => { fetchReservations() }}
+                className={`px-4 py-2.5 rounded-xl font-bold transition-all text-[11px] sm:text-xs border shadow-sm ${isDark ? 'bg-zinc-900 hover:bg-zinc-800 text-zinc-200 border-zinc-700' : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200'}`}
               >
-                <svg className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${themeStyles.textAccent}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-                <span>Refresh</span>
+                Refresh
               </button>
               <button
                 onClick={handleLogout}
-                className="bg-rose-500/15 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl font-bold transition-all text-[11px] sm:text-xs active:scale-95"
+                className="bg-rose-500/15 hover:bg-rose-500/30 text-rose-500 border border-rose-500/30 px-4 py-2.5 rounded-xl font-bold transition-all text-[11px] sm:text-xs"
               >
                 Logout
               </button>
@@ -1450,361 +1665,805 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* 17.2 FEATURE TOGGLES SECTION */}
-        {isProfesional && (
-          <div className={`p-4 sm:p-6 rounded-2xl sm:rounded-3xl border transition-all space-y-4 shadow-xl ${themeStyles.cardBg}`}>
-            <div className="border-b border-zinc-800/80 pb-3">
-              <h3 className={`text-sm sm:text-base font-black flex items-center gap-2 ${themeStyles.textAccent}`}>
-                <span>⚙️ Pengaturan Fitur Booking Tenant ({brandTitle})</span>
-              </h3>
-              <p className="text-[11px] text-zinc-300 font-medium">
-                Aktifkan atau nonaktifkan pembatasan booking dan visibilitas jam pada halaman pelanggan secara instan.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {/* TOGGLE 1: PREVENT DOUBLE BOOKING */}
-              <div className="flex items-center justify-between p-3.5 bg-zinc-950/60 border border-zinc-800/80 rounded-2xl">
-                <div className="pr-2">
-                  <h4 className="text-xs font-black text-white uppercase tracking-wider">Batasi Double Booking</h4>
-                  <p className="text-[10px] text-zinc-400 font-medium mt-0.5">
-                    Mencegah booking pada jam & tanggal terisi.
-                  </p>
-                </div>
-                <label className="relative inline-flex items-center cursor-pointer shrink-0">
-                  <input 
-                    type="checkbox" 
-                    disabled={isUpdatingBookingToggle}
-                    checked={preventDoubleBooking} 
-                    onChange={(e) => handleToggleBookingSetting('prevent_double_booking', e.target.checked)} 
-                    className="sr-only peer"
-                  />
-                  <div className="w-11 h-6 bg-zinc-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-gradient-to-r peer-checked:from-emerald-500 peer-checked:to-teal-600"></div>
-                  <span className="ml-2.5 text-xs font-black text-zinc-200 min-w-[35px]">
-                    {isUpdatingBookingToggle ? '...' : preventDoubleBooking ? 'ON' : 'OFF'}
-                  </span>
-                </label>
-              </div>
-
-              {/* TOGGLE 2: HIDE BOOKED SLOTS */}
-              <div className="flex items-center justify-between p-3.5 bg-zinc-950/60 border border-zinc-800/80 rounded-2xl">
-                <div className="pr-2">
-                  <h4 className="text-xs font-black text-white uppercase tracking-wider">Sembunyikan Jam Terisi</h4>
-                  <p className="text-[10px] text-zinc-400 font-medium mt-0.5">
-                    Sembunyikan jam terisi penuh dari pelanggan.
-                  </p>
-                </div>
-                <label className="relative inline-flex items-center cursor-pointer shrink-0">
-                  <input 
-                    type="checkbox" 
-                    disabled={isUpdatingBookingToggle}
-                    checked={hideBookedSlots} 
-                    onChange={(e) => handleToggleBookingSetting('hide_booked_slots', e.target.checked)} 
-                    className="sr-only peer"
-                  />
-                  <div className="w-11 h-6 bg-zinc-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-gradient-to-r peer-checked:from-emerald-500 peer-checked:to-teal-600"></div>
-                  <span className="ml-2.5 text-xs font-black text-zinc-200 min-w-[35px]">
-                    {isUpdatingBookingToggle ? '...' : hideBookedSlots ? 'ON' : 'OFF'}
-                  </span>
-                </label>
-              </div>
-
-              {/* TOGGLE 3: WA REMINDER */}
-              <div className="flex items-center justify-between p-3.5 bg-zinc-950/60 border border-zinc-800/80 rounded-2xl">
-                <div className="pr-2">
-                  <h4 className="text-xs font-black text-white uppercase tracking-wider flex items-center gap-1">
-                    <span>💬 WA Reminder</span>
-                  </h4>
-                  <p className="text-[10px] text-zinc-400 font-medium mt-0.5">
-                    Kirim pesan pengingat WA ke pelanggan.
-                  </p>
-                </div>
-                <label className="relative inline-flex items-center cursor-pointer shrink-0">
-                  <input 
-                    type="checkbox" 
-                    disabled={isUpdatingWaToggle}
-                    checked={autoWaReminder} 
-                    onChange={(e) => handleToggleWaReminder(e.target.checked)} 
-                    className="sr-only peer"
-                  />
-                  <div className="w-11 h-6 bg-zinc-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-gradient-to-r peer-checked:from-purple-500 peer-checked:to-indigo-600"></div>
-                  <span className="ml-2.5 text-xs font-black text-zinc-200 min-w-[35px]">
-                    {isUpdatingWaToggle ? '...' : autoWaReminder ? 'ON' : 'OFF'}
-                  </span>
-                </label>
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* 17.4 STATS CARDS SECTION */}
         <div className={`grid grid-cols-2 sm:grid-cols-3 ${
-          subscriptionPlan === 'BASIC' ? 'lg:grid-cols-4' : 'lg:grid-cols-5'
+          !isSuperAdminToggleActive ? 'lg:grid-cols-4' : 'lg:grid-cols-5'
         } gap-3 sm:gap-4`}>
           
-          {(subscriptionPlan === 'PREMIUM' || isProfesional) && (
-            <div className={`col-span-2 sm:col-span-1 border p-4 sm:p-6 rounded-2xl sm:rounded-3xl transition-all relative overflow-hidden group ${themeStyles.cardBg}`}>
+          {isSuperAdminToggleActive && (
+            <div className={`col-span-2 sm:col-span-1 border p-4 sm:p-6 rounded-3xl transition-all duration-300 transform hover:-translate-y-1 relative overflow-hidden group ${currentTheme.cardBg}`}>
               <div className="absolute top-0 right-0 p-3 opacity-20 group-hover:opacity-40 transition-opacity">
                 <span className="text-4xl sm:text-6xl">{isEyelash ? '💄' : '💰'}</span>
               </div>
-              <p className={`text-[10px] sm:text-xs font-black uppercase tracking-wider ${themeStyles.textAccent}`}>Total Omzet</p>
+              <p className={`text-[10px] sm:text-xs font-black uppercase tracking-wider ${currentTheme.accentText}`}>Total Omzet</p>
               <div className="mt-2 sm:mt-3">
-                <h3 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
+                <h3 className={`text-2xl sm:text-3xl font-black tracking-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>
                   Rp {stats.totalRevenue.toLocaleString('id-ID')}
                 </h3>
-                <p className="text-[10px] sm:text-xs font-bold mt-1.5 flex items-center gap-1.5 text-emerald-400">
-                  <span className="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <p className="text-[10px] sm:text-xs font-bold mt-1.5 flex items-center gap-1.5 text-emerald-500">
+                  <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
                   {stats.completedCount} transaksi selesai
                 </p>
               </div>
             </div>
           )}
 
-          <div className={`border p-4 sm:p-6 rounded-2xl sm:rounded-3xl transition-all ${themeStyles.cardBg}`}>
-            <p className="text-[10px] sm:text-xs font-bold text-zinc-300 uppercase tracking-wider">Total Booking</p>
+          <div className={`border p-4 sm:p-6 rounded-3xl transition-all duration-300 transform hover:-translate-y-1 ${currentTheme.cardBg}`}>
+            <p className={`text-[10px] sm:text-xs font-bold uppercase tracking-wider ${isDark ? 'text-zinc-300' : 'text-slate-500'}`}>Total Booking</p>
             <div className="flex flex-col sm:flex-row sm:items-baseline justify-between mt-2 sm:mt-3 gap-1">
-              <h3 className="text-2xl sm:text-3xl font-black text-white tracking-tight">{stats.totalBookings}</h3>
-              <span className={`w-fit text-[9px] sm:text-[11px] font-black px-2.5 py-1 rounded-full border ${themeStyles.badgeBg}`}>Semua Data</span>
+              <h3 className={`text-2xl sm:text-3xl font-black tracking-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>{stats.totalBookings}</h3>
+              <span className={`w-fit text-[9px] sm:text-[11px] font-black px-2.5 py-1 rounded-full border ${isDark ? 'bg-zinc-800 border-zinc-700 text-zinc-300' : 'bg-slate-100 border-slate-300 text-slate-700'}`}>Semua Data</span>
             </div>
           </div>
 
-          <div className={`border p-4 sm:p-6 rounded-2xl sm:rounded-3xl transition-all ${themeStyles.cardBg}`}>
-            <p className="text-[10px] sm:text-xs font-bold text-amber-400 uppercase tracking-wider">Menunggu</p>
+          <div className={`border p-4 sm:p-6 rounded-3xl transition-all duration-300 transform hover:-translate-y-1 ${currentTheme.cardBg}`}>
+            <p className={`text-[10px] sm:text-xs font-bold uppercase tracking-wider ${isDark ? 'text-amber-400' : 'text-amber-600'}`}>Menunggu</p>
             <div className="flex flex-col sm:flex-row sm:items-baseline justify-between mt-2 sm:mt-3 gap-1">
-              <h3 className="text-2xl sm:text-3xl font-black text-amber-400 tracking-tight">{stats.pendingCount}</h3>
-              <span className="w-fit text-[9px] sm:text-[11px] text-amber-300 font-bold bg-amber-500/10 px-2.5 py-1 rounded-full border border-amber-500/30">Konfirmasi</span>
+              <h3 className={`text-2xl sm:text-3xl font-black tracking-tight ${isDark ? 'text-amber-400' : 'text-amber-600'}`}>{stats.pendingCount}</h3>
+              <span className="w-fit text-[9px] sm:text-[11px] font-bold bg-amber-500/10 px-2.5 py-1 rounded-full border border-amber-500/30 text-amber-500">Konfirmasi</span>
             </div>
           </div>
 
-          <div className={`border p-4 sm:p-6 rounded-2xl sm:rounded-3xl transition-all ${themeStyles.cardBg}`}>
-            <p className="text-[10px] sm:text-xs font-bold text-emerald-400 uppercase tracking-wider">Selesai</p>
+          <div className={`border p-4 sm:p-6 rounded-3xl transition-all duration-300 transform hover:-translate-y-1 ${currentTheme.cardBg}`}>
+            <p className={`text-[10px] sm:text-xs font-bold uppercase tracking-wider ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>Selesai</p>
             <div className="flex flex-col sm:flex-row sm:items-baseline justify-between mt-2 sm:mt-3 gap-1">
-              <h3 className="text-2xl sm:text-3xl font-black text-emerald-400 tracking-tight">{stats.completedCount}</h3>
-              <span className="w-fit text-[9px] sm:text-xs font-extrabold text-emerald-300 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/30">
+              <h3 className={`text-2xl sm:text-3xl font-black tracking-tight ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>{stats.completedCount}</h3>
+              <span className="w-fit text-[9px] sm:text-xs font-extrabold bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/30 text-emerald-500">
                 {stats.completedPercentage}%
               </span>
             </div>
           </div>
 
-          <div className={`border p-4 sm:p-6 rounded-2xl sm:rounded-3xl transition-all ${themeStyles.cardBg}`}>
-            <p className="text-[10px] sm:text-xs font-bold text-rose-400 uppercase tracking-wider">Pembatalan</p>
+          <div className={`border p-4 sm:p-6 rounded-3xl transition-all duration-300 transform hover:-translate-y-1 ${currentTheme.cardBg}`}>
+            <p className={`text-[10px] sm:text-xs font-bold uppercase tracking-wider ${isDark ? 'text-rose-400' : 'text-rose-600'}`}>Pembatalan</p>
             <div className="flex flex-col sm:flex-row sm:items-baseline justify-between mt-2 sm:mt-3 gap-1">
-              <h3 className="text-2xl sm:text-3xl font-black text-rose-400 tracking-tight">{stats.cancelledCount}</h3>
+              <h3 className={`text-2xl sm:text-3xl font-black tracking-tight ${isDark ? 'text-rose-400' : 'text-rose-600'}`}>{stats.cancelledCount}</h3>
               {stats.needRefundCount > 0 ? (
-                <span className="w-fit text-[9px] font-black text-amber-300 bg-amber-500/20 px-2 py-0.5 rounded-full border border-amber-500/40 animate-pulse">
+                <span className="w-fit text-[9px] font-black bg-amber-500/20 px-2 py-0.5 rounded-full border border-amber-500/40 text-amber-500 animate-pulse">
                   {stats.needRefundCount} Refund
                 </span>
               ) : (
-                <span className="w-fit text-[9px] sm:text-xs font-extrabold text-rose-300 bg-rose-500/10 px-2.5 py-1 rounded-full border border-rose-500/30">
+                <span className="w-fit text-[9px] sm:text-xs font-extrabold bg-rose-500/10 px-2.5 py-1 rounded-full border border-rose-500/30 text-rose-500">
                   {stats.cancelledPercentage}%
                 </span>
               )}
             </div>
           </div>
-
         </div>
 
-        {/* 17.5 TOP STAFF PERFORMANCE SECTION */}
-        {isProfesional && (
-          <div className={`border p-4 sm:p-5 rounded-2xl sm:rounded-3xl transition-all flex flex-col gap-4 relative overflow-hidden ${themeStyles.cardBg}`}>
-            <div className="flex items-center space-x-3 sm:space-x-4">
-              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl border border-amber-400/50 bg-amber-500/20 flex items-center justify-center text-xl sm:text-2xl shrink-0 shadow-lg shadow-amber-500/20">
-                👑
-              </div>
-              <div>
-                <span className={`text-[9px] sm:text-[10px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-full border ${themeStyles.badgeBg}`}>
-                  Performa Staff ({staffLabel})
-                </span>
-                <h3 className="text-lg sm:text-xl font-black text-white mt-1">
-                  Grafik Transaksi Staff
-                </h3>
-              </div>
-            </div>
+        {/* 17.5 PERFORMANCE SECTION */}
+        {isSuperAdminToggleActive && businessPerformanceEnabled && (
+          <div className="flex flex-col lg:flex-row gap-6 items-stretch">
+            
+            {/* ========================================================= */}
+            {/* 1. KIRI: PERFORMA USAHA (DENGAN FILTER & DESAIN EKSKLUSIF)  */}
+            {/* ========================================================= */}
+            {(() => {
+              const activeColor3D = theme3DColors[selectedTheme] || theme3DColors.purple;
 
-            <div className="flex flex-col gap-3 pt-2 border-t border-zinc-800/80">
-              {(!stats.staffList || stats.staffList.length === 0) ? (
-                <p className="text-xs text-zinc-400 italic py-2">
-                  Belum ada transaksi staff terdata pada tenant ini.
-                </p>
-              ) : (
-                (() => {
-                  const maxCount = Math.max(...stats.staffList.map((s: { count: number }) => s.count), 1);
+              // Filter reservasi usaha berdasarkan bulan & tahun khusus Usaha
+              const filteredByMonthYear = reservations.filter(r => {
+                if (!r.booking_date) return false;
+                const d = new Date(r.booking_date);
+                const m = String(d.getMonth() + 1);
+                const y = String(d.getFullYear());
+                return m === businessMonth && y === businessYear;
+              });
 
-                  return stats.staffList.map((staff: { name: string; count: number }, idx: number) => {
-                    const percentage = Math.round((staff.count / maxCount) * 100);
+              const completedRes = filteredByMonthYear.filter(r => isCompleted(r.status));
+              
+              let actualBusinessData = [];
+              if (businessFilter === 'mingguan') {
+                const map: Record<string, number> = { 'Sen': 0, 'Sel': 0, 'Rab': 0, 'Kam': 0, 'Jum': 0, 'Sab': 0, 'Min': 0 };
+                const countMap: Record<string, number> = { 'Sen': 0, 'Sel': 0, 'Rab': 0, 'Kam': 0, 'Jum': 0, 'Sab': 0, 'Min': 0 };
+                
+                completedRes.forEach(r => {
+                  const d = new Date(r.booking_date);
+                  const dayNames = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
+                  const name = dayNames[d.getDay()];
+                  map[name] = (map[name] || 0) + getItemPrice(r);
+                  countMap[name] = (countMap[name] || 0) + 1;
+                });
 
-                    return (
-                      <div key={idx} className="flex flex-col gap-1.5">
-                        <div className="flex justify-between items-center text-xs sm:text-sm">
-                          <span className="font-bold text-zinc-200">{staff.name}</span>
-                          <span className={`font-mono font-black ${themeStyles.textAccent}`}>
-                            {staff.count} <span className="text-[10px] text-zinc-300 font-normal">Transaksi</span>
-                          </span>
+                const barKeys = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'];
+                actualBusinessData = barKeys.map(k => {
+                  const amt = map[k];
+                  const formattedAmt = amt >= 1000000 ? `Rp ${(amt / 1000000).toFixed(1)}jt` : amt >= 1000 ? `Rp ${(amt / 1000).toFixed(0)}rb` : `Rp ${amt}`;
+                  return { label: k, value: `${countMap[k]} transaksi`, amount: formattedAmt, rawAmount: amt };
+                });
+              } else if (businessFilter === 'bulanan') {
+                const weekMap = [0, 0, 0, 0];
+                const weekCounts = [0, 0, 0, 0];
+                
+                completedRes.forEach(r => {
+                  const dayNum = new Date(r.booking_date).getDate();
+                  const weekIdx = Math.min(Math.floor((dayNum - 1) / 7), 3);
+                  weekMap[weekIdx] += getItemPrice(r);
+                  weekCounts[weekIdx] += 1;
+                });
+
+                actualBusinessData = weekMap.map((amt, idx) => {
+                  const formattedAmt = amt >= 1000000 ? `Rp ${(amt / 1000000).toFixed(1)}jt` : amt >= 1000 ? `Rp ${(amt / 1000).toFixed(0)}rb` : `Rp ${amt}`;
+                  return { label: `Minggu ${idx + 1}`, value: `${weekCounts[idx]} transaksi`, amount: formattedAmt, rawAmount: amt };
+                });
+              } else {
+                const qMap = [0, 0, 0, 0];
+                const qCounts = [0, 0, 0, 0];
+                
+                completedRes.forEach(r => {
+                  const month = new Date(r.booking_date).getMonth();
+                  const qIdx = Math.floor(month / 3);
+                  qMap[qIdx] += getItemPrice(r);
+                  qCounts[qIdx] += 1;
+                });
+
+                actualBusinessData = qMap.map((amt, idx) => {
+                  const formattedAmt = amt >= 1000000 ? `Rp ${(amt / 1000000).toFixed(1)}jt` : amt >= 1000 ? `Rp ${(amt / 1000).toFixed(0)}rb` : `Rp ${amt}`;
+                  return { label: `Q${idx + 1}`, value: `${qCounts[idx]} transaksi`, amount: formattedAmt, rawAmount: amt };
+                });
+              }
+
+              const businessColumnsClass = actualBusinessData.length === 7 ? 'grid-cols-7' : 'grid-cols-4';
+              const maxBusinessVal = Math.max(1, ...actualBusinessData.map((i) => Number(i.rawAmount) || 1));
+
+              return (
+                <div className={'border p-4 sm:p-6 rounded-3xl transition-all flex flex-col justify-between gap-4 relative overflow-hidden flex-1 shadow-2xl ' + currentTheme.cardBg}>
+                  
+                  <div>
+                    {/* HEADER & FILTER HIDUP (USAHA) */}
+                    <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3">
+                      <div className="flex items-center space-x-3 sm:space-x-4">
+                        <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl border border-emerald-400/50 bg-gradient-to-br from-emerald-500/30 to-emerald-700/20 flex items-center justify-center text-xl sm:text-2xl shrink-0 shadow-lg shadow-emerald-500/20">
+                          📈
                         </div>
-
-                        <div className="w-full bg-zinc-800/80 rounded-full h-2.5 sm:h-3 overflow-hidden p-0.5 border border-zinc-700/50">
-                          <div
-                            className="bg-gradient-to-r from-amber-500 to-amber-300 h-full rounded-full transition-all duration-500 shadow-sm"
-                            style={{ width: `${percentage}%` }}
-                          />
+                        <div>
+                          <span className={'text-[9px] sm:text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full border shadow-inner ' + currentTheme.badgeBg}>
+                            Performa Usaha ({businessFilter})
+                          </span>
+                          <h3 className={'text-base sm:text-lg font-semibold mt-1 ' + (isDark ? 'text-zinc-200' : 'text-slate-800')}>
+                            Grafik Omzet & Bisnis (Actual)
+                          </h3>
                         </div>
                       </div>
-                    );
-                  });
-                })()
-              )}
-            </div>
+
+                      {/* KUMPULAN FILTER DENGAN EFEK GLOW & GLASSMORPHISM */}
+                      <div className="flex flex-wrap items-center gap-2">
+                        
+                        {/* DROPDOWN BULAN */}
+                        <div className="relative group">
+                          <select 
+                            value={businessMonth} 
+                            onChange={(e) => setBusinessMonth(e.target.value)}
+                            className={'px-3 py-2 text-[11px] sm:text-xs font-bold rounded-2xl border backdrop-blur-md outline-none transition-all duration-300 shadow-lg cursor-pointer ' + (isDark ? 'bg-zinc-900/80 border-emerald-500/40 text-emerald-300 hover:border-emerald-400 hover:shadow-emerald-500/20' : 'bg-white/90 border-emerald-500/40 text-emerald-700 hover:border-emerald-500')}
+                          >
+                            {[
+                              { v: '1', l: 'Januari' }, { v: '2', l: 'Februari' }, { v: '3', l: 'Maret' },
+                              { v: '4', l: 'April' }, { v: '5', l: 'Mei' }, { v: '6', l: 'Juni' },
+                              { v: '7', l: 'Juli' }, { v: '8', l: 'Agustus' }, { v: '9', l: 'September' },
+                              { v: '10', l: 'Oktober' }, { v: '11', l: 'November' }, { v: '12', l: 'Desember' }
+                            ].map(m => <option key={m.v} value={m.v} className={isDark ? 'bg-zinc-900 text-white' : 'bg-white text-black'}>{m.l}</option>)}
+                          </select>
+                        </div>
+
+                        {/* DROPDOWN TAHUN */}
+                        <div className="relative group">
+                          <select 
+                            value={businessYear} 
+                            onChange={(e) => setBusinessYear(e.target.value)}
+                            className={'px-3 py-2 text-[11px] sm:text-xs font-bold rounded-2xl border backdrop-blur-md outline-none transition-all duration-300 shadow-lg cursor-pointer ' + (isDark ? 'bg-zinc-900/80 border-emerald-500/40 text-emerald-300 hover:border-emerald-400 hover:shadow-emerald-500/20' : 'bg-white/90 border-emerald-500/40 text-emerald-700 hover:border-emerald-500')}
+                          >
+                            {['2024', '2025', '2026', '2027'].map(y => <option key={y} value={y} className={isDark ? 'bg-zinc-900 text-white' : 'bg-white text-black'}>{y}</option>)}
+                          </select>
+                        </div>
+
+                        {/* TAB FILTER (MINGGUAN/BULANAN/TAHUNAN) */}
+                        <div className={'flex items-center p-1 rounded-2xl border backdrop-blur-md shadow-inner ' + (isDark ? 'bg-black/60 border-zinc-800' : 'bg-slate-200/80 border-slate-300')}>
+                          {['mingguan', 'bulanan', 'tahunan'].map((tab) => (
+                            <button
+                              key={tab}
+                              type="button"
+                              onClick={() => setBusinessFilter(tab)}
+                              className={'px-3 py-1.5 text-[10px] sm:text-xs font-black rounded-xl transition-all duration-300 capitalize ' + (
+                                businessFilter === tab 
+                                  ? 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-lg shadow-emerald-500/30 scale-105' 
+                                  : (isDark ? 'text-zinc-400 hover:text-white hover:bg-zinc-800/50' : 'text-slate-600 hover:text-slate-900 hover:bg-white/60')
+                              )}
+                            >
+                              {tab}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="pt-6 border-t border-zinc-800/60 flex flex-col justify-end h-[280px] sm:h-[300px] relative px-2">
+                    <div className="absolute inset-0 flex flex-col justify-between pointer-events-none opacity-20 px-2 py-4">
+                      <div className="border-b border-dashed border-zinc-500 w-full"></div>
+                      <div className="border-b border-dashed border-zinc-500 w-full"></div>
+                      <div className="border-b border-dashed border-zinc-500 w-full"></div>
+                    </div>
+
+                    <div className={'grid ' + businessColumnsClass + ' gap-2 sm:gap-4 items-end h-full pb-6 z-10'}>
+                      {actualBusinessData.map((item, idx: number) => {
+                        const heightPct = Math.max(Math.round(((item.rawAmount || 0) / maxBusinessVal) * 100), 18);
+                        return (
+                          <div key={idx} className="flex flex-col items-center h-full justify-end group relative">
+                            
+                            {/* TEKS 3D HIDUP */}
+                            <div className="mb-2 flex flex-col items-center whitespace-nowrap transition-all duration-300 group-hover:scale-110">
+                              <span className={'text-[9px] sm:text-[10px] font-black px-2.5 py-1 rounded-xl border shadow-[0_6px_16px_rgba(0,0,0,0.6)] backdrop-blur-md transform transition-transform group-hover:-translate-y-1 ' + (isDark ? 'bg-gradient-to-b from-zinc-800 to-zinc-950 border-emerald-500/40 text-emerald-300 shadow-emerald-500/20' : 'bg-gradient-to-b from-white to-slate-100 border-emerald-500/40 text-emerald-700 shadow-emerald-500/10')}>
+                                ✨ {item.value}
+                              </span>
+                            </div>
+
+                            <div className="absolute -top-14 opacity-0 group-hover:opacity-100 transition-all duration-300 bg-zinc-900 border border-zinc-700 text-white text-[10px] font-bold px-3 py-1.5 rounded-xl shadow-2xl pointer-events-none whitespace-nowrap z-30">
+                              {item.amount} ({item.value})
+                            </div>
+
+                            {/* BATANG 3D */}
+                            <div 
+                              className={'w-full max-w-[48px] rounded-2xl transition-all duration-700 relative flex flex-col items-center group-hover:scale-[1.05] ' + activeColor3D.glow}
+                              style={{ height: heightPct + '%' }}
+                            >
+                              <div className={'w-full h-3 rounded-t-xl bg-gradient-to-r ' + activeColor3D.top + ' border-t border-white/40 shadow-sm shrink-0'} />
+                              <div className={'w-full flex-1 bg-gradient-to-b ' + activeColor3D.body + ' backdrop-blur-md border-x border-b border-white/10 rounded-b-xl'} />
+                            </div>
+
+                            <span className={'text-[11px] font-bold mt-3 tracking-wider uppercase truncate max-w-full ' + (isDark ? 'text-zinc-400 group-hover:text-white' : 'text-slate-600')}>
+                              {item.label}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+
+            {/* ========================================================= */}
+            {/* 2. KANAN: PERFORMA STAFF (DINAMIS DARI DATA STAFF & TABEL) */}
+            {/* ========================================================= */}
+            {(() => {
+              const activeColor3D = theme3DColors[selectedTheme] || theme3DColors.purple;
+
+              // Pastikan staffList dideklarasikan atau di-fallback dengan aman di tingkat tipe
+              const currentStaffList: any[] = Array.isArray(staffList) ? staffList : [];
+              
+              // 1. Ambil daftar nama staff murni dari state staffList tanpa paksaan kapital/format
+              const registeredStaffNames: string[] = currentStaffList
+                .map((s: any) => s?.name || s?.staff_name || s?.nama || '')
+                .filter((name: string): name is string => typeof name === 'string' && name.length > 0);
+
+              // 2. Filter reservasi staff berdasarkan bulan & tahun khusus Staff yang statusnya completed
+              const staffFilteredRes = reservations.filter((r: any) => {
+                if (!r?.booking_date) return false;
+                const d = new Date(r.booking_date);
+                const m = String(d.getMonth() + 1);
+                const y = String(d.getFullYear());
+                return m === staffMonth && y === staffYear && isCompleted(r.status);
+              });
+
+              // 3. Hitung jumlah transaksi per staff dari data reservasi
+              const staffMap: Record<string, number> = {};
+              staffFilteredRes.forEach((r: any) => {
+                let staffName = r?.staff_name || r?.staff || '';
+                if (staffName) {
+                  staffMap[staffName] = (staffMap[staffName] || 0) + 1;
+                }
+              });
+
+              // 4. Gabungkan daftar staff dari Super Admin agar yang transaksinya 0 tetap tampil dinamis
+              const allStaffKeys: string[] = registeredStaffNames.length > 0 
+                ? registeredStaffNames 
+                : (Object.keys(staffMap).length > 0 ? Object.keys(staffMap) : ['Unassigned Staff']);
+
+              const staffData = allStaffKeys.map((name: string) => ({
+                label: name,
+                count: staffMap[name] || 0
+              }));
+
+              const maxStaffVal = Math.max(1, ...staffData.map((s: { count: number }) => s.count));
+
+              return (
+                <div className={'border p-4 sm:p-6 rounded-3xl transition-all flex flex-col justify-between gap-5 relative overflow-hidden lg:w-[460px] shrink-0 shadow-2xl ' + currentTheme.cardBg}>
+                  
+                  {/* HEADER & FILTER: Disusun vertikal responsif agar TIDAK TUMPANG TINDIH */}
+                  <div className="flex flex-col gap-4">
+                    <div className="flex items-center space-x-3 sm:space-x-4">
+                      <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl border border-amber-400/50 bg-gradient-to-br from-amber-500/30 to-amber-700/20 flex items-center justify-center text-xl sm:text-2xl shrink-0 shadow-lg shadow-amber-500/20">
+                        👑
+                      </div>
+                      <div>
+                        <span className={'text-[9px] sm:text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full border shadow-inner ' + currentTheme.badgeBg}>
+                          Performa Staff
+                        </span>
+                        <h3 className={'text-base sm:text-lg font-semibold mt-1 ' + (isDark ? 'text-zinc-200' : 'text-slate-800')}>
+                          Grafik Kinerja Staff
+                        </h3>
+                      </div>
+                    </div>
+
+                    {/* DROPDOWN FILTER BULAN & TAHUN: Pindah ke baris bawahnya secara rapi */}
+                    <div className="flex items-center justify-end gap-2 pt-1 border-t border-zinc-800/40">
+                      <div className="relative group">
+                        <select 
+                          value={staffMonth} 
+                          onChange={(e) => setStaffMonth(e.target.value)}
+                          className={'px-3 py-1.5 text-[11px] sm:text-xs font-bold rounded-2xl border backdrop-blur-md outline-none transition-all duration-300 shadow-lg cursor-pointer ' + (isDark ? 'bg-zinc-900/80 border-amber-500/40 text-amber-300 hover:border-amber-400 hover:shadow-amber-500/20' : 'bg-white/90 border-amber-500/40 text-amber-700 hover:border-amber-500')}
+                        >
+                          {[
+                            { v: '1', l: 'Januari' }, { v: '2', l: 'Februari' }, { v: '3', l: 'Maret' },
+                            { v: '4', l: 'April' }, { v: '5', l: 'Mei' }, { v: '6', l: 'Juni' },
+                            { v: '7', l: 'Juli' }, { v: '8', l: 'Agustus' }, { v: '9', l: 'September' },
+                            { v: '10', l: 'Oktober' }, { v: '11', l: 'November' }, { v: '12', l: 'Desember' }
+                          ].map(m => <option key={m.v} value={m.v} className={isDark ? 'bg-zinc-900 text-white' : 'bg-white text-black'}>{m.l}</option>)}
+                        </select>
+                      </div>
+
+                      <div className="relative group">
+                        <select 
+                          value={staffYear} 
+                          onChange={(e) => setStaffYear(e.target.value)}
+                          className={'px-3 py-1.5 text-[11px] sm:text-xs font-bold rounded-2xl border backdrop-blur-md outline-none transition-all duration-300 shadow-lg cursor-pointer ' + (isDark ? 'bg-zinc-900/80 border-amber-500/40 text-amber-300 hover:border-amber-400 hover:shadow-amber-500/20' : 'bg-white/90 border-amber-500/40 text-amber-700 hover:border-amber-500')}
+                        >
+                          {['2024', '2025', '2026', '2027'].map(y => <option key={y} value={y} className={isDark ? 'bg-zinc-900 text-white' : 'bg-white text-black'}>{y}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="pt-4 border-t border-zinc-800/60 flex flex-col justify-end h-[280px] sm:h-[300px] relative px-2">
+                    <div className="absolute inset-0 flex flex-col justify-between pointer-events-none opacity-20 px-2 py-4">
+                      <div className="border-b border-dashed border-zinc-500 w-full"></div>
+                      <div className="border-b border-dashed border-zinc-500 w-full"></div>
+                      <div className="border-b border-dashed border-zinc-500 w-full"></div>
+                    </div>
+
+                    <div className="grid grid-flow-col auto-cols-fr gap-4 items-end h-full pb-6 z-10 justify-center">
+                      {staffData.map((item: { label: string; count: number }, idx: number) => {
+                        const heightPct = Math.max(Math.round((item.count / maxStaffVal) * 100), 18);
+                        return (
+                          <div key={idx} className="flex flex-col items-center h-full justify-end group relative max-w-[110px]">
+                            
+                            {/* EFEK 3D HIDUP PADA TEKS TRANSAKSI */}
+                            <div className="mb-2 flex flex-col items-center whitespace-nowrap transition-all duration-300 group-hover:scale-110">
+                              <span className={'text-[9px] sm:text-[10px] font-black px-2.5 py-1 rounded-xl border shadow-[0_6px_16px_rgba(0,0,0,0.6)] backdrop-blur-md transform transition-transform group-hover:-translate-y-1 ' + (isDark ? 'bg-gradient-to-b from-zinc-800 to-zinc-950 border-amber-500/40 text-amber-300 shadow-amber-500/20' : 'bg-gradient-to-b from-white to-slate-100 border-amber-500/40 text-amber-700 shadow-amber-500/10')}>
+                                ✨ {item.count} transaksi
+                              </span>
+                            </div>
+
+                            {/* BATANG 3D STAFF */}
+                            <div 
+                              className={'w-full max-w-[48px] rounded-2xl transition-all duration-700 relative flex flex-col items-center group-hover:scale-[1.05] ' + activeColor3D.glow}
+                              style={{ height: heightPct + '%' }}
+                            >
+                              <div className={'w-full h-3 rounded-t-xl bg-gradient-to-r ' + activeColor3D.top + ' border-t border-white/40 shadow-sm shrink-0'} />
+                              <div className={'w-full flex-1 bg-gradient-to-b ' + activeColor3D.body + ' backdrop-blur-md border-x border-b border-white/10 rounded-b-xl'} />
+                            </div>
+
+                            {/* NAMA STAFF: Tampil natural sesuai inputan database/super admin */}
+                            <span className={'text-[10px] font-bold mt-3 tracking-wide truncate max-w-full text-center normal-case ' + (isDark ? 'text-zinc-400 group-hover:text-white' : 'text-slate-600')} title={item.label}>
+                              {item.label}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
           </div>
         )}
 
-        {/* 17.6 BASIC PLAN UPGRADE BANNER */}
-        {subscriptionPlan === 'BASIC' && (
-          <div className={`p-4 sm:p-6 rounded-2xl sm:rounded-3xl border shadow-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4 bg-zinc-950/80 ${themeStyles.borderAccent}`}>
+        {/* 17.6 STANDARD MODE BANNER */}
+        {!isSuperAdminToggleActive && (
+          <div className={`p-4 sm:p-6 rounded-3xl border shadow-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4 ${currentTheme.cardBg}`}>
             <div className="space-y-1">
-              <span className={`text-[9px] sm:text-[10px] font-black px-2.5 py-0.5 rounded-full border uppercase ${themeStyles.badgeBg}`}>Upgrade Fitur Premium</span>
-              <h3 className="text-sm sm:text-base font-black text-white">Buka Fitur Laporan Keuangan, Total Omzet, & Manajemen Staff!</h3>
-              <p className="text-[11px] sm:text-xs text-zinc-400">Tingkatkan operasional bisnis kamu ke Paket Premium atau Profesional sekarang.</p>
+              <span className={`text-[9px] sm:text-[10px] font-black px-2.5 py-0.5 rounded-full border uppercase ${currentTheme.badgeBg}`}>Standard Mode / Non-Active Toggle</span>
+              <h3 className={`text-sm sm:text-base font-black ${isDark ? 'text-white' : 'text-slate-900'}`}>Dashboard tampil dalam mode standar/dasar. Aktifkan toggle Super Admin untuk membuka fitur lengkap!</h3>
+              <p className={`text-[11px] sm:text-xs ${isDark ? 'text-zinc-400' : 'text-slate-500'}`}>Hubungi administrator pusat untuk mengaktifkan status berlangganan kamu.</p>
             </div>
-            <button onClick={() => alert('Silakan hubungi customer support untuk upgrade paket bisnis kamu!')} className={`w-full md:w-auto font-black px-5 py-2.5 rounded-xl sm:rounded-2xl text-xs whitespace-nowrap shadow-lg transition-all active:scale-95 ${themeStyles.buttonPrimary}`}>
-              Upgrade Sekarang ⭐
+            <button onClick={() => alert('Silakan aktifkan toggle super admin dari panel superadmin Supabase!')} className={`w-full md:w-auto font-black px-5 py-2.5 rounded-2xl text-xs whitespace-nowrap shadow-lg transition-all active:scale-95 ${currentTheme.buttonPrimary}`}>
+              Info Toggle 🔒
             </button>
           </div>
         )}
 
         {/* 17.7 BLOCK SLOT MANAGEMENT SECTION */}
-        {subscriptionPlan !== 'BASIC' && (
-          <div className={`p-4 sm:p-6 rounded-2xl sm:rounded-3xl shadow-2xl border transition-all space-y-4 ${themeStyles.cardBg}`}>
-            <div className="flex items-center justify-between border-b border-zinc-800/80 pb-3">
+          {isSuperAdminToggleActive && slotBlockingEnabled && (
+          <div className={`p-4 sm:p-6 rounded-3xl shadow-2xl border transition-all space-y-4 ${currentTheme.cardBg}`}>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-zinc-800/80 pb-3 gap-2">
               <div>
-                <h3 className={`text-sm sm:text-base font-black flex items-center gap-2 ${themeStyles.textAccent}`}>
-                  <span>🚫 Manajemen Block Slot / Jam Tutup Off (Detail Keterangan)</span>
+                <h3 className={`text-sm sm:text-base font-black flex items-center gap-2 ${currentTheme.accentText}`}>
+                  <span>🚫 Pengaturan Operasional </span>
                 </h3>
-                <p className="text-[11px] text-zinc-300 font-medium">
-                  Blokir jam tertentu dengan alasan khusus (Libur Hari Raya, Istirahat, dll) & sinkronisasi otomatis dengan jam yang sudah di-confirm.
+                <p className={`text-[11px] font-medium ${isDark ? 'text-zinc-300' : 'text-slate-600'}`}>
+                  Blokir rentang tanggal libur panjang (Lebaran, Cuti) atau jam istirahat tertentu secara fleksibel.
                 </p>
               </div>
-              <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-rose-500/10 text-rose-300 border border-rose-500/30">
+              <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-rose-500/10 text-rose-500 border border-rose-500/30 self-start sm:self-auto">
                 {blockedSlots.length} Slot Off
               </span>
             </div>
 
-            <form onSubmit={handleAddBlockSlot} className="grid grid-cols-1 sm:grid-cols-5 gap-3 items-end">
-              <div>
-                <label className="block text-[11px] font-bold text-zinc-300 mb-1">Tanggal Off:</label>
-                <input 
-                  type="date" 
-                  required 
-                  value={blockDateInput} 
-                  onChange={(e) => setBlockDateInput(e.target.value)} 
-                  className={`w-full px-3 py-2 bg-zinc-950/80 border border-zinc-800 rounded-xl text-xs text-zinc-100 focus:outline-none ${themeStyles.focusBorder}`}
-                />
+            <form onSubmit={handleAddBlockSlot} className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-end">
+                {/* Tanggal Mulai */}
+                <div>
+                  <label className={`block text-[11px] font-bold mb-1 ${isDark ? 'text-zinc-300' : 'text-slate-700'}`}>Tanggal Mulai:</label>
+                  <input 
+                    type="date" 
+                    required 
+                    value={blockStartDate} 
+                    onChange={(e) => setBlockStartDate(e.target.value)} 
+                    className={`w-full px-3 py-2 border rounded-xl text-xs focus:outline-none ${isDark ? 'bg-zinc-950/80 border-zinc-800 text-zinc-100 [color-scheme:dark]' : 'bg-white border-slate-300 text-slate-800 [color-scheme:light]'} ${currentTheme.focusBorder}`}
+                  />
+                </div>
+
+                {/* Tanggal Selesai */}
+                <div>
+                  <label className={`block text-[11px] font-bold mb-1 ${isDark ? 'text-zinc-300' : 'text-slate-700'}`}>Tanggal Selesai:</label>
+                  <input 
+                    type="date" 
+                    required 
+                    value={blockEndDate} 
+                    onChange={(e) => setBlockEndDate(e.target.value)} 
+                    className={`w-full px-3 py-2 border rounded-xl text-xs focus:outline-none ${isDark ? 'bg-zinc-950/80 border-zinc-800 text-zinc-100 [color-scheme:dark]' : 'bg-white border-slate-300 text-slate-800 [color-scheme:light]'} ${currentTheme.focusBorder}`}
+                  />
+                </div>
+
+                {/* Mode Waktu */}
+                <div>
+                  <label className={`block text-[11px] font-bold mb-1 ${isDark ? 'text-zinc-300' : 'text-slate-700'}`}>Mode Waktu:</label>
+                  <select 
+                    value={blockMode} 
+                    onChange={(e) => setBlockMode(e.target.value)} 
+                    className={`w-full px-3 py-2 border rounded-xl text-xs focus:outline-none cursor-pointer ${isDark ? 'bg-zinc-950/80 border-zinc-800 text-zinc-100' : 'bg-white border-slate-300 text-slate-800'} ${currentTheme.focusBorder}`}
+                  >
+                    <option value="fullday">🏖️ Seharian Penuh (Full Day)</option>
+                    <option value="custom_time">⏰ Jam Tertentu Saja</option>
+                  </select>
+                </div>
+
+                {/* Jam Off */}
+                {blockMode === 'custom_time' ? (
+                  <div>
+                    <label className={`block text-[11px] font-bold mb-1 ${isDark ? 'text-zinc-300' : 'text-slate-700'}`}>Pilih Jam:</label>
+                    <select 
+                      value={blockTimeInput} 
+                      onChange={(e) => setBlockTimeInput(e.target.value)} 
+                      className={`w-full px-3 py-2 border rounded-xl text-xs focus:outline-none cursor-pointer ${isDark ? 'bg-zinc-950/80 border-zinc-800 text-zinc-100' : 'bg-white border-slate-300 text-slate-800'} ${currentTheme.focusBorder}`}
+                    >
+                      {['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '20:00', '21:00'].map((time) => (
+                        <option key={time} value={time}>{time} WIB</option>
+                      ))}
+                    </select>
+                  </div>
+                ) : (
+                  <div>
+                    <label className={`block text-[11px] font-bold mb-1 opacity-40 ${isDark ? 'text-zinc-300' : 'text-slate-700'}`}>Jam Off:</label>
+                    <div className={`w-full px-3 py-2 border rounded-xl text-xs italic opacity-60 ${isDark ? 'bg-zinc-950/80 border-zinc-800 text-zinc-400' : 'bg-slate-100 border-slate-300 text-slate-500'}`}>
+                      Semua Jam (Tutup Toko)
+                    </div>
+                  </div>
+                )}
               </div>
-              <div>
-                <label className="block text-[11px] font-bold text-zinc-300 mb-1">Jam Off:</label>
-                <select 
-                  value={blockTimeInput} 
-                  onChange={(e) => setBlockTimeInput(e.target.value)} 
-                  className={`w-full px-3 py-2 bg-zinc-950/80 border border-zinc-800 rounded-xl text-xs text-zinc-100 focus:outline-none cursor-pointer ${themeStyles.focusBorder}`}
-                >
-                  {['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '20:00', '21:00'].map((time) => (
-                    <option key={time} value={time}>{time} WIB</option>
-                  ))}
-                </select>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
+                <div>
+                  <label className={`block text-[11px] font-bold mb-1 ${isDark ? 'text-zinc-300' : 'text-slate-700'}`}>Kategori Keterangan:</label>
+                  <select 
+                    value={reasonPreset} 
+                    onChange={(e) => setReasonPreset(e.target.value)} 
+                    className={`w-full px-3 py-2 border rounded-xl text-xs focus:outline-none cursor-pointer ${isDark ? 'bg-zinc-950/80 border-zinc-800 text-zinc-100' : 'bg-white border-slate-300 text-slate-800'} ${currentTheme.focusBorder}`}
+                  >
+                    <option value="Libur Lebaran">🌙 Libur Lebaran / Hari Raya</option>
+                    <option value="Libur Nasional">🇮🇩 Libur Nasional / Tanggal Merah</option>
+                    <option value="Istirahat Staff">☕ Istirahat Staff / Capster</option>
+                    <option value="Maintenance Salon">🧹 Maintenance / Sterilisasi</option>
+                    <option value="Lainnya">✏️ Lainnya (Tulis Manual)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className={`block text-[11px] font-bold mb-1 ${isDark ? 'text-zinc-300' : 'text-slate-700'}`}>
+                    {reasonPreset === 'Lainnya' ? 'Keterangan Detail:' : 'Catatan Tambahan:'}
+                  </label>
+                  <input 
+                    type="text" 
+                    placeholder={reasonPreset === 'Lainnya' ? "Misal: Ada Acara Keluar" : "Opsional..."}
+                    value={blockReasonInput} 
+                    onChange={(e) => setBlockReasonInput(e.target.value)} 
+                    className={`w-full px-3 py-2 border rounded-xl text-xs focus:outline-none ${isDark ? 'bg-zinc-950/80 border-zinc-800 text-zinc-100' : 'bg-white border-slate-300 text-slate-800'} ${currentTheme.focusBorder}`}
+                  />
+                </div>
+
+                <div>
+                  <button 
+                    type="submit" 
+                    disabled={isBlocking} 
+                    className="w-full bg-rose-600 hover:bg-rose-500 text-white font-bold py-2 px-4 rounded-xl text-xs transition-all shadow-md active:scale-95 h-[38px] flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <span>🔒</span> {isBlocking ? 'Memproses...' : 'Block Slot / Tanggal Ini'}
+                  </button>
+                </div>
               </div>
-              <div>
-                <label className="block text-[11px] font-bold text-zinc-300 mb-1">Kategori Keterangan:</label>
-                <select 
-                  value={reasonPreset} 
-                  onChange={(e) => setReasonPreset(e.target.value)} 
-                  className={`w-full px-3 py-2 bg-zinc-950/80 border border-zinc-800 rounded-xl text-xs text-zinc-100 focus:outline-none cursor-pointer ${themeStyles.focusBorder}`}
-                >
-                  <option value="Libur Lebaran">🌙 Libur Lebaran</option>
-                  <option value="Libur Nasional">🇮🇩 Libur Nasional / Tanggal Merah</option>
-                  <option value="Istirahat Staff">☕ Istirahat Staff / Capster</option>
-                  <option value="Maintenance Salon">🧹 Maintenance / Sterilisasi</option>
-                  <option value="Lainnya">✏️ Lainnya (Tulis Manual)</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-[11px] font-bold text-zinc-300 mb-1">
-                  {reasonPreset === 'Lainnya' ? 'Keterangan Detail:' : 'Catatan Tambahan:'}
-                </label>
-                <input 
-                  type="text" 
-                  placeholder={reasonPreset === 'Lainnya' ? "Misal: Ada Acara Keluar" : "Opsional..."}
-                  value={blockReasonInput} 
-                  onChange={(e) => setBlockReasonInput(e.target.value)} 
-                  className={`w-full px-3 py-2 bg-zinc-950/80 border border-zinc-800 rounded-xl text-xs text-zinc-100 focus:outline-none ${themeStyles.focusBorder}`}
-                />
-              </div>
-              <button 
-                type="submit" 
-                disabled={isBlocking} 
-                className="bg-rose-600 hover:bg-rose-500 text-white font-bold py-2 px-4 rounded-xl text-xs transition-all shadow-md active:scale-95 h-[38px]"
-              >
-                {isBlocking ? 'Memproses...' : '🔒 Block Slot Ini'}
-              </button>
             </form>
 
-            {blockedSlots.length > 0 && (
-              <div className="mt-4 pt-3 border-t border-zinc-800/60">
-                <p className="text-[11px] font-bold text-zinc-400 mb-2 uppercase tracking-wider">Daftar Slot Ter-block Saat Ini:</p>
-                <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto pr-1">
-                  {blockedSlots.map((bs) => (
-                    <div key={bs.id || `${bs.block_date}-${bs.block_time}`} className="flex items-center gap-2 bg-zinc-900 border border-rose-500/30 px-3 py-1.5 rounded-xl text-xs text-rose-300 shadow-sm">
-                      <span className="font-bold">{formatDateID(bs.block_date)} - {bs.block_time} WIB</span>
-                      {bs.reason && <span className="text-[10px] text-zinc-400">({bs.reason})</span>}
+            <div className="mt-4 space-y-3">
+            <h4 className="text-sm font-semibold text-gray-300">DAFTAR SLOT TER-BLOCK SAAT INI:</h4>
+              {blockedSlots.length === 0 ? (
+                <p className="text-xs text-gray-500 italic">Belum ada jadwal/tanggal operasional yang diblokir.</p>
+              ) : (
+                <div className="divide-y divide-gray-800 rounded-xl border border-gray-800 bg-gray-900/50 overflow-hidden">
+                  {blockedSlots.map((slot) => (
+                    <div key={slot.id} className="flex items-center justify-between p-4 hover:bg-gray-800/40 transition-colors">
+                      
+                      {/* Informasi Kiri: Keterangan & Tanggal */}
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="px-2.5 py-0.5 text-xs font-medium bg-amber-500/10 text-amber-400 rounded-full border border-amber-500/20">
+                            {slot.reason || 'Libur / Tutup'}
+                          </span>
+                          <span className="text-xs text-gray-400">
+                            {slot.block_time ? `Jam: ${slot.block_time}` : 'Seharian Penuh (Full Day)'}
+                          </span>
+                        </div>
+                        
+                        <p className="text-sm font-medium text-gray-200">
+                          📅 {slot.block_date} 
+                          {slot.block_end_date && slot.block_end_date !== slot.block_date 
+                            ? ` s/d ${slot.block_end_date}` 
+                            : ''}
+                        </p>
+                      </div>
+
+                      {/* Tombol Aksi Hapus */}
                       <button 
-                        type="button"
-                        onClick={() => handleDeleteBlockSlot(bs.id)} 
-                        className="text-zinc-500 hover:text-white ml-1 font-bold transition-colors" 
-                        title="Buka kembali slot jam ini"
+                        onClick={() => handleDeleteBlockSlot(slot.id)}
+                        className="px-3 py-1.5 text-xs font-medium text-red-400 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 rounded-lg transition-all flex items-center gap-1.5"
                       >
-                        ✕
+                        🗑️ Batalkan Blokir
                       </button>
+
                     </div>
                   ))}
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         )}
+
+        {/* --- MAINTENANCE MODE --- */}
+        {/* KONTROL MAINTENANCE / TOKO TUTUP - HANYA MUNCUL JIKA DIIZINKAN SUPER ADMIN */}
+        {enableMaintenanceFeature && (
+          <div className={`p-4 sm:p-6 rounded-3xl shadow-2xl border transition-all space-y-4 ${currentTheme.cardBg}`}>
+            
+            {/* Header Card Toggle */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-zinc-800/80 pb-3 gap-4">
+              <div>
+                <h3 className={`text-sm sm:text-base font-black flex items-center gap-2 ${currentTheme.accentText}`}>
+                  <span>⚠️</span> Mode Tutup & Pemeliharaan Sistem
+                </h3>
+                <p className={`text-[11px] font-medium ${isDark ? 'text-zinc-300' : 'text-slate-600'}`}>
+                  Nyalakan tombol ini untuk mengunci halaman booking publik secara instan saat operasional tutup atau sedang pemeliharaan.
+                </p>
+              </div>
+
+              {/* Toggle Switch */}
+              <label className="relative inline-flex items-center cursor-pointer self-start sm:self-auto">
+                <input 
+                  type="checkbox" 
+                  checked={isMaintenanceMode} 
+                  onChange={async (e) => {
+                    const newStatus = e.target.checked
+                    setIsMaintenanceMode(newStatus)
+                    
+                    const { error } = await supabase
+                      .from('tenants')
+                      .update({ is_maintenance_mode: newStatus })
+                      .eq('tenant_slug', tenantSlug)
+
+                    if (error) {
+                      alert('Gagal mengubah status maintenance: ' + error.message)
+                      setIsMaintenanceMode(!newStatus)
+                    }
+                  }}
+                  className="sr-only peer"
+                />
+                <div className="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
+              </label>
+            </div>
+
+            {/* --- TAMBAHAN: INPUT KUSTOM PESAN MAINTENANCE TEPAT DI BAWAH TOGGLE --- */}
+            <div className="space-y-2 pt-2">
+              <label className={`block text-xs font-bold ${isDark ? 'text-zinc-300' : 'text-slate-700'}`}>
+                Kustom Pesan Toko Tutup / Maintenance (Tampil di Halaman Publik)
+              </label>
+              <div className="flex gap-2">
+                <textarea 
+                  rows={2}
+                  value={maintenanceMessage}
+                  onChange={(e) => setMaintenanceMessage(e.target.value)}
+                  placeholder="Tuliskan pesan penutupan toko di sini..."
+                  className={`w-full px-3 py-2 text-xs rounded-xl border focus:outline-none focus:ring-2 focus:ring-amber-500 ${
+                    isDark ? 'bg-zinc-900 border-zinc-800 text-white' : 'bg-white border-slate-200 text-slate-900'
+                  }`}
+                />
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const { error } = await supabase
+                      .from('tenants')
+                      .update({ maintenance_message: maintenanceMessage })
+                      .eq('tenant_slug', tenantSlug)
+
+                    if (error) {
+                      alert('Gagal menyimpan pesan: ' + error.message)
+                    } else {
+                      alert('Pesan maintenance berhasil diperbarui!')
+                    }
+                  }}
+                  className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-zinc-950 text-xs font-bold rounded-xl transition-all self-end"
+                >
+                  Simpan Pesan
+                </button>
+              </div>
+              <p className="text-[10px] text-zinc-500 italic">
+                Pesan ini akan otomatis tampil menggantikan teks bawaan saat halaman publik dikunci.
+              </p>
+            </div>
+
+          </div>
+        )}
+
+        {/* --- SHORTCUT MENU / TOMBOL PEMICU RESERVASI PELANGGAN --- */}
+        {/* --- KEMBAR IDENTIK DENGAN PENGATURAN OPERASIONAL --- */}
+        <div className={`p-4 sm:p-6 rounded-3xl shadow-2xl border transition-all space-y-4 ${currentTheme.cardBg}`}>
+          
+          {/* Header Card dengan Garis Pembatas Bawah (Sama persis kayak Pengaturan Operasional) */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-zinc-800/80 pb-3 gap-2">
+            <div>
+              <h3 className={`text-sm sm:text-base font-black flex items-center gap-2 ${currentTheme.accentText}`}>
+                <span>📋</span> Manajemen Reservasi Pelanggan
+              </h3>
+              <p className={`text-[11px] font-medium ${isDark ? 'text-zinc-300' : 'text-slate-600'}`}>
+                Pantau slot jam yang otomatis ter-booking oleh pelanggan dari halaman publik.
+              </p>
+            </div>
+            
+            {/* Badge Counter / Tombol Pemicu di sebelah kanan */}
+            <button
+              onClick={() => {
+                setIsReservationsModalOpen(true);
+                fetchCustomerReservations();
+              }}
+              className="px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 rounded-xl transition-all shadow-lg shadow-indigo-500/20 flex items-center justify-center gap-2 border border-indigo-500/30 active:scale-95 self-start sm:self-auto"
+            >
+              <span>📋 Lihat Daftar</span>
+              <span className="px-2 py-0.5 bg-indigo-950/80 text-indigo-200 rounded-full text-[10px] border border-indigo-500/30 font-bold">
+                Cek Data
+              </span>
+            </button>
+          </div>
+
+        </div>
+
+        {/* --- MODAL DAFTAR RESERVASI PELANGGAN --- */}
+        {isReservationsModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-fadeIn">
+          <div className="bg-gray-900 border border-gray-700/60 w-full max-w-2xl rounded-3xl shadow-2xl shadow-indigo-500/10 overflow-hidden flex flex-col max-h-[85vh]">
+            
+            {/* Header Modal */}
+            <div className="flex items-center justify-between px-6 py-5 border-b border-gray-800 bg-gray-900/90">
+              <div>
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <span>📋</span> Daftar Reservasi Pelanggan
+                </h3>
+                <p className="text-xs text-gray-400 mt-0.5">Slot waktu yang otomatis diblokir dari hasil booking halaman publik.</p>
+              </div>
+              <button 
+                onClick={() => setIsReservationsModalOpen(false)}
+                className="text-gray-400 hover:text-white bg-gray-800/80 hover:bg-gray-700 px-3 py-1.5 rounded-xl transition-all text-xs font-semibold border border-gray-700"
+              >
+                ✕ Tutup
+              </button>
+            </div>
+
+            {/* Body Content (List Data) */}
+            <div className="p-6 overflow-y-auto space-y-3 flex-1 bg-gray-950/30">
+              {isLoadingReservations ? (
+                <div className="text-center py-12 text-xs text-indigo-400 animate-pulse font-medium">
+                  Memuat data reservasi...
+                </div>
+              ) : customerReservations.length === 0 ? (
+                <div className="text-center py-12 border border-dashed border-gray-800 rounded-2xl bg-gray-900/20">
+                  <p className="text-xs text-gray-500 italic">Belum ada reservasi pelanggan yang masuk saat ini.</p>
+                </div>
+              ) : (
+                <div className="space-y-2.5">
+                  {customerReservations.map((item) => (
+                    <div 
+                      key={item.id} 
+                      className="p-4 rounded-2xl bg-gray-900/80 border border-gray-800/80 hover:border-indigo-500/30 transition-all flex items-center justify-between shadow-sm group"
+                    >
+                      <div className="space-y-1.5">
+                        {/* Badge Status */}
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold bg-emerald-500/15 text-emerald-400 rounded-full border border-emerald-500/30 shadow-sm">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                          {item.reason}
+                        </span>
+                        
+                        {/* Informasi Tanggal & Jam */}
+                        <div className="text-sm font-medium text-gray-200 flex items-center gap-2 pt-0.5">
+                          <span className="text-base">📅</span> 
+                          <span>{item.block_date}</span>
+                          {item.block_time && (
+                            <span className="text-indigo-400 font-semibold bg-indigo-500/10 px-2 py-0.5 rounded-md border border-indigo-500/20 text-xs">
+                              {item.block_time} WIB
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Tag Keterangan Kanan */}
+                      <span className="text-[11px] font-medium text-gray-400 bg-gray-800/60 px-3 py-1.5 rounded-xl border border-gray-700/50 group-hover:bg-indigo-500/10 group-hover:text-indigo-300 transition-colors">
+                        🔄 Sinkron Otomatis
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Footer Modal */}
+            <div className="px-6 py-4 border-t border-gray-800 bg-gray-900/90 flex justify-end">
+              <button
+                onClick={() => setIsReservationsModalOpen(false)}
+                className="px-5 py-2 text-xs font-semibold text-gray-300 bg-gray-800 hover:bg-gray-700 rounded-xl transition-all border border-gray-700"
+              >
+                Tutup Halaman
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
         {/* 17.8 FINANCIAL REPORT SECTION */}
-        {subscriptionPlan !== 'BASIC' && (
-          <div className={`p-4 sm:p-6 md:p-7 rounded-2xl sm:rounded-3xl shadow-2xl space-y-4 sm:space-y-5 border transition-all ${themeStyles.cardBg}`}>
+        {isSuperAdminToggleActive && financialReportsEnabled && (
+          <div className={`p-4 sm:p-6 md:p-7 rounded-3xl shadow-2xl space-y-4 sm:space-y-5 border transition-all ${currentTheme.cardBg}`}>
             <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-zinc-800/80 pb-4 gap-2">
               <div>
-                <h2 className={`text-base sm:text-lg font-black flex items-center gap-2 ${themeStyles.textAccent}`}>
+                <h2 className={`text-base sm:text-lg font-black flex items-center gap-2 ${currentTheme.accentText}`}>
                   <span>📊 Laporan Keuangan & Omzet Netto</span>
                 </h2>
-                <p className="text-[11px] sm:text-xs text-zinc-300 font-medium">
+                <p className={`text-[11px] sm:text-xs font-medium ${isDark ? 'text-zinc-300' : 'text-slate-600'}`}>
                   Data siap diexport ke Excel atau dicetak langsung/disimpan sebagai PDF resmi.
                 </p>
               </div>
-              {subscriptionPlan === 'PREMIUM' && (
-                <span className={`text-[9px] sm:text-[10px] font-black border px-3 py-1 rounded-full flex items-center gap-1.5 w-max ${themeStyles.badgeBg}`}>
-                  ⭐ Premium Plan (Export Excel Only)
-                </span>
-              )}
-              {isProfesional && (
-                <span className="text-[9px] sm:text-[10px] font-black bg-gradient-to-r from-amber-500/20 to-yellow-500/20 text-amber-300 border border-amber-400/50 px-3.5 py-1.5 rounded-full flex items-center gap-1.5 w-max shadow-lg shadow-amber-500/10">
-                  👑 Profesional Plan (Excel + Cetak PDF)
-                </span>
-              )}
+              <span className="text-[9px] sm:text-[10px] font-black bg-gradient-to-r from-amber-500/20 to-yellow-500/20 text-amber-500 border border-amber-400/50 px-3.5 py-1.5 rounded-full flex items-center gap-1.5 w-max shadow-lg shadow-amber-500/10">
+                {isUltimate ? '🚀 Ultimate Plan (Full Access)' : '👑 Profesional Plan (Excel + Cetak PDF)'}
+              </span>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-12 gap-4 sm:gap-6 items-start">
               <div className="md:col-span-6 space-y-3 sm:space-y-4">
                 <div>
-                  <label className="block text-xs font-bold text-zinc-300 mb-2">Tipe Laporan:</label>
-                  <div className="grid grid-cols-4 gap-1 sm:gap-2 p-1 bg-zinc-950/80 rounded-xl sm:rounded-2xl border border-zinc-800">
+                  <label className={`block text-xs font-bold mb-2 ${isDark ? 'text-zinc-300' : 'text-slate-700'}`}>Tipe Laporan:</label>
+                  <div className={`grid grid-cols-4 gap-1 sm:gap-2 p-1 rounded-2xl border ${isDark ? 'bg-zinc-950/80 border-zinc-800' : 'bg-slate-200/80 border-slate-300'}`}>
                     {(['daily', 'weekly', 'monthly', 'custom'] as const).map((mode) => (
                       <button
                         key={mode}
                         onClick={() => setReportPeriod(mode)}
-                        className={`py-1.5 sm:py-2 rounded-lg sm:rounded-xl text-[10px] sm:text-xs font-bold transition-all capitalize ${
+                        className={`py-1.5 sm:py-2 rounded-xl text-[10px] sm:text-xs font-bold transition-all capitalize ${
                           reportPeriod === mode
-                            ? themeStyles.btnActivePeriod
-                            : 'text-zinc-400 hover:text-white hover:bg-zinc-800/40'
+                            ? currentTheme.btnActivePeriod
+                            : isDark ? 'text-zinc-400 hover:text-white hover:bg-zinc-800/40' : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
                         }`}
                       >
                         {mode === 'daily' ? 'Harian' : mode === 'weekly' ? 'Mingguan' : mode === 'monthly' ? 'Bulanan' : 'Custom'}
@@ -1814,7 +2473,7 @@ export default function AdminDashboard() {
                 </div>
                 {reportPeriod !== 'custom' ? (
                   <div>
-                    <label className="block text-xs font-bold text-zinc-300 mb-1.5 sm:mb-2">
+                    <label className={`block text-xs font-bold mb-1.5 sm:mb-2 ${isDark ? 'text-zinc-300' : 'text-slate-700'}`}>
                       {reportPeriod === 'daily' && 'Pilih Tanggal:'}
                       {reportPeriod === 'weekly' && 'Pilih Tanggal Awal (7 Hari):'}
                       {reportPeriod === 'monthly' && 'Pilih Bulan & Tahun:'}
@@ -1826,10 +2485,10 @@ export default function AdminDashboard() {
                         const val = e.target.value
                         setReportDate(reportPeriod === 'monthly' ? `${val}-01` : val)
                       }}
-                      className={`w-full px-3.5 sm:px-4 py-2 sm:py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-xl sm:rounded-2xl text-xs text-zinc-200 focus:outline-none shadow-inner ${themeStyles.focusBorder}`}
+                      className={`w-full px-3.5 sm:px-4 py-2 sm:py-2.5 border rounded-2xl text-xs focus:outline-none shadow-inner ${isDark ? 'bg-zinc-950/80 border-zinc-800 text-zinc-200' : 'bg-white border-slate-300 text-slate-800'} ${currentTheme.focusBorder}`}
                     />
                     {reportPeriod === 'weekly' && reportData.weekInfo && (
-                      <p className={`text-[10px] sm:text-[11px] font-bold mt-2 flex items-center gap-1 ${themeStyles.textAccent}`}>
+                      <p className={`text-[10px] sm:text-[11px] font-bold mt-2 flex items-center gap-1 ${currentTheme.accentText}`}>
                         <span>📅</span> Periode: {formatDateID(reportData.weekInfo.startStr)} s/d {formatDateID(reportData.weekInfo.endStr)}
                       </p>
                     )}
@@ -1837,95 +2496,89 @@ export default function AdminDashboard() {
                 ) : (
                   <div className="grid grid-cols-2 gap-2 sm:gap-3">
                     <div>
-                      <label className="block text-[11px] sm:text-xs font-bold text-zinc-300 mb-1.5">Dari Tanggal:</label>
+                      <label className={`block text-[11px] sm:text-xs font-bold mb-1.5 ${isDark ? 'text-zinc-300' : 'text-slate-700'}`}>Dari Tanggal:</label>
                       <input
                         type="date"
                         value={reportStartDate}
                         onChange={(e) => setReportStartDate(e.target.value)}
-                        className={`w-full px-3 py-2 bg-zinc-950/80 border border-zinc-800 rounded-xl text-xs text-zinc-200 focus:outline-none shadow-inner ${themeStyles.focusBorder}`}
+                        className={`w-full px-3 py-2 border rounded-xl text-xs focus:outline-none shadow-inner ${isDark ? 'bg-zinc-950/80 border-zinc-800 text-zinc-200' : 'bg-white border-slate-300 text-slate-800'} ${currentTheme.focusBorder}`}
                       />
                     </div>
                     <div>
-                      <label className="block text-[11px] sm:text-xs font-bold text-zinc-300 mb-1.5">Sampai Tanggal:</label>
+                      <label className={`block text-[11px] sm:text-xs font-bold mb-1.5 ${isDark ? 'text-zinc-300' : 'text-slate-700'}`}>Sampai Tanggal:</label>
                       <input
                         type="date"
                         value={reportEndDate}
                         onChange={(e) => setReportEndDate(e.target.value)}
-                        className={`w-full px-3 py-2 bg-zinc-950/80 border border-zinc-800 rounded-xl text-xs text-zinc-200 focus:outline-none shadow-inner ${themeStyles.focusBorder}`}
+                        className={`w-full px-3 py-2 border rounded-xl text-xs focus:outline-none shadow-inner ${isDark ? 'bg-zinc-950/80 border-zinc-800 text-zinc-200' : 'bg-white border-slate-300 text-slate-800'} ${currentTheme.focusBorder}`}
                       />
                     </div>
                   </div>
                 )}
               </div>
               <div className="md:col-span-6 space-y-3 sm:space-y-4">
-                <div className="bg-zinc-950/90 border border-zinc-800/80 p-4 sm:p-5 rounded-xl sm:rounded-2xl grid grid-cols-2 gap-3 sm:gap-4 text-xs shadow-inner">
+                <div className={`border p-4 sm:p-5 rounded-2xl grid grid-cols-2 gap-3 sm:gap-4 text-xs shadow-inner ${isDark ? 'bg-zinc-950/90 border-zinc-800/80' : 'bg-slate-100 border-slate-300'}`}>
                   <div>
-                    <p className="text-[10px] sm:text-[11px] font-bold text-zinc-400 uppercase tracking-wider">OMZET BRUTO</p>
-                    <p className="text-lg sm:text-xl font-black text-white mt-1">
+                    <p className={`text-[10px] sm:text-[11px] font-bold uppercase tracking-wider ${isDark ? 'text-zinc-400' : 'text-slate-500'}`}>OMZET BRUTO</p>
+                    <p className={`text-lg sm:text-xl font-black mt-1 ${isDark ? 'text-white' : 'text-slate-900'}`}>
                       Rp {reportData.grossRevenue.toLocaleString('id-ID')}
                     </p>
-                    <p className="text-[9px] sm:text-[10px] text-rose-400 mt-1 font-bold">
+                    <p className="text-[9px] sm:text-[10px] text-rose-500 mt-1 font-bold">
                       Refund: -Rp {reportData.totalRefund.toLocaleString('id-ID')}
                     </p>
                   </div>
-                  <div className="text-right border-l border-zinc-800 pl-3 sm:pl-4">
-                    <p className="text-[10px] sm:text-[11px] font-black text-emerald-400 uppercase tracking-wider">OMZET NETTO</p>
-                    <p className="text-xl sm:text-2xl font-black text-emerald-400 mt-1">
+                  <div className={`text-right border-l pl-3 sm:pl-4 ${isDark ? 'border-zinc-800' : 'border-slate-300'}`}>
+                    <p className="text-[10px] sm:text-[11px] font-black text-emerald-500 uppercase tracking-wider">OMZET NETTO</p>
+                    <p className="text-xl sm:text-2xl font-black text-emerald-500 mt-1">
                       Rp {reportData.netRevenue.toLocaleString('id-ID')}
                     </p>
                   </div>
                 </div>
-                {subscriptionPlan === 'PREMIUM' && (
-                  <div className="space-y-2">
-                    <button
-                      onClick={exportReportToCSV}
-                      className="w-full bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl font-bold transition-all text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20 active:scale-[0.98]"
-                    >
-                      <span>📥 Export Laporan Excel</span>
-                    </button>
-                  </div>
-                )}
-                {isProfesional && (
-                  <div className="grid grid-cols-2 gap-2 sm:gap-3">
-                    <button
-                      onClick={exportReportToCSV}
-                      className="w-full bg-emerald-600 hover:bg-emerald-500 text-white px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl font-bold transition-all text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20 active:scale-[0.98]"
-                    >
-                      <span>📥 Export Excel</span>
-                    </button>
-                    <button
-                      onClick={handlePrintPDF}
-                      className={`w-full px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl font-bold transition-all text-xs flex items-center justify-center gap-2 active:scale-[0.98] ${themeStyles.buttonPrimary}`}
-                    >
-                      <span>🖨️ Cetak / PDF</span>
-                    </button>
-                  </div>
-                )}
+                <div className="grid grid-cols-2 gap-2 sm:gap-3">
+                  <button
+                    onClick={exportReportToCSV}
+                    className="w-full bg-emerald-600 hover:bg-emerald-500 text-white px-3 sm:px-4 py-2.5 sm:py-3 rounded-2xl font-bold transition-all text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20 active:scale-[0.98]"
+                  >
+                    <span>📥 Export Excel</span>
+                  </button>
+                  <button
+                    onClick={handlePrintPDF}
+                    className={`w-full px-3 sm:px-4 py-2.5 sm:py-3 rounded-2xl font-bold transition-all text-xs flex items-center justify-center gap-2 active:scale-[0.98] ${currentTheme.buttonPrimary}`}
+                  >
+                    <span>🖨️ Cetak / PDF</span>
+                  </button>
+                </div>
               </div>
             </div>
           </div>
         )}
 
         {/* 17.9 FILTER & SEARCH BAR SECTION */}
-        <div className={`border p-4 sm:p-5 rounded-2xl sm:rounded-3xl shadow-xl transition-all ${themeStyles.cardBg}`}>
+        <div className={`border p-4 sm:p-5 rounded-3xl shadow-xl transition-all ${currentTheme.cardBg}`}>
           <div className={`grid grid-cols-1 sm:grid-cols-2 ${
-            subscriptionPlan === 'BASIC' ? 'md:grid-cols-2 lg:grid-cols-3' : 'md:grid-cols-3 lg:grid-cols-7'
+            !isSuperAdminToggleActive ? 'md:grid-cols-2 lg:grid-cols-3' : 'md:grid-cols-3 lg:grid-cols-7'
           } gap-3 sm:gap-4 items-end w-full`}>
             
             <div className="w-full lg:col-span-1">
-              <label className="block text-xs font-bold text-zinc-300 mb-1.5">Pencarian Data:</label>
+              <label className={`block text-xs font-bold mb-1.5 ${currentTheme.accentText}`}>Pencarian Data:</label>
               <div className="relative">
                 <input
                   type="text"
                   placeholder="Cari nama, WA, atau layanan..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className={`w-full pl-3.5 pr-8 py-2 sm:py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-xl sm:rounded-2xl text-xs text-zinc-200 placeholder-zinc-600 focus:outline-none transition-all shadow-inner ${themeStyles.focusBorder}`}
+                  className={`w-full px-4 py-2.5 rounded-2xl text-xs border focus:outline-none transition-all ${
+                    isDark 
+                      ? 'bg-zinc-900 border-zinc-800 text-white placeholder-zinc-500 focus:border-amber-500/50' 
+                      : 'bg-white border-slate-300 text-slate-800 placeholder-slate-400 focus:border-amber-500'
+                  }`}
                 />
                 {searchTerm && (
                   <button
                     onClick={() => setSearchTerm('')}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white text-xs font-bold w-5 h-5 flex items-center justify-center rounded-full hover:bg-zinc-800 transition-all"
+                    className={`absolute right-2.5 top-1/2 -translate-y-1/2 text-xs font-bold w-5 h-5 flex items-center justify-center rounded-full transition-all ${
+                      isDark ? 'text-zinc-400 hover:text-white hover:bg-zinc-800' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200'
+                    }`}
                     title="Clear Search"
                   >
                     ✕
@@ -1933,34 +2586,34 @@ export default function AdminDashboard() {
                 )}
               </div>
             </div>
-            {subscriptionPlan !== 'BASIC' && (
+            {isSuperAdminToggleActive && (
               <div className="w-full">
-                <label className="block text-xs font-bold text-zinc-300 mb-1.5">Dari Tanggal:</label>
+                <label className={`block text-xs font-bold mb-1.5 ${isDark ? 'text-zinc-300' : 'text-slate-700'}`}>Dari Tanggal:</label>
                 <input
                   type="date"
                   value={startDate}
                   onChange={(e) => setStartDate(e.target.value)}
-                  className={`w-full px-3 py-2 sm:py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-xl sm:rounded-2xl text-xs text-zinc-200 focus:outline-none shadow-inner ${themeStyles.focusBorder}`}
+                  className={`w-full px-3 py-2 sm:py-2.5 border rounded-2xl text-xs focus:outline-none shadow-inner ${isDark ? 'bg-zinc-950/80 border-zinc-800 text-zinc-200' : 'bg-white border-slate-300 text-slate-800'} ${currentTheme.focusBorder}`}
                 />
               </div>
             )}
-            {subscriptionPlan !== 'BASIC' && (
+            {isSuperAdminToggleActive && (
               <div className="w-full">
-                <label className="block text-xs font-bold text-zinc-300 mb-1.5">Sampai Tanggal:</label>
+                <label className={`block text-xs font-bold mb-1.5 ${isDark ? 'text-zinc-300' : 'text-slate-700'}`}>Sampai Tanggal:</label>
                 <input
                   type="date"
                   value={endDate}
                   onChange={(e) => setEndDate(e.target.value)}
-                  className={`w-full px-3 py-2 sm:py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-xl sm:rounded-2xl text-xs text-zinc-200 focus:outline-none shadow-inner ${themeStyles.focusBorder}`}
+                  className={`w-full px-3 py-2 sm:py-2.5 border rounded-2xl text-xs focus:outline-none shadow-inner ${isDark ? 'bg-zinc-950/80 border-zinc-800 text-zinc-200' : 'bg-white border-slate-300 text-slate-800'} ${currentTheme.focusBorder}`}
                 />
               </div>
             )}
             <div className="w-full">
-              <label className="block text-xs font-bold text-zinc-300 mb-1.5">Status:</label>
+              <label className={`block text-xs font-bold mb-1.5 ${isDark ? 'text-zinc-300' : 'text-slate-700'}`}>Status:</label>
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className={`w-full px-3 py-2 sm:py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-xl sm:rounded-2xl text-xs text-zinc-200 focus:outline-none font-semibold cursor-pointer shadow-inner ${themeStyles.focusBorder}`}
+                className={`w-full px-3 py-2 sm:py-2.5 border rounded-2xl text-xs font-semibold focus:outline-none cursor-pointer shadow-inner ${isDark ? 'bg-zinc-950/80 border-zinc-800 text-zinc-200' : 'bg-white border-slate-300 text-slate-800'} ${currentTheme.focusBorder}`}
               >
                 <option value="all">Semua Status</option>
                 <option value="pending">🟡 Pending</option>
@@ -1970,13 +2623,13 @@ export default function AdminDashboard() {
                 <option value="cancelled_need_refund">⚠️ Need Refund</option>
               </select>
             </div>
-            {subscriptionPlan !== 'BASIC' && (
+            {isSuperAdminToggleActive && (
               <div className="w-full">
-                <label className="block text-xs font-bold text-zinc-300 mb-1.5">Layanan:</label>
+                <label className={`block text-xs font-bold mb-1.5 ${isDark ? 'text-zinc-300' : 'text-slate-700'}`}>Layanan:</label>
                 <select
                   value={serviceFilter}
                   onChange={(e) => setServiceFilter(e.target.value)}
-                  className={`w-full px-3 py-2 sm:py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-xl sm:rounded-2xl text-xs text-zinc-200 focus:outline-none font-semibold cursor-pointer shadow-inner ${themeStyles.focusBorder}`}
+                  className={`w-full px-3 py-2 sm:py-2.5 border rounded-2xl text-xs font-semibold focus:outline-none cursor-pointer shadow-inner ${isDark ? 'bg-zinc-950/80 border-zinc-800 text-zinc-200' : 'bg-white border-slate-300 text-slate-800'} ${currentTheme.focusBorder}`}
                 >
                   <option value="all">Semua Layanan</option>
                   {uniqueServices.map((svc) => (
@@ -1987,9 +2640,9 @@ export default function AdminDashboard() {
                 </select>
               </div>
             )}
-            {subscriptionPlan !== 'BASIC' && (
+            {isSuperAdminToggleActive && (
               <div className="w-full">
-                <label className="block text-xs font-bold text-zinc-300 mb-1.5">Limit Data:</label>
+                <label className={`block text-xs font-bold mb-1.5 ${isDark ? 'text-zinc-300' : 'text-slate-700'}`}>Limit Data:</label>
                 <select
                   value={limit}
                   onChange={(e) => {
@@ -1997,7 +2650,7 @@ export default function AdminDashboard() {
                     setLimit(val === 'all' ? 'all' : Number(val))
                     setCurrentPage(1)
                   }}
-                  className={`w-full px-3 py-2 sm:py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-xl sm:rounded-2xl text-xs text-zinc-200 focus:outline-none font-semibold cursor-pointer shadow-inner ${themeStyles.focusBorder}`}
+                  className={`w-full px-3 py-2 sm:py-2.5 border rounded-2xl text-xs font-semibold focus:outline-none cursor-pointer shadow-inner ${isDark ? 'bg-zinc-950/80 border-zinc-800 text-zinc-200' : 'bg-white border-slate-300 text-slate-800'} ${currentTheme.focusBorder}`}
                 >
                   <option value={10}>10 Baris</option>
                   <option value={25}>25 Baris</option>
@@ -2008,11 +2661,11 @@ export default function AdminDashboard() {
             )}
             <div className="w-full flex gap-2 items-end">
               <div className="w-full">
-                <label className="block text-xs font-bold text-zinc-300 mb-1.5">Metode Bayar:</label>
+                <label className={`block text-xs font-bold mb-1.5 ${isDark ? 'text-zinc-300' : 'text-slate-700'}`}>Metode Bayar:</label>
                 <select
                   value={paymentFilter}
                   onChange={(e) => setPaymentFilter(e.target.value)}
-                  className={`w-full px-3 py-2 sm:py-2.5 bg-zinc-950/80 border border-zinc-800 rounded-xl sm:rounded-2xl text-xs text-zinc-200 focus:outline-none font-semibold cursor-pointer shadow-inner ${themeStyles.focusBorder}`}
+                  className={`w-full px-3 py-2 sm:py-2.5 border rounded-2xl text-xs font-semibold focus:outline-none cursor-pointer shadow-inner ${isDark ? 'bg-zinc-950/80 border-zinc-800 text-zinc-200' : 'bg-white border-slate-300 text-slate-800'} ${currentTheme.focusBorder}`}
                 >
                   <option value="all">Semua Metode</option>
                   {uniquePayments.map((pay) => (
@@ -2034,7 +2687,7 @@ export default function AdminDashboard() {
                     setSearchTerm('')
                     setLimit(10)
                   }}
-                  className="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700/80 px-3 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl text-xs font-bold transition-all whitespace-nowrap h-[38px] sm:h-[42px]"
+                  className={`px-3 py-2 sm:py-2.5 rounded-2xl text-xs font-bold transition-all whitespace-nowrap h-[38px] sm:h-[42px] border ${isDark ? 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border-zinc-700' : 'bg-slate-200 hover:bg-slate-300 text-slate-700 border-slate-300'}`}
                 >
                   Reset
                 </button>
@@ -2044,63 +2697,71 @@ export default function AdminDashboard() {
         </div>
 
         {/* 17.10 RESERVATIONS DATA TABLE */}
-        <div className={`border rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden transition-all ${themeStyles.cardBg}`}>
+        <div className={`border rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden transition-all duration-300 ${currentTheme.cardBg}`}>
           {loading ? (
-            <div className="p-12 text-center text-zinc-400 text-xs font-semibold">Memuat data reservasi...</div>
+            <div className={`p-12 text-center text-xs font-semibold ${isDark ? 'text-zinc-400' : 'text-slate-500'}`}>Memuat data reservasi...</div>
           ) : filteredReservations.length === 0 ? (
-            <div className="p-12 text-center text-zinc-400 text-xs font-semibold">Belum ada reservasi masuk / sesuai filter.</div>
+            <div className={`p-12 text-center text-xs font-semibold ${isDark ? 'text-zinc-400' : 'text-slate-500'}`}>Belum ada reservasi masuk / sesuai filter.</div>
           ) : (
             <>
               <div className="w-full overflow-x-auto">
                 <table className="w-full text-left border-collapse min-w-full">
                   <thead>
-                    <tr className="border-b border-zinc-800/80 bg-zinc-950/90 text-[10px] font-black uppercase tracking-widest text-zinc-400 select-none">
-                      <th onClick={() => handleSort('booking_date')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
+                    <tr className={`border-b text-[10px] font-black uppercase tracking-widest select-none ${
+                      isDark ? 'border-zinc-800/80 bg-zinc-950/90 text-zinc-400' : 'border-slate-200 bg-slate-100/80 text-slate-600'
+                    }`}>
+                      <th onClick={() => handleSort('booking_date')} className={`py-3.5 px-3 cursor-pointer transition hover:${currentTheme.accentText}`}>
                         <div className="flex items-center gap-1 whitespace-nowrap">
                           <span>Tanggal</span>
-                          {subscriptionPlan !== 'BASIC' && sortField === 'booking_date' && (sortOrder === 'asc' ? '▲' : '▼')}
+                          {isSuperAdminToggleActive && sortField === 'booking_date' && (sortOrder === 'asc' ? '▲' : '▼')}
                         </div>
                       </th>
-                      <th onClick={() => handleSort('booking_time')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
+                      <th onClick={() => handleSort('booking_time')} className={`py-3.5 px-3 cursor-pointer transition hover:${currentTheme.accentText}`}>
                         <div className="flex items-center gap-1 whitespace-nowrap">
                           <span>Jam</span>
-                          {subscriptionPlan !== 'BASIC' && sortField === 'booking_time' && (sortOrder === 'asc' ? '▲' : '▼')}
+                          {isSuperAdminToggleActive && sortField === 'booking_time' && (sortOrder === 'asc' ? '▲' : '▼')}
                         </div>
                       </th>
-                      <th onClick={() => handleSort('customer_name')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
+                      <th onClick={() => handleSort('customer_name')} className={`py-3.5 px-3 cursor-pointer transition hover:${currentTheme.accentText}`}>
                         <div className="flex items-center gap-1 whitespace-nowrap">
                           <span>Pelanggan</span>
-                          {subscriptionPlan !== 'BASIC' && sortField === 'customer_name' && (sortOrder === 'asc' ? '▲' : '▼')}
+                          {isSuperAdminToggleActive && sortField === 'customer_name' && (sortOrder === 'asc' ? '▲' : '▼')}
                         </div>
                       </th>
-                      <th onClick={() => handleSort('service_name')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
+                      <th onClick={() => handleSort('service_name')} className={`py-3.5 px-3 cursor-pointer transition hover:${currentTheme.accentText}`}>
                         <div className="flex items-center gap-1 whitespace-nowrap">
                           <span>Layanan</span>
-                          {subscriptionPlan !== 'BASIC' && sortField === 'service_name' && (sortOrder === 'asc' ? '▲' : '▼')}
+                          {isSuperAdminToggleActive && sortField === 'service_name' && (sortOrder === 'asc' ? '▲' : '▼')}
                         </div>
                       </th>
-                      <th onClick={() => handleSort('staff_name')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
-                        <div className="flex items-center gap-1 whitespace-nowrap">
-                          <span>{staffLabel}</span>
-                          {subscriptionPlan !== 'BASIC' && sortField === 'staff_name' && (sortOrder === 'asc' ? '▲' : '▼')}
-                        </div>
-                      </th>
-                      <th onClick={() => handleSort('payment_method')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
-                        <div className="flex items-center gap-1 whitespace-nowrap">
-                          <span>Bayar</span>
-                          {subscriptionPlan !== 'BASIC' && sortField === 'payment_method' && (sortOrder === 'asc' ? '▲' : '▼')}
-                        </div>
-                      </th>
-                      <th onClick={() => handleSort('price')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
-                        <div className="flex items-center gap-1 whitespace-nowrap">
-                          <span>Harga</span>
-                          {subscriptionPlan !== 'BASIC' && sortField === 'price' && (sortOrder === 'asc' ? '▲' : '▼')}
-                        </div>
-                      </th>
-                      <th onClick={() => handleSort('status')} className={`py-3.5 px-3 cursor-pointer transition hover:${themeStyles.textAccent}`}>
+                      {isSuperAdminToggleActive && (
+                        <th onClick={() => handleSort('staff_name')} className={`py-3.5 px-3 cursor-pointer transition hover:${currentTheme.accentText}`}>
+                          <div className="flex items-center gap-1 whitespace-nowrap">
+                            <span>{staffLabel}</span>
+                            {sortField === 'staff_name' && (sortOrder === 'asc' ? '▲' : '▼')}
+                          </div>
+                        </th>
+                      )}
+                      {isSuperAdminToggleActive && (
+                        <th onClick={() => handleSort('payment_method')} className={`py-3.5 px-3 cursor-pointer transition hover:${currentTheme.accentText}`}>
+                          <div className="flex items-center gap-1 whitespace-nowrap">
+                            <span>Bayar</span>
+                            {sortField === 'payment_method' && (sortOrder === 'asc' ? '▲' : '▼')}
+                          </div>
+                        </th>
+                      )}
+                      {isSuperAdminToggleActive && (
+                        <th onClick={() => handleSort('price')} className={`py-3.5 px-3 cursor-pointer transition hover:${currentTheme.accentText}`}>
+                          <div className="flex items-center gap-1 whitespace-nowrap">
+                            <span>Harga</span>
+                            {sortField === 'price' && (sortOrder === 'asc' ? '▲' : '▼')}
+                          </div>
+                        </th>
+                      )}
+                      <th onClick={() => handleSort('status')} className={`py-3.5 px-3 cursor-pointer transition hover:${currentTheme.accentText}`}>
                         <div className="flex items-center gap-1 whitespace-nowrap">
                           <span>Status</span>
-                          {subscriptionPlan !== 'BASIC' && sortField === 'status' && (sortOrder === 'asc' ? '▲' : '▼')}
+                          {isSuperAdminToggleActive && sortField === 'status' && (sortOrder === 'asc' ? '▲' : '▼')}
                         </div>
                       </th>
                       <th className="py-3.5 px-3 text-center">
@@ -2108,95 +2769,102 @@ export default function AdminDashboard() {
                       </th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-zinc-800/50 text-xs">
+                  <tbody className={`divide-y text-xs ${isDark ? 'divide-zinc-800/50' : 'divide-slate-200'}`}>
                     {displayedReservations.map((item) => {
+                      // 1. Inisialisasi status dan nomor WhatsApp yang bersih
                       const rawStatus = (item.status || 'pending').toLowerCase()
                       const cleanWa = item.whatsapp_number ? item.whatsapp_number.replace(/[^0-9]/g, '') : ''
-                      const price = getServicePrice(item.service_name)
-                      // Text & Link WA Umum
+                      const price = getItemPrice(item)
+
+                      // 2. Teks & URL WhatsApp untuk Konfirmasi Biasa (Pending/Confirmed/Dll)
                       const waText = `Halo Kak ${item.customer_name}, kami dari ${brandTitle || 'Salon/Barbershop'}. Mau konfirmasi reservasi kamu tanggal ${formatDateID(item.booking_date)} jam ${item.booking_time} WIB untuk layanan ${item.service_name}. Terima kasih!`
                       const waUrl = `https://wa.me/${cleanWa}?text=${encodeURIComponent(waText)}`
-                      // Text & Link WA Khusus Refund
-                      const refundWaText = `Halo Kak ${item.customer_name}, terkait pembatalan reservasi tanggal ${formatDateID(item.booking_date)}, mohon kirimkan nomor rekening / e-wallet Anda untuk proses refund. Terima kasih!`
+
+                      // 3. Teks & URL WhatsApp khusus untuk keperluan Refund (Khusus status cancelled_need_refund)
+                      const refundWaText = `Halo Kak ${item.customer_name}, terkait pembatalan reservasi layanan ${item.service_name} pada tanggal ${formatDateID(item.booking_date)}, mohon konfirmasikan nomor rekening atau e-wallet (Nama Bank/E-Wallet, No Rekening, dan Atas Nama) untuk proses pengembalian dana (refund) ya. Terima kasih!`
                       const refundWaUrl = `https://wa.me/${cleanWa}?text=${encodeURIComponent(refundWaText)}`
+
+                      // 4. Kondisi penentu untuk tombol WhatsApp di UI
+                      const isNeedRefund = rawStatus === 'cancelled_need_refund'
+                      const finalWaUrl = isNeedRefund ? refundWaUrl : waUrl
+                      
                       return (
-                        <tr key={item.id} className="hover:bg-zinc-900/60 transition-all">
-                          <td className="py-3 px-3 font-semibold whitespace-nowrap text-zinc-300">
+                        <tr key={item.id} className={`transition-all ${isDark ? 'hover:bg-white/[0.03]' : 'hover:bg-slate-50'}`}>
+                          <td className={`py-3 px-3 font-semibold whitespace-nowrap ${isDark ? 'text-zinc-300' : 'text-slate-700'}`}>
                             {formatDateID(item.booking_date)}
                           </td>
-                          <td className="py-3 px-3 font-bold whitespace-nowrap text-zinc-100">
+                          <td className={`py-3 px-3 font-bold whitespace-nowrap ${isDark ? 'text-zinc-100' : 'text-slate-900'}`}>
                             {item.booking_time}
                           </td>
                           <td className="py-3 px-3">
-                            <div className="font-bold text-white whitespace-nowrap">{item.customer_name}</div>
-                            <div className="text-[10px] text-zinc-400 font-mono mt-0.5">{item.whatsapp_number || '-'}</div>
+                            <div className={`font-bold whitespace-nowrap ${isDark ? 'text-white' : 'text-slate-900'}`}>{item.customer_name}</div>
+                            <div className={`text-[10px] font-mono mt-0.5 ${isDark ? 'text-zinc-400' : 'text-slate-500'}`}>{item.whatsapp_number || '-'}</div>
                           </td>
-                          <td className="py-3 px-3 font-medium text-zinc-200">
+                          <td className={`py-3 px-3 font-medium ${isDark ? 'text-zinc-200' : 'text-slate-700'}`}>
                             <span className="line-clamp-2">{item.service_name}</span>
                           </td>
-                          <td className="py-3 px-3 font-medium text-zinc-300 whitespace-nowrap">
-                            {item.staff_name || '-'}
-                          </td>
-                          <td className="py-3 px-3 font-semibold text-zinc-300 whitespace-nowrap">
-                            <span className="px-2 py-0.5 rounded-lg bg-zinc-900 border border-zinc-800 text-[10px]">
-                              💳 {item.payment_method || 'QRIS'}
-                            </span>
-                          </td>
-                          <td className="py-3 px-3 font-bold text-zinc-100 whitespace-nowrap">
-                            Rp {price.toLocaleString('id-ID')}
-                          </td>
-                          {/* KOLOM STATUS */}
+                          {isSuperAdminToggleActive && (
+                            <td className={`py-3 px-3 font-medium whitespace-nowrap ${isDark ? 'text-zinc-300' : 'text-slate-600'}`}>
+                              {item.staff_name || '-'}
+                            </td>
+                          )}
+                          {isSuperAdminToggleActive && (
+                            <td className={`py-3 px-3 font-semibold whitespace-nowrap ${isDark ? 'text-zinc-300' : 'text-slate-600'}`}>
+                              <span className={`px-2 py-0.5 rounded-lg border text-[10px] ${isDark ? 'bg-zinc-900 border-zinc-800 text-zinc-300' : 'bg-white border-slate-200 text-slate-700'}`}>
+                                💳 {item.payment_method || 'QRIS'}
+                              </span>
+                            </td>
+                          )}
+                          {isSuperAdminToggleActive && (
+                            <td className={`py-3 px-3 font-bold whitespace-nowrap ${isDark ? 'text-zinc-100' : 'text-slate-900'}`}>
+                              Rp {price.toLocaleString('id-ID')}
+                            </td>
+                          )}
                           <td className="py-3 px-3 whitespace-nowrap">
                             <select
                               value={rawStatus}
                               onChange={(e) => handleStatusChange(item, e.target.value)}
                               className={`px-2.5 py-1.5 rounded-xl text-[11px] font-extrabold border cursor-pointer focus:outline-none transition-all shadow-sm ${
                                 rawStatus === 'confirmed' || rawStatus === 'dikonfirmasi'
-                                  ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
+                                  ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-500'
                                   : isCompleted(rawStatus)
-                                  ? 'bg-blue-500/15 border-blue-500/40 text-blue-300'
+                                  ? 'bg-blue-500/15 border-blue-500/40 text-blue-500'
                                   : rawStatus === 'cancelled_need_refund'
-                                  ? 'bg-amber-500/15 border-amber-500/40 text-amber-300'
+                                  ? 'bg-amber-500/15 border-amber-500/40 text-amber-500'
                                   : rawStatus === 'cancelled_refunded'
-                                  ? 'bg-purple-500/15 border-purple-500/40 text-purple-300'
+                                  ? 'bg-purple-500/15 border-purple-500/40 text-purple-500'
                                   : rawStatus.startsWith('cancelled') || rawStatus === 'batal'
-                                  ? 'bg-rose-500/15 border-rose-500/40 text-rose-300'
-                                  : 'bg-amber-500/15 border-amber-500/40 text-amber-300'
+                                  ? 'bg-rose-500/15 border-rose-500/40 text-rose-500'
+                                  : 'bg-amber-500/15 border-amber-500/40 text-amber-500'
                               }`}
                             >
                               <option value="pending" className="bg-zinc-900 text-amber-300 font-bold">🟡 Pending</option>
                               <option value="confirmed" className="bg-zinc-900 text-emerald-300 font-bold">🟢 Confirmed</option>
                               <option value="completed" className="bg-zinc-900 text-blue-300 font-bold">🔵 Completed</option>
                               <option value="cancelled" className="bg-zinc-900 text-rose-300 font-bold">🔴 Cancelled</option>
-                              {/* DIHIDDEN AGAR TIDAK BISA DIPILIH MANUAL OLEH USER */}
                               <option value="cancelled_need_refund" hidden className="bg-zinc-900 text-amber-300 font-bold">🟠 Need Refund</option>
                               <option value="cancelled_refunded" hidden className="bg-zinc-900 text-purple-300 font-bold">💸 Refunded</option>
                             </select>
                           </td>
-                          {/* KOLOM AKSI */}
                           <td className="py-3 px-3 text-center whitespace-nowrap">
                             <div className="flex items-center justify-center space-x-2">
-                              {/* Tombol WA (Biasa / Refund) */}
-                              {cleanWa ? (
+                              {cleanWa && (
                                 <a
-                                  href={rawStatus === 'cancelled_need_refund' ? refundWaUrl : waUrl}
+                                  href={finalWaUrl}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className={`p-2 rounded-xl transition-all font-bold text-[11px] flex items-center justify-center active:scale-95 shadow-sm ${
-                                    rawStatus === 'cancelled_need_refund'
-                                      ? 'bg-amber-500/20 hover:bg-amber-500/40 text-amber-300 border border-amber-500/40 animate-pulse'
-                                      : 'bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-300 border border-emerald-500/30'
+                                  className={`w-8 h-8 rounded-xl border flex items-center justify-center transition-all shadow-sm ${
+                                    isNeedRefund 
+                                      ? 'bg-amber-500/30 border-amber-500/60 text-amber-300 animate-pulse' 
+                                      : 'bg-emerald-500/20 border-emerald-500/40 text-emerald-500 hover:bg-emerald-500/30'
                                   }`}
-                                  title={rawStatus === 'cancelled_need_refund' ? 'WA Refund Pelanggan' : 'Konfirmasi via WhatsApp'}
+                                  title={isNeedRefund ? 'WA Pelanggan: Konfirmasi Rekening Refund' : 'Chat WhatsApp Konfirmasi'}
                                 >
                                   💬
                                 </a>
-                              ) : (
-                                <span className="text-zinc-600 p-2 text-xs">-</span>
                               )}
-
-                              {/* Tombol "✓ Refunded" di Aksi (Muncul Khusus Saat Need Refund) */}
-                              {rawStatus === 'cancelled_need_refund' && isProfesional && (
+                              {/* 2. TOMBOL SUDAH REFUND (Hanya muncul saat status cancelled_need_refund) */}
+                              {rawStatus === 'cancelled_need_refund' && (
                                 <button
                                   onClick={() => handleCompleteRefund(item.id)}
                                   className="bg-amber-500/20 hover:bg-amber-500/40 text-amber-300 border border-amber-500/40 px-2.5 py-1.5 rounded-xl transition-all font-extrabold text-[10px] shadow-sm active:scale-95 whitespace-nowrap"
@@ -2205,11 +2873,10 @@ export default function AdminDashboard() {
                                   ✓ Refunded
                                 </button>
                               )}
-                              {/* Tombol Hapus (Selalu Tampil) */}
-                              <button
+                                <button
                                 onClick={() => handleDelete(item.id, item.customer_name)}
-                                className="bg-rose-500/15 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 p-2 rounded-xl transition-all font-bold text-[11px] flex items-center justify-center active:scale-95 shadow-sm"
-                                title="Hapus Data Reservasi"
+                                className="w-8 h-8 rounded-xl bg-rose-500/20 border border-rose-500/40 text-rose-500 flex items-center justify-center hover:bg-rose-500/30 transition-all shadow-sm"
+                                title="Hapus Reservasi"
                               >
                                 🗑️
                               </button>
@@ -2221,24 +2888,30 @@ export default function AdminDashboard() {
                   </tbody>
                 </table>
               </div>
-              {/* 17.11 PAGINATION FOOTER */}
-              {totalPages > 1 && (
-                <div className="p-3.5 sm:p-4 bg-zinc-950/90 border-t border-zinc-800/80 flex items-center justify-between text-xs">
-                  <span className="text-zinc-400 font-medium">
-                    Halaman <strong className="text-white">{currentPage}</strong> dari <strong className="text-white">{totalPages}</strong>
+
+
+              {/* PAGINATION CONTROLS */}
+              {isSuperAdminToggleActive && limit !== 'all' && totalPages > 1 && (
+                <div className={`p-4 border-t flex items-center justify-between text-xs ${isDark ? 'border-zinc-800 bg-zinc-950/60' : 'border-slate-200 bg-slate-100'}`}>
+                  <span className={isDark ? 'text-zinc-400' : 'text-slate-600'}>
+                    Halaman <strong className={isDark ? 'text-white' : 'text-slate-900'}>{currentPage}</strong> dari <strong className={isDark ? 'text-white' : 'text-slate-900'}>{totalPages}</strong>
                   </span>
-                  <div className="flex space-x-2">
+                  <div className="flex items-center gap-1.5">
                     <button
                       disabled={currentPage === 1}
-                      onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
-                      className="px-3 py-1.5 bg-zinc-900 border border-zinc-800 rounded-xl disabled:opacity-40 font-bold hover:bg-zinc-800 transition text-zinc-200"
+                      onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+                      className={`px-3 py-1.5 rounded-xl border font-bold disabled:opacity-40 transition-all ${
+                        isDark ? 'bg-zinc-900 border-zinc-700 text-zinc-200 hover:bg-zinc-800' : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'
+                      }`}
                     >
                       Sebelumnya
                     </button>
                     <button
                       disabled={currentPage === totalPages}
-                      onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
-                      className="px-3 py-1.5 bg-zinc-900 border border-zinc-800 rounded-xl disabled:opacity-40 font-bold hover:bg-zinc-800 transition text-zinc-200"
+                      onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
+                      className={`px-3 py-1.5 rounded-xl border font-bold disabled:opacity-40 transition-all ${
+                        isDark ? 'bg-zinc-900 border-zinc-700 text-zinc-200 hover:bg-zinc-800' : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'
+                      }`}
                     >
                       Selanjutnya
                     </button>
@@ -2248,58 +2921,57 @@ export default function AdminDashboard() {
             </>
           )}
         </div>
+      </div>
 
-        {/* MODAL REFUND HANYA BERLAKU UNTUK PAKET PROFESIONAL */}
-        {cancelModalItem && (
-          <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className={`max-w-md w-full border rounded-3xl p-6 space-y-5 shadow-2xl animate-in fade-in zoom-in duration-200 ${themeStyles.cardBg}`}>
-              <div className="text-center space-y-2">
-                <span className="text-4xl">⚠️</span>
-                <h3 className="text-lg font-black text-white">Konfirmasi Pembatalan Reservasi</h3>
-                <p className="text-xs text-zinc-400">
-                  Pesanan atas nama <strong className="text-white">{cancelModalItem.customer_name}</strong> akan dibatalkan.
-                </p>
-              </div>
-              <div className="bg-zinc-950/80 border border-zinc-800/80 p-4 rounded-2xl space-y-2 text-xs">
-                <div className="flex justify-between text-zinc-400">
-                  <span>Layanan:</span>
-                  <span className="font-bold text-zinc-200">{cancelModalItem.service_name}</span>
-                </div>
-                <div className="flex justify-between text-zinc-400">
-                  <span>Tanggal & Jam:</span>
-                  <span className="font-bold text-zinc-200">{formatDateID(cancelModalItem.booking_date)} - {cancelModalItem.booking_time} WIB</span>
-                </div>
-                <div className="flex justify-between text-zinc-400">
-                  <span>Total Bayar:</span>
-                  <span className="font-bold text-emerald-400">Rp {getServicePrice(cancelModalItem.service_name).toLocaleString('id-ID')}</span>
-                </div>
-              </div>
-              <p className="text-[11px] font-bold text-amber-300 text-center">Apakah pelanggan ini membutuhkan pengembalian dana (refund)?</p>
-              <div className="grid grid-cols-2 gap-3 pt-2">
-                <button
-                  onClick={() => handleConfirmCancel(true)}
-                  className="bg-amber-500 hover:bg-amber-400 text-zinc-950 font-black py-3 rounded-2xl text-xs transition-all shadow-lg active:scale-95"
-                >
-                  Ya, Perlu Refund 💳
-                </button>
-                <button
-                  onClick={() => handleConfirmCancel(false)}
-                  className="bg-rose-600 hover:bg-rose-500 text-white font-black py-3 rounded-2xl text-xs transition-all shadow-lg active:scale-95"
-                >
-                  Tidak Perlu Refund ❌
-                </button>
-              </div>
+
+      {/* MODAL KONFIRMASI PEMBATALAN / REFUND */}
+      {cancelModalItem && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className={`max-w-md w-full border rounded-3xl p-6 space-y-5 shadow-2xl animate-in fade-in zoom-in-95 duration-200 ${
+            isDark ? 'bg-zinc-900 border-zinc-700 text-zinc-100' : 'bg-white border-slate-200 text-slate-900'
+          }`}>
+            <div className="space-y-2">
+              <span className="px-3 py-1 rounded-full text-[10px] font-black bg-rose-500/20 text-rose-500 border border-rose-500/30 uppercase tracking-widest">
+                Konfirmasi Pembatalan
+              </span>
+              <h3 className={`text-lg font-black ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                Batalkan Pesanan: {cancelModalItem.customer_name}?
+              </h3>
+              <p className={`text-xs ${isDark ? 'text-zinc-300' : 'text-slate-600'}`}>
+                Apakah pembatalan ini memerlukan pengembalian dana (refund) kepada pelanggan? Slot jam terkait juga akan otomatis dibuka kembali.
+              </p>
+            </div>
+
+            <div className="bg-zinc-950/60 border border-zinc-800 p-4 rounded-2xl space-y-1 text-xs font-mono">
+              <p><span className="text-zinc-400">Layanan:</span> {cancelModalItem.service_name}</p>
+              <p><span className="text-zinc-400">Jadwal:</span> {formatDateID(cancelModalItem.booking_date)} - {cancelModalItem.booking_time} WIB</p>
+              <p><span className="text-zinc-400">Nominal:</span> Rp {getItemPrice(cancelModalItem).toLocaleString('id-ID')}</p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2.5 pt-2">
               <button
-                onClick={() => setCancelModalItem(null)}
-                className="w-full text-zinc-400 hover:text-white font-bold text-xs py-2 transition-colors text-center"
+                onClick={() => handleConfirmCancel(false)}
+                className="w-full bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-bold py-3 rounded-2xl text-xs transition-all border border-zinc-700"
               >
-                Batal
+                Tanpa Refund ❌
+              </button>
+              <button
+                onClick={() => handleConfirmCancel(true)}
+                className="w-full bg-rose-600 hover:bg-rose-500 text-white font-black py-3 rounded-2xl text-xs transition-all shadow-lg shadow-rose-600/30"
+              >
+                Ya, Perlu Refund 💸
               </button>
             </div>
+
+            <button
+              onClick={() => setCancelModalItem(null)}
+              className="w-full text-center text-xs text-zinc-500 hover:text-zinc-400 font-bold pt-1"
+            >
+              Batal / Kembali
+            </button>
           </div>
-        )}
-      </div>
-      </div>
+        </div>
+      )}
+    </main>
   )
 }
-      

@@ -5,31 +5,44 @@ export function middleware(request: NextRequest) {
   const hostname = request.headers.get('host') || '';
   const url = request.nextUrl.clone();
 
-  // 1. Abaikan file internal Next.js, API, file statis, atau localhost
+  // 1. Abaikan file internal Next.js, API, file statis, localhost, DAN HALAMAN ADMIN
   if (
     url.pathname.startsWith('/_next') ||
     url.pathname.startsWith('/api') ||
+    url.pathname.startsWith('/admin') ||
     url.pathname.includes('.') ||
     hostname.includes('localhost') ||
-    hostname === 'booking-app.vercel.app' // Ganti dengan domain utama project Vercel lu kalau ada
+    hostname === 'booking-app.vercel.app'
   ) {
     return NextResponse.next();
   }
 
-  // 2. Ambil seluruh hostname atau bagian depannya sebagai slug secara otomatis
-  // Contoh: fitri-feb.vercel.app -> tenant slug-nya adalah fitri-feb (atau sesuai nama domain)
-  const parts = hostname.split('.');
-  const tenantSlug = parts[0].toLowerCase();
+  // 2. Deteksi apakah ini diakses lewat domain utama kita (bookingpage.site)
+  const rootDomain = 'bookingpage.site';
+  
+  // Jika diakses menggunakan domain utama (bukan subdomain), lewati middleware rewrite
+  if (hostname === rootDomain || hostname === `www.${rootDomain}`) {
+    return NextResponse.next();
+  }
 
-  // 3. Jika user akses root ('/'), rewrite otomatis ke dynamic route `/[tenant_slug]`
-  if (url.pathname === '/') {
-    url.pathname = `/${tenantSlug}`;
-    return NextResponse.rewrite(url);
+  // 3. Ambil slug dari subdomain secara aman (contoh: fitri dari fitri.bookingpage.site)
+  const currentHost = hostname.replace(/^(https?:\/\/)?/, '');
+  const parts = currentHost.split('.');
+  
+  // Pastikan format subdomain valid (minimal ada subdomain sebelum domain utama)
+  if (parts.length >= 2) {
+    const tenantSlug = parts[0].toLowerCase();
+
+    // 4. Jika user akses root publik ('/'), rewrite ke dynamic route tenant
+    if (url.pathname === '/') {
+      url.pathname = `/${tenantSlug}`;
+      return NextResponse.rewrite(url);
+    }
   }
 
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: ['/((?!api|_next/static|_next/image|favicon.ico).*)'],
+  matcher: ['/((?!api|_next/static|_next/image|favicon.ico|admin).*)'],
 };
