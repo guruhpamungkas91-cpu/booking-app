@@ -62,7 +62,7 @@ export default function FeatureToggleModal({ tenant, isOpen, onClose, onSuccess 
     show_extra_addon: tenant.show_extra_addon ?? false,
     staff_performance: tenant.staff_performance ?? true,
     business_performance: tenant.business_performance ?? true, // <-- 2. Set default value inisialisasi
-    layout_type: tenant.layout_type || 'step-wizard',
+    layout_type: tenant.layout_type || 'STEP_WIZARD',
     enable_guest_count: tenant.enable_guest_count ?? false,
   })
 
@@ -156,13 +156,13 @@ export default function FeatureToggleModal({ tenant, isOpen, onClose, onSuccess 
               </label>
               <p className="text-xs text-slate-400 mb-3">Pilih tampilan antarmuka form pemesanan untuk customer.</p>
               <select
-                value={features.layout_type}
-                onChange={(e) => setFeatures({ ...features, layout_type: e.target.value })}
-                className="w-full bg-black border border-cyan-500/40 rounded-xl px-4 py-2.5 text-xs text-cyan-300 font-bold focus:outline-none focus:border-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.1)] cursor-pointer"
-              >
-                <option value="step-wizard" className="bg-black text-white">Step Wizard (Bertahap per Langkah)</option>
-                <option value="single-page" className="bg-black text-white">Single Page (Satu Halaman Sekaligus)</option>
-              </select>
+              value={features.layout_type}
+              onChange={(e) => setFeatures({ ...features, layout_type: e.target.value })}
+              className="w-full bg-black border border-cyan-500/40 rounded-xl px-4 py-2.5 text-xs text-cyan-300 font-bold focus:outline-none focus:border-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.1)] cursor-pointer"
+            >
+              <option value="STEP_WIZARD" className="bg-black text-white">Step Wizard (Bertahap per Langkah)</option>
+              <option value="SINGLE_PAGE" className="bg-black text-white">Single Page (Satu Halaman Sekaligus)</option>
+            </select>
             </div>
           </div>
 

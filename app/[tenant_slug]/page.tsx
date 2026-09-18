@@ -65,6 +65,7 @@ interface TenantData {
   category?: string
   staffLabel?: string
   layoutType?: string
+  layout_type?: string;
   themeColor?: string
   requireConsent?: boolean
   custom_terms_text?: string
@@ -246,7 +247,8 @@ function BookingFormContent({ initialTenant }: { initialTenant?: TenantData }) {
   // --------------------------------------------------------------------------
   // 4.5 Derived Flags & Configurations (Layout & Theme Classes)
   // --------------------------------------------------------------------------
-  const isSinglePage = tenant.layoutType?.toUpperCase() === 'SINGLE_PAGE'
+  const currentLayout = tenant.layoutType || tenant.layout_type || 'STEP_WIZARD'
+  const isSinglePage = currentLayout.toUpperCase() === 'SINGLE_PAGE'
   const isWizard = !isSinglePage
   const isUltimate = tenant.subscriptionPlan === 'ULTIMATE'
   const isProfesional = tenant.subscriptionPlan === 'PROFESIONAL'
