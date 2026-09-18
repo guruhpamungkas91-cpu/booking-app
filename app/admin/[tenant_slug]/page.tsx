@@ -1928,14 +1928,13 @@ export default function AdminDashboard() {
             {/* ========================================================= */}
             {(() => {
               const activeColor3D = theme3DColors[selectedTheme] || theme3DColors.purple;
-
-              // Pastikan staffList dideklarasikan atau di-fallback dengan aman di tingkat tipe
-              const currentStaffList: any[] = Array.isArray(staffList) ? staffList : [];
               
-              // 1. Ambil daftar nama staff murni dari state staffList tanpa paksaan kapital/format
+              // 1. Pastikan staffList aman dan ambil namanya dengan berbagai kemungkinan struktur properti
+              const currentStaffList: any[] = Array.isArray(staffList) ? staffList : [];
+
               const registeredStaffNames: string[] = currentStaffList
                 .map((s: any) => s?.name || s?.staff_name || s?.nama || '')
-                .filter((name: string): name is string => typeof name === 'string' && name.length > 0);
+                .filter((name: string): name is string => typeof name === 'string' && name.trim().length > 0);
 
               // 2. Filter reservasi staff berdasarkan bulan & tahun khusus Staff yang statusnya completed
               const staffFilteredRes = reservations.filter((r: any) => {
@@ -1949,16 +1948,22 @@ export default function AdminDashboard() {
               // 3. Hitung jumlah transaksi per staff dari data reservasi
               const staffMap: Record<string, number> = {};
               staffFilteredRes.forEach((r: any) => {
-                let staffName = r?.staff_name || r?.staff || '';
+                let staffName = r?.staff_name || r?.staff || r?.staffName || '';
                 if (staffName) {
                   staffMap[staffName] = (staffMap[staffName] || 0) + 1;
                 }
               });
 
-              // 4. Gabungkan daftar staff dari Super Admin agar yang transaksinya 0 tetap tampil dinamis
-              const allStaffKeys: string[] = registeredStaffNames.length > 0 
-                ? registeredStaffNames 
-                : (Object.keys(staffMap).length > 0 ? Object.keys(staffMap) : ['Unassigned Staff']);
+              // 4. PERBAIKAN UTAMA: Gabungkan (Merge) nama dari database staff DAN transaksi reservasi 
+              // agar staff yang baru didaftarkan (seperti Fitri meski transaksinya masih 0) tetap muncul!
+              const combinedStaffSet = new Set<string>([
+                ...registeredStaffNames,
+                ...Object.keys(staffMap)
+              ]);
+
+              const allStaffKeys: string[] = combinedStaffSet.size > 0 
+                ? Array.from(combinedStaffSet) 
+                : ['Unassigned Staff'];
 
               const staffData = allStaffKeys.map((name: string) => ({
                 label: name,
