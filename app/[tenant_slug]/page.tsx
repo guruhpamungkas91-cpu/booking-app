@@ -536,6 +536,8 @@ function BookingFormContent({ initialTenant }: { initialTenant?: TenantData }) {
             enableSlotBlocking: tenantData?.enable_slot_blocking ?? true,
             enable_multi_staff: tenantData?.enable_multi_staff ?? false,
             enable_multi_service: tenantData?.enable_multi_service ?? true,
+            enable_notes: tenantData?.enable_notes ?? true,
+            enableNotes: tenantData?.enable_notes ?? true,
             addons: Array.isArray(tenantData?.addons) ? tenantData.addons : []
           }
 
