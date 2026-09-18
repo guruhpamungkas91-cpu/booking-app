@@ -1910,9 +1910,15 @@ export default function AdminDashboard() {
                               <div className={'w-full flex-1 bg-gradient-to-b ' + activeColor3D.body + ' backdrop-blur-md border-x border-b border-white/10 rounded-b-xl'} />
                             </div>
 
-                            <span className={'text-[11px] font-bold mt-3 tracking-wider uppercase truncate max-w-full ' + (isDark ? 'text-zinc-400 group-hover:text-white' : 'text-slate-600')}>
-                              {item.label}
-                            </span>
+                            {/* 👇 ALAS PODIUM & LABEL MENYALA 3D 👇 */}
+                            <div className="w-full flex flex-col items-center mt-2 z-10">
+                              <div className={'w-full h-2.5 rounded-lg bg-gradient-to-r ' + activeColor3D.top + ' border border-white/30 shadow-[0_4px_12px_rgba(0,0,0,0.5)] group-hover:brightness-125 transition-all duration-300'} />
+                              
+                              <span className={'mt-1.5 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider rounded-lg border backdrop-blur-md transition-all duration-300 group-hover:scale-105 ' + (isDark ? 'bg-zinc-900/90 border-emerald-500/40 text-emerald-300 shadow-[0_4px_12px_rgba(16,185,129,0.2)] group-hover:text-white group-hover:border-emerald-400' : 'bg-white/90 border-emerald-500/40 text-emerald-700 shadow-[0_4px_12px_rgba(16,185,129,0.1)] group-hover:text-slate-900')}>
+                                {item.label}
+                              </span>
+                            </div>
+
                           </div>
                         );
                       })}
@@ -2049,10 +2055,15 @@ export default function AdminDashboard() {
                               <div className={'w-full flex-1 bg-gradient-to-b ' + activeColor3D.body + ' backdrop-blur-md border-x border-b border-white/10 rounded-b-xl'} />
                             </div>
 
-                            {/* NAMA STAFF: Tampil natural sesuai inputan database/super admin */}
-                            <span className={'text-[10px] font-bold mt-3 tracking-wide truncate max-w-full text-center normal-case ' + (isDark ? 'text-zinc-400 group-hover:text-white' : 'text-slate-600')} title={item.label}>
-                              {item.label}
-                            </span>
+                            {/* 👇 ALAS PODIUM & NAMA STAFF MENYALA 3D 👇 */}
+                            <div className="w-full flex flex-col items-center mt-2 z-10">
+                              <div className={'w-full h-2.5 rounded-lg bg-gradient-to-r ' + activeColor3D.top + ' border border-white/30 shadow-[0_4px_12px_rgba(0,0,0,0.5)] group-hover:brightness-125 transition-all duration-300'} />
+                              
+                              <span className={'mt-1.5 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-lg border backdrop-blur-md truncate max-w-full transition-all duration-300 group-hover:scale-105 ' + (isDark ? 'bg-zinc-900/90 border-amber-500/40 text-amber-300 shadow-[0_4px_12px_rgba(245,158,11,0.2)] group-hover:text-white group-hover:border-amber-400' : 'bg-white/90 border-amber-500/40 text-amber-700 shadow-[0_4px_12px_rgba(245,158,11,0.1)] group-hover:text-slate-900')} title={item.label}>
+                                {item.label}
+                              </span>
+                            </div>
+
                           </div>
                         );
                       })}
