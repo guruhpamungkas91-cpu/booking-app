@@ -1,13 +1,31 @@
 import { createServerSupabaseClient } from '@/lib/supabase-server'
 import TenantTable from '@/components/TenantTable'
+import LogoutButton from '@/components/LogoutButton' // 👈 Impor tombol logout
+import { redirect } from 'next/navigation'
 
 export const dynamic = 'force-dynamic'
-export const revalidate = 0 // <-- Tambahkan baris ini agar selalu mengambil data segar dari database
+export const revalidate = 0 
 
 export default async function SuperAdminPage() {
   const supabase = await createServerSupabaseClient()
-  const userEmail = 'guruhpamungkas91@gmail.com'
 
+  // 1. Ambil data user yang sedang login secara murni dari sesi Supabase Auth
+  const { data: { user }, error: userError } = await supabase.auth.getUser()
+
+  // 2. Jika user belum login atau error, lempar ke halaman login
+  if (userError || !user) {
+    redirect('/admin/login')
+  }
+
+  // 3. Validasi ketat email super admin
+  const allowedAdminEmail = 'guruhpamungkas91@gmail.com'
+  if (user.email !== allowedAdminEmail) {
+    redirect('/')
+  }
+
+  const userEmail = user.email
+
+  // 4. Ambil data tenant dari database Supabase
   const { data: tenants, error: tenantsError } = await supabase
     .from('tenants')
     .select('*')
@@ -37,12 +55,18 @@ export default async function SuperAdminPage() {
             </p>
           </div>
           
-          <div className="bg-black/80 backdrop-blur-md border border-cyan-500/30 px-4 py-2.5 rounded-xl text-xs flex items-center gap-3 shadow-[0_0_20px_rgba(6,182,212,0.1)]">
-            <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping"></span>
-            <div>
-              <span className="text-slate-400 block text-[10px] uppercase tracking-wider font-semibold">Dev Bypass Mode</span>
-              <span className="text-cyan-300 font-mono font-medium">{userEmail}</span>
+          {/* Bagian Kanan: Badge Session Auth Murni & Tombol Logout */}
+          <div className="flex items-center gap-3">
+            <div className="bg-black/80 backdrop-blur-md border border-cyan-500/30 px-4 py-2.5 rounded-xl text-xs flex items-center gap-3 shadow-[0_0_20px_rgba(6,182,212,0.1)]">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+              <div>
+                <span className="text-slate-400 block text-[10px] uppercase tracking-wider font-semibold">Authenticated Session</span>
+                <span className="text-cyan-300 font-mono font-medium">{userEmail}</span>
+              </div>
             </div>
+
+            {/* Tombol Logout */}
+            <LogoutButton />
           </div>
         </div>
 

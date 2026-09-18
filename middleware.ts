@@ -5,11 +5,12 @@ export function middleware(request: NextRequest) {
   const hostname = request.headers.get('host') || '';
   const url = request.nextUrl.clone();
 
-  // 1. Abaikan file internal Next.js, API, file statis, localhost, DAN HALAMAN ADMIN
+  // 1. Abaikan file internal Next.js, API, file statis, localhost, HALAMAN ADMIN, DAN SUPER ADMIN
   if (
     url.pathname.startsWith('/_next') ||
     url.pathname.startsWith('/api') ||
     url.pathname.startsWith('/admin') ||
+    url.pathname.startsWith('/super-admin') || // 👈 Ditambahkan agar /super-admin tidak dibaca sebagai tenant
     url.pathname.includes('.') ||
     hostname.includes('localhost') ||
     hostname === 'booking-app.vercel.app'
@@ -44,5 +45,6 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!api|_next/static|_next/image|favicon.ico|admin).*)'],
+  // Tambahkan 'super-admin' ke dalam pengecualian matcher
+  matcher: ['/((?!api|_next/static|_next/image|favicon.ico|admin|super-admin).*)'],
 };
