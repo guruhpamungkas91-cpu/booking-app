@@ -454,9 +454,8 @@ function BookingFormContent({ initialTenant }: { initialTenant?: TenantData }) {
       if (hostname.includes('localhost') || hostname.startsWith('127.')) {
         detectedKeyword = routerSlug || tenantQuery || ''
       } else {
-        // Ambil bagian paling depan dari hostname (misal: "glow" dari "glow.bookingpage.site")
+        // Ambil bagian paling depan dari hostname (misal: "fitri" dari "fitri.bookingpage.site")
         const parts = hostname.toLowerCase().split('.')
-        // Sesuaikan dengan struktur domain Anda, jika subdomain ada di bagian pertama:
         detectedKeyword = parts.length > 2 ? parts[0] : hostname.toLowerCase()
       }
 
@@ -471,13 +470,15 @@ function BookingFormContent({ initialTenant }: { initialTenant?: TenantData }) {
         setFetchingServices(true)
 
         try {
+          // Lakukan pencarian yang lebih fleksibel mencakup domain lengkap maupun slug/subdomain
           const { data: tenantData, error: tenantErr } = await supabase
             .from('tenants')
             .select('*')
-            .or(`domain.eq.${keywordQuery},domain_url.eq.${keywordQuery},tenant_slug.eq.${keywordQuery},client_code.ilike.${keywordQuery}`)
+            .or(`domain.eq.${hostname},domain_url.eq.${hostname},domain.eq.${keywordQuery},domain_url.eq.${keywordQuery},tenant_slug.eq.${keywordQuery},client_code.ilike.${keywordQuery}`)
             .maybeSingle()
 
           if (tenantErr || !tenantData) {
+            console.error("Tenant tidak ditemukan:", tenantErr)
             setFetchingServices(false)
             return
           }
