@@ -397,46 +397,91 @@ export default function TenantDetailPanel({
     }
   }
 
-  // SAVE ADD-ONS
-  const handleSaveAddons = async () => {
-    setLoadingAddons(true)
-    try {
-      const { data: existing } = await supabase.from('services').select('id').eq('tenant_id', tenantData.id).eq('is_addon', true)
-      const existingIds = (existing || []).map(s => s.id)
-      const currentIds = addonsList.filter(s => s.id && typeof s.id === 'number').map(s => s.id)
-      const idsToDelete = existingIds.filter(id => !currentIds.includes(id))
-
-      if (idsToDelete.length > 0) {
-        await supabase.from('services').delete().in('id', idsToDelete)
-      }
-
-      for (const add of addonsList) {
-        const payload = {
-          tenant_id: tenantData.id,
-          tenant_slug: profileData.tenant_slug || tenantData.tenant_slug,
-          client_code: profileData.client_code || profileData.tenant_slug,
-          name: add.name,
-          price: Number(add.price || 0),
-          duration: Number(add.duration || 0),
-          desc: add.desc || '',
-          is_addon: true,
-        }
-
-        if (add.id && typeof add.id === 'number') {
-          await supabase.from('services').update(payload).eq('id', add.id)
-        } else {
-          await supabase.from('services').insert([payload])
-        }
-      }
-
-      alert('Berhasil menyimpan Add-ons!')
-      await fetchAllData()
-    } catch (err: any) {
-      alert('Gagal menyimpan add-ons: ' + err.message)
-    } finally {
+  // SAVE ADD-ONS (Dual-Sync: Tabel Services + Kolom JSONB Tenants)
+const handleSaveAddons = async () => {
+  console.log("Tombol simpan add-ons diklik!", addonsList)
+  setLoadingAddons(true)
+  try {
+    if (!tenantData?.id) {
+      alert("Error: ID Tenant tidak ditemukan!")
       setLoadingAddons(false)
+      return
     }
+
+    // 1. Sinkronisasi ke tabel 'services' (untuk multi add-on berbasis baris)
+    const { data: existing, error: fetchError } = await supabase
+      .from('services')
+      .select('id')
+      .eq('tenant_id', tenantData.id)
+      .eq('is_addon', true)
+
+    if (fetchError) throw fetchError
+
+    const existingIds = (existing || []).map(s => s.id)
+    const currentIds = addonsList.filter((s: any) => s.id && typeof s.id === 'number').map(s => s.id)
+    const idsToDelete = existingIds.filter(id => !currentIds.includes(id))
+
+    if (idsToDelete.length > 0) {
+      const { error: deleteError } = await supabase.from('services').delete().in('id', idsToDelete)
+      if (deleteError) throw deleteError
+    }
+
+    const formattedAddonsForJson = []
+
+    for (const add of addonsList) {
+      const payload = {
+        tenant_id: tenantData.id,
+        tenant_slug: profileData?.tenant_slug || tenantData?.tenant_slug || '',
+        client_code: profileData?.client_code || tenantData?.client_code || '',
+        name: add.name || '',
+        price: Number(add.price || 0),
+        duration: Number(add.duration || 0),
+        desc: add.desc || '',
+        is_addon: true,
+      }
+
+      if (add.id && typeof add.id === 'number') {
+        const { error: updateError } = await supabase.from('services').update(payload).eq('id', add.id)
+        if (updateError) throw updateError
+      } else {
+        const { data: inserted, error: insertError } = await supabase.from('services').insert([payload]).select()
+        if (insertError) throw insertError
+        if (inserted && inserted[0]) {
+          add.id = inserted[0].id
+        }
+      }
+
+      // Kumpulkan data untuk format JSONB tenants.addons
+      formattedAddonsForJson.push({
+        label: add.name || '',
+        price: Number(add.price || 0),
+        desc: add.desc || '',
+        duration: Number(add.duration || 0)
+      })
+    }
+
+    // 2. SYNC KE KOLOM 'addons' DI TABEL 'tenants' (Supaya halaman booking publik langsung baca)
+    const { error: tenantError } = await supabase
+      .from('tenants')
+      .update({ 
+        addons: formattedAddonsForJson,
+        show_extra_addon: true 
+      })
+      .eq('id', tenantData.id)
+
+    if (tenantError) throw tenantError
+
+    alert('Berhasil menyimpan Add-ons!')
+    if (typeof fetchAllData === 'function') {
+      await fetchAllData()
+    }
+  } catch (err: any) {
+    console.error('Error detail saat save addons:', err)
+    alert('Gagal menyimpan add-ons: ' + (err.message || JSON.stringify(err)))
+  } finally {
+    setLoadingAddons(false)
   }
+}
 
   // SAVE GENERAL / KEUANGAN
   const handleSaveGeneral = async () => {
