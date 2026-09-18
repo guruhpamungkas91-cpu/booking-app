@@ -1380,6 +1380,7 @@ function BookingFormContent({ initialTenant }: { initialTenant?: TenantData }) {
                     </div>
                   )}
 
+                  {isNotesEnabled && (
                   <div>
                     <label className="block text-[11px] font-semibold text-zinc-300 uppercase tracking-wider mb-1.5">Catatan Khusus (Opsional)</label>
                     <input
@@ -1390,6 +1391,7 @@ function BookingFormContent({ initialTenant }: { initialTenant?: TenantData }) {
                       onChange={(e) => setFormData({ ...formData, custom_notes: e.target.value })}
                     />
                   </div>
+                )}
 
                   {tenant?.enable_multi_staff && staffList?.length > 0 && (
                     <div>
