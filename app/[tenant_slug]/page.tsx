@@ -100,6 +100,8 @@ interface TenantData {
   enableSlotBlocking?: boolean
   enable_multi_staff?: boolean
   enable_multi_service?: boolean
+  enableNotes?: boolean;
+  enable_notes?: boolean;
   addons?: TenantAddonItem[]
 }
 
@@ -252,6 +254,7 @@ function BookingFormContent({ initialTenant }: { initialTenant?: TenantData }) {
   const isWizard = !isSinglePage
   const isUltimate = tenant.subscriptionPlan === 'ULTIMATE'
   const isProfesional = tenant.subscriptionPlan === 'PROFESIONAL'
+  const isNotesEnabled = tenant.enableNotes ?? tenant.enable_notes ?? true;
 
   const getThemeClasses = (color: string) => {
     const trimmedColor = (color || 'rose').trim()
@@ -1799,16 +1802,19 @@ function BookingFormContent({ initialTenant }: { initialTenant?: TenantData }) {
                   </div>
                 )}
 
-                <div>
-                  <label className="block text-[11px] font-semibold text-zinc-300 uppercase tracking-wider mb-1.5">Catatan Khusus (Opsional)</label>
-                  <input
-                    type="text"
-                    placeholder="Misal: Keluhan / Model request"
-                    className={`w-full px-4 py-3 bg-zinc-900/90 border border-zinc-800/90 rounded-2xl text-zinc-100 placeholder-zinc-500 text-sm outline-none transition-all duration-300 ${theme.accentRing}`}
-                    value={formData.custom_notes || ''}
-                    onChange={(e) => setFormData({ ...formData, custom_notes: e.target.value })}
-                  />
-                </div>
+                {/* Render input Catatan Khusus hanya jika diaktifkan oleh Super Admin */}
+                {isNotesEnabled && (
+                  <div>
+                    <label className="block text-[11px] font-semibold text-zinc-300 uppercase tracking-wider mb-1.5">Catatan Khusus (Opsional)</label>
+                    <input
+                      type="text"
+                      placeholder="Misal: Keluhan / Model request"
+                      className={`w-full px-4 py-3 bg-zinc-900/90 border border-zinc-800/90 rounded-2xl text-zinc-100 placeholder-zinc-500 text-sm outline-none transition-all duration-300 ${theme.accentRing}`}
+                      value={formData.custom_notes || ''}
+                      onChange={(e) => setFormData({ ...formData, custom_notes: e.target.value })}
+                    />
+                  </div>
+                )}
 
                 {tenant?.enable_multi_staff && staffList?.length > 0 && (
                   <div>

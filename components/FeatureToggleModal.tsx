@@ -25,9 +25,10 @@ interface Tenant {
   financial_reports?: boolean
   custom_dashboard_theme?: boolean
   staff_performance?: boolean
-  business_performance?: boolean // <-- 1. Tambahkan properti di sini
+  business_performance?: boolean
   layout_type?: string
   enable_guest_count?: boolean
+  enable_notes?: boolean // <-- 1. Tambahkan properti enable_notes di interface Tenant
 }
 
 interface FeatureToggleModalProps {
@@ -61,9 +62,10 @@ export default function FeatureToggleModal({ tenant, isOpen, onClose, onSuccess 
     require_consent: tenant.require_consent ?? false,
     show_extra_addon: tenant.show_extra_addon ?? false,
     staff_performance: tenant.staff_performance ?? true,
-    business_performance: tenant.business_performance ?? true, // <-- 2. Set default value inisialisasi
+    business_performance: tenant.business_performance ?? true,
     layout_type: tenant.layout_type || 'STEP_WIZARD',
     enable_guest_count: tenant.enable_guest_count ?? false,
+    enable_notes: tenant.enable_notes ?? true, // <-- 2. Set default value inisialisasi enable_notes (true/aktif secara default)
   })
 
   const [initialFeatures, setInitialFeatures] = useState(getInitialFeatures)
@@ -111,6 +113,7 @@ export default function FeatureToggleModal({ tenant, isOpen, onClose, onSuccess 
     { key: 'enable_multi_staff', icon: '👥', title: 'Multi-Staff / Staff Selection', desc: 'Izinkan customer memilih terapis/staff favorit saat melakukan booking.' },
     { key: 'enable_multi_service', icon: '🛒', title: 'Multi-Layanan (Pilih Lebih dari 1)', desc: 'Izinkan customer memilih beberapa layanan sekaligus dalam satu kali booking.' },
     { key: 'enable_guest_count', icon: '👥', title: 'Opsi Jumlah Orang / Pasien', desc: 'Tampilkan pilihan jumlah orang atau pasien pada form pemesanan customer.' },
+    { key: 'enable_notes', icon: '📝', title: 'Catatan Khusus (Optional Notes)', desc: 'Tampilkan kolom input catatan khusus/keluhan pada form pemesanan customer.' }, // <-- Tambahan Fitur Toggle Catatan Khusus
     { key: 'require_consent', icon: '📝', title: 'Require Consent', desc: 'Wajibkan persetujuan syarat & ketentuan sebelum booking.' },
     { key: 'show_extra_addon', icon: '🎁', title: 'Show Extra Add-on', desc: 'Menampilkan opsi tambahan layanan ekstra saat pemesanan.' },
     { key: 'prevent_double_booking', icon: '🛡️', title: 'Prevent Double Booking', desc: 'Mencegah bentrok jadwal booking pada waktu yang sama.' },
@@ -119,7 +122,7 @@ export default function FeatureToggleModal({ tenant, isOpen, onClose, onSuccess 
     { key: 'hide_booked_slots', icon: '👁️‍🗨️', title: 'Hide Booked Slots', desc: 'Menyembunyikan slot waktu yang sudah dibooking dari pandangan customer.' },
     { key: 'custom_payment_dp', icon: '💳', title: 'Custom Payment / DP Gateway', desc: 'Wajibkan pembayaran muka (DP) atau pelunasan online saat booking.' },
     { key: 'financial_reports', icon: '📊', title: 'Laporan Keuangan & Omzet (Bruto/Netto)', desc: 'Tampilkan modul laporan keuangan, omzet, dan export Excel/PDF di dashboard klien.' },
-    { key: 'business_performance', icon: '📈', title: 'Business Performance / Grafik Omzet Bisnis', desc: 'Menampilkan modul grafik performa bisnis dan analitik omzet secara keseluruhan di dashboard.' }, // <-- Tambahan Fitur Baru
+    { key: 'business_performance', icon: '📈', title: 'Business Performance / Grafik Omzet Bisnis', desc: 'Menampilkan modul grafik performa bisnis dan analitik omzet secara keseluruhan di dashboard.' },
     { key: 'staff_performance', icon: '👑', title: 'Performa Staff & Grafik Transaksi', desc: 'Menampilkan modul grafik transaksi dan performa kerja staff di dashboard.' },
     { key: 'is_system_maintenance', icon: '⚠️', title: 'Maintenance Mode / Toko Tutup Sementara', desc: 'Jika diaktifkan, menu/toggle kontrol maintenance akan dimunculkan di dashboard admin tenant.' },
     { key: 'auto_lunch_break', icon: '🍱', title: 'Jam Istirahat Otomatis (Auto Lunch Break)', desc: 'Menutup slot waktu otomatis di jam istirahat staf/klinik.' },
