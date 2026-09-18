@@ -1888,7 +1888,7 @@ export default function AdminDashboard() {
                       {actualBusinessData.map((item, idx: number) => {
                         const heightPct = Math.max(Math.round(((item.rawAmount || 0) / maxBusinessVal) * 100), 18);
                         return (
-                          <div key={idx} className="flex flex-col items-center h-full justify-end group relative">
+                          <div key={idx} className="flex flex-col items-center h-full justify-end group relative pb-3">
                             
                             {/* TEKS 3D HIDUP */}
                             <div className="mb-2 flex flex-col items-center whitespace-nowrap transition-all duration-300 group-hover:scale-110">
@@ -1903,25 +1903,25 @@ export default function AdminDashboard() {
 
                             {/* BATANG 3D */}
                             <div 
-                              className={'w-full max-w-[48px] rounded-2xl transition-all duration-700 relative flex flex-col items-center group-hover:scale-[1.05] ' + activeColor3D.glow}
+                              className={'w-full max-w-[48px] rounded-t-2xl transition-all duration-700 relative flex flex-col items-center group-hover:scale-[1.05] z-20 ' + activeColor3D.glow}
                               style={{ height: heightPct + '%' }}
                             >
                               <div className={'w-full h-3 rounded-t-xl bg-gradient-to-r ' + activeColor3D.top + ' border-t border-white/40 shadow-sm shrink-0'} />
-                              <div className={'w-full flex-1 bg-gradient-to-b ' + activeColor3D.body + ' backdrop-blur-md border-x border-b border-white/10 rounded-b-xl'} />
+                              <div className={'w-full flex-1 bg-gradient-to-b ' + activeColor3D.body + ' backdrop-blur-md border-x border-white/10'} />
                             </div>
 
-                            {/* 👇 ALAS PODIUM & LABEL MENYALA 3D 👇 */}
-                            <div className="w-full flex flex-col items-center mt-2 z-10">
-                              <div className={'w-full h-2.5 rounded-lg bg-gradient-to-r ' + activeColor3D.top + ' border border-white/30 shadow-[0_4px_12px_rgba(0,0,0,0.5)] group-hover:brightness-125 transition-all duration-300'} />
-                              
-                              <span className={'mt-1.5 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider rounded-lg border backdrop-blur-md transition-all duration-300 group-hover:scale-105 ' + (isDark ? 'bg-zinc-900/90 border-emerald-500/40 text-emerald-300 shadow-[0_4px_12px_rgba(16,185,129,0.2)] group-hover:text-white group-hover:border-emerald-400' : 'bg-white/90 border-emerald-500/40 text-emerald-700 shadow-[0_4px_12px_rgba(16,185,129,0.1)] group-hover:text-slate-900')}>
-                                {item.label}
-                              </span>
-                            </div>
+                            {/* LABEL TEKS DI BAWAH ALAS */}
+                            <span className={'absolute -bottom-1 px-2 py-0.5 text-[9px] sm:text-[10px] font-black uppercase tracking-wider rounded-lg border backdrop-blur-md transition-all duration-300 group-hover:scale-105 z-30 ' + (isDark ? 'bg-zinc-900/95 border-emerald-500/40 text-emerald-300 shadow-[0_4px_12px_rgba(16,185,129,0.2)] group-hover:text-white group-hover:border-emerald-400' : 'bg-white/95 border-emerald-500/40 text-emerald-700 shadow-[0_4px_12px_rgba(16,185,129,0.1)] group-hover:text-slate-900')}>
+                              {item.label}
+                            </span>
 
                           </div>
                         );
                       })}
+
+                      {/* 👇 SATU ALAS PODIUM UTUH MELINTANG DI BAWAH SEMUA BATANG USAHA 👇 */}
+                      <div className={'absolute bottom-6 left-2 right-2 h-3.5 rounded-xl bg-gradient-to-r ' + activeColor3D.top + ' border border-white/30 shadow-[0_8px_24px_rgba(0,0,0,0.6)] backdrop-blur-md z-10 opacity-90'} />
+
                     </div>
                   </div>
                 </div>
@@ -2037,7 +2037,7 @@ export default function AdminDashboard() {
                       {staffData.map((item: { label: string; count: number }, idx: number) => {
                         const heightPct = Math.max(Math.round((item.count / maxStaffVal) * 100), 18);
                         return (
-                          <div key={idx} className="flex flex-col items-center h-full justify-end group relative max-w-[110px]">
+                          <div key={idx} className="flex flex-col items-center h-full justify-end group relative max-w-[110px] pb-3">
                             
                             {/* EFEK 3D HIDUP PADA TEKS TRANSAKSI */}
                             <div className="mb-2 flex flex-col items-center whitespace-nowrap transition-all duration-300 group-hover:scale-110">
@@ -2048,25 +2048,25 @@ export default function AdminDashboard() {
 
                             {/* BATANG 3D STAFF */}
                             <div 
-                              className={'w-full max-w-[48px] rounded-2xl transition-all duration-700 relative flex flex-col items-center group-hover:scale-[1.05] ' + activeColor3D.glow}
+                              className={'w-full max-w-[48px] rounded-t-2xl transition-all duration-700 relative flex flex-col items-center group-hover:scale-[1.05] z-20 ' + activeColor3D.glow}
                               style={{ height: heightPct + '%' }}
                             >
                               <div className={'w-full h-3 rounded-t-xl bg-gradient-to-r ' + activeColor3D.top + ' border-t border-white/40 shadow-sm shrink-0'} />
-                              <div className={'w-full flex-1 bg-gradient-to-b ' + activeColor3D.body + ' backdrop-blur-md border-x border-b border-white/10 rounded-b-xl'} />
+                              <div className={'w-full flex-1 bg-gradient-to-b ' + activeColor3D.body + ' backdrop-blur-md border-x border-white/10'} />
                             </div>
 
-                            {/* 👇 ALAS PODIUM & NAMA STAFF MENYALA 3D 👇 */}
-                            <div className="w-full flex flex-col items-center mt-2 z-10">
-                              <div className={'w-full h-2.5 rounded-lg bg-gradient-to-r ' + activeColor3D.top + ' border border-white/30 shadow-[0_4px_12px_rgba(0,0,0,0.5)] group-hover:brightness-125 transition-all duration-300'} />
-                              
-                              <span className={'mt-1.5 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-lg border backdrop-blur-md truncate max-w-full transition-all duration-300 group-hover:scale-105 ' + (isDark ? 'bg-zinc-900/90 border-amber-500/40 text-amber-300 shadow-[0_4px_12px_rgba(245,158,11,0.2)] group-hover:text-white group-hover:border-amber-400' : 'bg-white/90 border-amber-500/40 text-amber-700 shadow-[0_4px_12px_rgba(245,158,11,0.1)] group-hover:text-slate-900')} title={item.label}>
-                                {item.label}
-                              </span>
-                            </div>
+                            {/* NAMA STAFF DI BAWAH ALAS */}
+                            <span className={'absolute -bottom-1 px-2 py-0.5 text-[9px] sm:text-[10px] font-bold uppercase tracking-wide truncate max-w-[90%] text-center rounded-lg border backdrop-blur-md transition-all duration-300 group-hover:scale-105 z-30 ' + (isDark ? 'bg-zinc-900/95 border-amber-500/40 text-amber-300 shadow-[0_4px_12px_rgba(245,158,11,0.2)] group-hover:text-white group-hover:border-amber-400' : 'bg-white/95 border-amber-500/40 text-amber-700 shadow-[0_4px_12px_rgba(245,158,11,0.1)] group-hover:text-slate-900')} title={item.label}>
+                              {item.label}
+                            </span>
 
                           </div>
                         );
                       })}
+
+                      {/* 👇 SATU ALAS PODIUM UTUH MELINTANG DI BAWAH SEMUA BATANG STAFF 👇 */}
+                      <div className={'absolute bottom-6 left-2 right-2 h-3.5 rounded-xl bg-gradient-to-r ' + activeColor3D.top + ' border border-white/30 shadow-[0_8px_24px_rgba(0,0,0,0.6)] backdrop-blur-md z-10 opacity-90'} />
+
                     </div>
                   </div>
                 </div>
