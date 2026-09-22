@@ -1,13 +1,15 @@
-/** @type {import('next').NextType} */
-const nextConfig = {
+import type { NextConfig } from "next";
+
+const nextConfig: NextConfig = {
+  outputFileTracingRoot: __dirname,
   images: {
     remotePatterns: [
       {
         protocol: 'https',
-        hostname: '**', // Mengizinkan semua domain gambar (paling praktis)
+        hostname: '**',
       },
     ],
   },
 };
 
-module.exports = nextConfig;
+export default nextConfig;
