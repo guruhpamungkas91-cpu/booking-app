@@ -65,7 +65,7 @@ interface TenantData {
   category?: string
   staffLabel?: string
   layoutType?: string
-  layout_type?: string;
+  layout_type?: string
   themeColor?: string
   requireConsent?: boolean
   custom_terms_text?: string
@@ -92,16 +92,23 @@ interface TenantData {
     phone_number: string
     holder_name: string
   }>
+  
+  // Slot & Booking Flags (camelCase & snake_case)
   preventDoubleBooking?: boolean
+  prevent_double_booking?: boolean
   hideBookedSlots?: boolean
+  hide_booked_slots?: boolean            // <-- DITAMBAHKAN
   maxPersonPerBooking?: number
   enable_guest_count?: boolean
   enableAutoDisableTimeSlots?: boolean
+  enable_auto_disable_time_slots?: boolean // <-- DITAMBAHKAN
   enableSlotBlocking?: boolean
+  enable_slot_blocking?: boolean
   enable_multi_staff?: boolean
   enable_multi_service?: boolean
-  enableNotes?: boolean;
-  enable_notes?: boolean;
+  enableNotes?: boolean
+  enable_notes?: boolean
+  
   addons?: TenantAddonItem[]
 }
 
@@ -147,14 +154,95 @@ const isValidWhatsAppNumber = (phone: string): boolean => {
 }
 
 // ============================================================================
-// 4. MAIN BOOKING FORM COMPONENT
+// 4. SUB-COMPONENTS
+// ============================================================================
+interface TimePickerProps {
+  availableSlots: any[]
+  blockedTimes: string[]
+  selectedTime: string
+  onSelectTime: (time: string) => void
+  tenantData: TenantData
+  theme: any
+}
+
+function TimePicker({
+  availableSlots,
+  blockedTimes,
+  selectedTime,
+  onSelectTime,
+  tenantData,
+  theme
+}: TimePickerProps) {
+  const shouldHideBooked = tenantData?.hideBookedSlots || tenantData?.hide_booked_slots || false
+  const shouldAutoDisable = tenantData?.enableAutoDisableTimeSlots ?? tenantData?.enable_auto_disable_time_slots ?? true
+
+  const displayedSlots = availableSlots.map((slot) => {
+    const rawTime = slot.time || slot.time_slot || ''
+    const timeStr = typeof rawTime === 'string' ? rawTime.substring(0, 5) : ''
+
+    const isBlockedByApi = blockedTimes.some(b => typeof b === 'string' && b.substring(0, 5) === timeStr)
+    const isSlotDisabled = slot.disabled === true || slot.is_available === false || isBlockedByApi
+
+    return {
+      ...slot,
+      time: timeStr,
+      isDisabled: shouldAutoDisable ? isSlotDisabled : false,
+      isHidden: shouldHideBooked && isSlotDisabled
+    }
+  }).filter(slot => !slot.isHidden && slot.time)
+
+  if (displayedSlots.length === 0) {
+    return (
+      <div className="text-center py-4 text-zinc-500 text-xs italic">
+        Tidak ada jadwal / slot waktu yang tersedia pada tanggal ini.
+      </div>
+    )
+  }
+
+  return (
+    <div className="grid grid-cols-3 gap-2.5 mt-2.5">
+      {displayedSlots.map((slot) => {
+        const isSelected = selectedTime === slot.time
+
+        return (
+          <button
+            key={slot.time}
+            type="button"
+            disabled={slot.isDisabled}
+            style={isSelected && theme.inlineStyle ? theme.inlineStyle : undefined}
+            onClick={() => {
+              if (!slot.isDisabled) {
+                onSelectTime(slot.time)
+              }
+            }}
+            className={`py-2.5 px-3 rounded-2xl text-xs font-bold transition-all duration-300 border relative overflow-hidden group ${
+              slot.isDisabled
+                ? 'bg-zinc-950/60 text-zinc-600 border-zinc-800/50 cursor-not-allowed opacity-50'
+                : isSelected
+                ? `${theme.accentBg} !text-black border-white/25 scale-[1.04] z-10 shadow-[0_0_30px_rgba(var(--color-primary-rgb),0.6)] ring-2 ring-white/40`
+                : 'bg-zinc-950/90 text-zinc-300 border-zinc-800/80 hover:border-zinc-700 hover:text-white hover:bg-zinc-900/80 hover:shadow-[0_0_20px_rgba(255,255,255,0.08)]'
+            }`}
+          >
+            <span className="relative z-10">{slot.time}</span>
+            {slot.isDisabled && (
+              <span className="block text-[9px] text-rose-500 font-semibold tracking-wide mt-0.5">Penuh</span>
+            )}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+// ============================================================================
+// 5. MAIN BOOKING FORM COMPONENT
 // ============================================================================
 function BookingFormContent({ initialTenant }: { initialTenant?: TenantData }) {
   const params = useParams()
   const routerSlug = (params?.tenant_slug as string) || ''
 
   // --------------------------------------------------------------------------
-  // 4.1 State Management (Steps & Tenant Configuration)
+  // 5.1 State Management
   // --------------------------------------------------------------------------
   const [step, setStep] = useState(1)
   const [tenant, setTenant] = useState<TenantData>(initialTenant || {
@@ -191,9 +279,6 @@ function BookingFormContent({ initialTenant }: { initialTenant?: TenantData }) {
     addons: []
   })
 
-  // --------------------------------------------------------------------------
-  // 4.2 State Management (Services, Staff, Modal & Payments)
-  // --------------------------------------------------------------------------
   const [services, setServices] = useState<ServiceItem[]>([])
   const [staffList, setStaffList] = useState<StaffItem[]>([])
   const [fetchingServices, setFetchingServices] = useState(true)
@@ -204,31 +289,12 @@ function BookingFormContent({ initialTenant }: { initialTenant?: TenantData }) {
 
   const [isAddonExpanded, setIsAddonExpanded] = useState(false)
 
-  const mainServices = services.filter((s) => !s.is_addon)
-  const addonServices: AddonService[] = services.filter((s) => s.is_addon).map((s) => ({
-    id: s.id,
-    tenant_slug: s.tenant_slug,
-    addon_label: s.name,
-    addon_price: s.price,
-    desc: s.desc,
-    long_description: s.long_description,
-    image_url: s.image_url,
-    duration: s.duration,
-    is_addon: s.is_addon
-  }))
-
-  // --------------------------------------------------------------------------
-  // 4.3 State Management (Availability & Slots)
-  // --------------------------------------------------------------------------
   const [blockedSlots, setBlockedSlots] = useState<{ block_date: string; block_time: string }[]>([])
   const [blockedTimes, setBlockedTimes] = useState<string[]>([])
   const [bookedReservations, setBookedReservations] = useState<any[]>([])
   const [loadingSlots, setLoadingSlots] = useState<boolean>(false)
   const [availableSlots, setAvailableSlots] = useState<TimeSlot[]>([])
 
-  // --------------------------------------------------------------------------
-  // 4.4 State Management (User Form Inputs)
-  // --------------------------------------------------------------------------
   const [formData, setFormData] = useState({
     customer_name: '',
     whatsapp_number: '',
@@ -247,10 +313,23 @@ function BookingFormContent({ initialTenant }: { initialTenant?: TenantData }) {
   
   const [addonQuantities, setAddonQuantities] = useState<{ [key: number]: number }>({})
   const [loading, setLoading] = useState(false)
-  
+
   // --------------------------------------------------------------------------
-  // 4.5 Derived Flags & Configurations (Layout & Theme Classes)
+  // 5.2 Derived States & Calculations
   // --------------------------------------------------------------------------
+  const mainServices = services.filter((s) => !s.is_addon)
+  const addonServices: AddonService[] = services.filter((s) => s.is_addon).map((s) => ({
+    id: s.id,
+    tenant_slug: s.tenant_slug,
+    addon_label: s.name,
+    addon_price: s.price,
+    desc: s.desc,
+    long_description: s.long_description,
+    image_url: s.image_url,
+    duration: s.duration,
+    is_addon: s.is_addon
+  }))
+
   const currentLayout = tenant.layoutType || tenant.layout_type || 'STEP_WIZARD'
   const isSinglePage = currentLayout.toUpperCase() === 'SINGLE_PAGE'
   const isWizard = !isSinglePage
@@ -258,6 +337,91 @@ function BookingFormContent({ initialTenant }: { initialTenant?: TenantData }) {
   const isProfesional = tenant.subscriptionPlan === 'PROFESIONAL'
   const isNotesEnabled = tenant.enableNotes ?? tenant.enable_notes ?? true;
 
+  const parsePrice = (priceVal: string | number) => {
+    if (typeof priceVal === 'number') return isNaN(priceVal) ? 0 : priceVal;
+    if (!priceVal) return 0;
+    const numeric = priceVal.replace(/[^0-9]/g, '')
+    return numeric ? parseInt(numeric, 10) : 0
+  }
+
+  const calculateTotal = () => {
+    let serviceTotal = mainServices
+      .filter((s) => formData.selected_services.includes(s.name))
+      .reduce((sum, item) => sum + parsePrice(item.price), 0)
+
+    serviceTotal = serviceTotal * formData.person_count
+
+    const extraFeeOld = addonServices
+      .filter((addon) => formData.selectedAddonIds.includes(addon.id))
+      .reduce((sum, addon) => {
+        const qty = addonQuantities[addon.id] || 1
+        return sum + (parsePrice(addon.addon_price) * qty)
+      }, 0)
+
+    const extraFeeNew = formData.selectedTenantAddons
+      .reduce((sum, addon) => sum + parsePrice(addon.price), 0)
+
+    return serviceTotal + extraFeeOld + extraFeeNew
+  }
+
+  const grandTotal = calculateTotal()
+
+  const calculateDP = () => {
+    const dpVal = tenant.dpValue ?? 50
+    if (tenant.dpType === 'FIXED') {
+      return dpVal > grandTotal ? grandTotal : dpVal
+    }
+    return Math.round(grandTotal * (dpVal / 100))
+  }
+
+  const dpAmount = calculateDP()
+  const payableAmount = formData.payment_type === 'DP' ? dpAmount : grandTotal
+  const remainingAmount = grandTotal - payableAmount
+
+  const getAvailablePaymentMethods = () => {
+    const methods: { id: string; title: string; detail?: string }[] = []
+    const isPayingDp = formData.payment_type === 'DP' || formData.payment_type === 'PERCENTAGE' || tenant?.custom_payment_dp;
+
+    if (tenant?.qrisUrl && tenant.qrisUrl.trim() !== '') {
+      methods.push({ id: 'QRIS', title: 'QRIS Instan', detail: 'Scan QR langsung dari HP' })
+    }
+
+    if (Array.isArray(tenant?.bank_accounts) && tenant.bank_accounts.length > 0) {
+      tenant.bank_accounts.forEach((bank: any) => {
+        methods.push({
+          id: `Transfer ${bank.bank_name}`,
+          title: `Transfer ${bank.bank_name}`,
+          detail: `${bank.account_number} (a.n ${bank.holder_name})`,
+        })
+      })
+    }
+
+    if (Array.isArray(tenant?.ewallet_accounts) && tenant.ewallet_accounts.length > 0) {
+      tenant.ewallet_accounts.forEach((wallet: any) => {
+        methods.push({
+          id: wallet.wallet_name,
+          title: wallet.wallet_name,
+          detail: `${wallet.phone_number} (a.n ${wallet.holder_name})`,
+        })
+      })
+    }
+
+    if (!isPayingDp) {
+      methods.push({ 
+        id: 'Cash / Bayar di Tempat', 
+        title: 'Cash / Bayar di Tempat', 
+        detail: 'Bayar langsung di lokasi' 
+      })
+    }
+
+    return methods
+  }
+
+  const availablePaymentMethods = getAvailablePaymentMethods()
+
+  // --------------------------------------------------------------------------
+  // 5.3 Theme Configuration Helper
+  // --------------------------------------------------------------------------
   const getThemeClasses = (color: string) => {
     const trimmedColor = (color || 'rose').trim()
 
@@ -363,93 +527,9 @@ function BookingFormContent({ initialTenant }: { initialTenant?: TenantData }) {
   const theme = getThemeClasses(tenant.themeColor || 'rose')
 
   // --------------------------------------------------------------------------
-  // 4.6 Calculations (Pricing, DP & Payment Methods)
+  // 5.4 Side Effects (useEffect Hooks)
   // --------------------------------------------------------------------------
-  const parsePrice = (priceVal: string | number) => {
-    if (typeof priceVal === 'number') return isNaN(priceVal) ? 0 : priceVal;
-    if (!priceVal) return 0;
-    const numeric = priceVal.replace(/[^0-9]/g, '')
-    return numeric ? parseInt(numeric, 10) : 0
-  }
-
-  const calculateTotal = () => {
-    let serviceTotal = mainServices
-      .filter((s) => formData.selected_services.includes(s.name))
-      .reduce((sum, item) => sum + parsePrice(item.price), 0)
-
-    serviceTotal = serviceTotal * formData.person_count
-
-    const extraFeeOld = addonServices
-      .filter((addon) => formData.selectedAddonIds.includes(addon.id))
-      .reduce((sum, addon) => {
-        const qty = addonQuantities[addon.id] || 1
-        return sum + (parsePrice(addon.addon_price) * qty)
-      }, 0)
-
-    const extraFeeNew = formData.selectedTenantAddons
-      .reduce((sum, addon) => sum + parsePrice(addon.price), 0)
-
-    return serviceTotal + extraFeeOld + extraFeeNew
-  }
-
-  const grandTotal = calculateTotal()
-
-  const calculateDP = () => {
-    const dpVal = tenant.dpValue ?? 50
-    if (tenant.dpType === 'FIXED') {
-      return dpVal > grandTotal ? grandTotal : dpVal
-    }
-    return Math.round(grandTotal * (dpVal / 100))
-  }
-
-  const dpAmount = calculateDP()
-  const payableAmount = formData.payment_type === 'DP' ? dpAmount : grandTotal
-  const remainingAmount = grandTotal - payableAmount
-
-  const getAvailablePaymentMethods = () => {
-    const methods: { id: string; title: string; detail?: string }[] = []
-    const isPayingDp = formData.payment_type === 'DP' || formData.payment_type === 'PERCENTAGE' || tenant?.custom_payment_dp;
-
-    if (tenant?.qrisUrl && tenant.qrisUrl.trim() !== '') {
-      methods.push({ id: 'QRIS', title: 'QRIS Instan', detail: 'Scan QR langsung dari HP' })
-    }
-
-    if (Array.isArray(tenant?.bank_accounts) && tenant.bank_accounts.length > 0) {
-      tenant.bank_accounts.forEach((bank: any) => {
-        methods.push({
-          id: `Transfer ${bank.bank_name}`,
-          title: `Transfer ${bank.bank_name}`,
-          detail: `${bank.account_number} (a.n ${bank.holder_name})`,
-        })
-      })
-    }
-
-    if (Array.isArray(tenant?.ewallet_accounts) && tenant.ewallet_accounts.length > 0) {
-      tenant.ewallet_accounts.forEach((wallet: any) => {
-        methods.push({
-          id: wallet.wallet_name,
-          title: wallet.wallet_name,
-          detail: `${wallet.phone_number} (a.n ${wallet.holder_name})`,
-        })
-      })
-    }
-
-    if (!isPayingDp) {
-      methods.push({ 
-        id: 'Cash / Bayar di Tempat', 
-        title: 'Cash / Bayar di Tempat', 
-        detail: 'Bayar langsung di lokasi' 
-      })
-    }
-
-    return methods
-  }
-
-  const availablePaymentMethods = getAvailablePaymentMethods()
-
-  // --------------------------------------------------------------------------
-  // 4.7 Effects: Load Tenant Data, Services, Staff & Initial Blocked Slots
-  // --------------------------------------------------------------------------
+  // Effect 1: Initial Load (Tenant, Slots, Services, Staff, Blocked Slots)
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const hostname = window.location.hostname.toLowerCase()
@@ -628,9 +708,7 @@ function BookingFormContent({ initialTenant }: { initialTenant?: TenantData }) {
     }
   }, [routerSlug])
 
-  // --------------------------------------------------------------------------
-  // 4.8 Effects: Dynamic Slot Availability Check
-  // --------------------------------------------------------------------------
+  // Effect 2: Dynamic Slot Availability Check
   useEffect(() => {
     if (!formData.booking_date || !tenant?.tenantSlug) return
 
@@ -675,9 +753,7 @@ function BookingFormContent({ initialTenant }: { initialTenant?: TenantData }) {
     fetchAvailability()
   }, [formData.booking_date, formData.selected_staff, tenant?.tenantSlug])
 
-  // --------------------------------------------------------------------------
-  // 4.9 Effects: Generate Dynamic QRIS Payment
-  // --------------------------------------------------------------------------
+  // Effect 3: Dynamic QRIS Generation
   useEffect(() => {
     let isMounted = true
 
@@ -724,7 +800,7 @@ function BookingFormContent({ initialTenant }: { initialTenant?: TenantData }) {
   }, [formData.payment_method, payableAmount, tenant?.tenantSlug])
 
   // --------------------------------------------------------------------------
-  // 4.10 Form Handlers & Slot Logic
+  // 5.5 Event Handlers & Form Logic
   // --------------------------------------------------------------------------
   const handleServiceSelect = (serviceName: string) => {
     if (!tenant.enable_multi_service) {
@@ -741,83 +817,6 @@ function BookingFormContent({ initialTenant }: { initialTenant?: TenantData }) {
   const isSlotBlocked = (date: string, time: string) => {
     if (!date || !time) return false
     return blockedTimes.includes(time)
-  }
-
-  // --------------------------------------------------------------------------
-  // 4.11 Sub-component: TimePicker (Glow & Selection)
-  // --------------------------------------------------------------------------
-  const TimePicker = ({
-    availableSlots,
-    blockedTimes,
-    selectedTime,
-    onSelectTime,
-    tenantData
-  }: {
-    availableSlots: any[]
-    blockedTimes: string[]
-    selectedTime: string
-    onSelectTime: (time: string) => void
-    tenantData: any
-  }) => {
-    const shouldHideBooked = tenantData?.hideBookedSlots || tenantData?.hide_booked_slots || false
-    const shouldAutoDisable = tenantData?.enableAutoDisableTimeSlots ?? tenantData?.enable_auto_disable_time_slots ?? true
-
-    const displayedSlots = availableSlots.map((slot) => {
-      const rawTime = slot.time || slot.time_slot || ''
-      const timeStr = typeof rawTime === 'string' ? rawTime.substring(0, 5) : ''
-
-      const isBlockedByApi = blockedTimes.some(b => typeof b === 'string' && b.substring(0, 5) === timeStr)
-      const isSlotDisabled = slot.disabled === true || slot.is_available === false || isBlockedByApi
-
-      return {
-        ...slot,
-        time: timeStr,
-        isDisabled: shouldAutoDisable ? isSlotDisabled : false,
-        isHidden: shouldHideBooked && isSlotDisabled
-      }
-    }).filter(slot => !slot.isHidden && slot.time)
-
-    if (displayedSlots.length === 0) {
-      return (
-        <div className="text-center py-4 text-zinc-500 text-xs italic">
-          Tidak ada jadwal / slot waktu yang tersedia pada tanggal ini.
-        </div>
-      )
-    }
-
-    return (
-      <div className="grid grid-cols-3 gap-2.5 mt-2.5">
-        {displayedSlots.map((slot) => {
-          const isSelected = selectedTime === slot.time
-
-          return (
-            <button
-              key={slot.time}
-              type="button"
-              disabled={slot.isDisabled}
-              style={isSelected && theme.inlineStyle ? theme.inlineStyle : undefined}
-              onClick={() => {
-                if (!slot.isDisabled) {
-                  onSelectTime(slot.time)
-                }
-              }}
-              className={`py-2.5 px-3 rounded-2xl text-xs font-bold transition-all duration-300 border relative overflow-hidden group ${
-                slot.isDisabled
-                  ? 'bg-zinc-950/60 text-zinc-600 border-zinc-800/50 cursor-not-allowed opacity-50'
-                  : isSelected
-                  ? `${theme.accentBg} !text-black border-white/25 scale-[1.04] z-10 shadow-[0_0_30px_rgba(var(--color-primary-rgb),0.6)] ring-2 ring-white/40`
-                  : 'bg-zinc-950/90 text-zinc-300 border-zinc-800/80 hover:border-zinc-700 hover:text-white hover:bg-zinc-900/80 hover:shadow-[0_0_20px_rgba(255,255,255,0.08)]'
-              }`}
-            >
-              <span className="relative z-10">{slot.time}</span>
-              {slot.isDisabled && (
-                <span className="block text-[9px] text-rose-500 font-semibold tracking-wide mt-0.5">Penuh</span>
-              )}
-            </button>
-          )
-        })}
-      </div>
-    )
   }
 
   const handlePrevStep = () => {
@@ -876,9 +875,6 @@ function BookingFormContent({ initialTenant }: { initialTenant?: TenantData }) {
     setStep((prev) => Math.min(prev + 1, 3))
   }
 
-  // --------------------------------------------------------------------------
-  // 4.12 Submit Handler
-  // --------------------------------------------------------------------------
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
@@ -1040,7 +1036,7 @@ function BookingFormContent({ initialTenant }: { initialTenant?: TenantData }) {
   }
 
   // --------------------------------------------------------------------------
-  // 4.13 Sub-component: QRIS Section
+  // 5.6 Render Helper Methods (Sub-views)
   // --------------------------------------------------------------------------
   const renderQrisSection = () => {
     const qrisSrc = qrisData?.qrUrl || tenant?.qrisUrl
@@ -1080,9 +1076,6 @@ function BookingFormContent({ initialTenant }: { initialTenant?: TenantData }) {
     )
   }
 
-  // --------------------------------------------------------------------------
-  // 4.14 Sub-component: Addons Section
-  // --------------------------------------------------------------------------
   const renderAddonsSection = () => {
     if (!tenant.showExtraAddon) return null
     if (!tenant.addons || tenant.addons.length === 0) return null
@@ -1219,7 +1212,7 @@ function BookingFormContent({ initialTenant }: { initialTenant?: TenantData }) {
   }
 
   // --------------------------------------------------------------------------
-  // 4.15 Loading View & Maintenance View
+  // 5.7 Early Return Views (Loading & Maintenance)
   // --------------------------------------------------------------------------
   if (fetchingServices) {
     return (
@@ -1250,7 +1243,7 @@ function BookingFormContent({ initialTenant }: { initialTenant?: TenantData }) {
   }
 
   // --------------------------------------------------------------------------
-  // 4.16 Main JSX Render Area (Supports both STEP_WIZARD and SINGLE_PAGE)
+  // 5.8 Main JSX Render
   // --------------------------------------------------------------------------
   return (
     <main className="min-h-screen bg-[#060608] bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(120,119,198,0.12),rgba(255,255,255,0))] text-zinc-100 flex items-center justify-center p-3 sm:p-6 font-sans relative overflow-x-hidden">
@@ -1287,7 +1280,7 @@ function BookingFormContent({ initialTenant }: { initialTenant?: TenantData }) {
           <h1 className="text-2xl font-black tracking-tight text-white uppercase drop-shadow-md">{tenant.name}</h1>
           <p style={theme.inlineText ? theme.inlineText : undefined} className={`text-[11px] font-extrabold uppercase tracking-[0.25em] mt-1.5 ${theme.accentText}`}>{tenant.category}</p>
 
-          {/* INDIKATOR STEP (Hanya tampil jika layoutType adalah STEP_WIZARD) */}
+          {/* INDIKATOR STEP (Hanya jika layoutType = STEP_WIZARD) */}
           {isWizard && (
             <div className="flex items-center justify-center space-x-2.5 mt-5">
               {[1, 2, 3].map((s) => (
@@ -1306,9 +1299,9 @@ function BookingFormContent({ initialTenant }: { initialTenant?: TenantData }) {
         {/* FORM CONTENT */}
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
           
-          {/* ========================================================== */}
+          {/* -------------------------------------------------------- */}
           {/* OPSI 1: STEP WIZARD LAYOUT */}
-          {/* ========================================================== */}
+          {/* -------------------------------------------------------- */}
           {isWizard && (
             <>
               {step === 1 && (
@@ -1381,17 +1374,17 @@ function BookingFormContent({ initialTenant }: { initialTenant?: TenantData }) {
                   )}
 
                   {isNotesEnabled && (
-                  <div>
-                    <label className="block text-[11px] font-semibold text-zinc-300 uppercase tracking-wider mb-1.5">Catatan Khusus (Opsional)</label>
-                    <input
-                      type="text"
-                      placeholder="Misal: Keluhan / Model request"
-                      className={`w-full px-4 py-3 bg-zinc-900/90 border border-zinc-800/90 rounded-2xl text-zinc-100 placeholder-zinc-500 text-sm outline-none transition-all duration-300 ${theme.accentRing}`}
-                      value={formData.custom_notes || ''}
-                      onChange={(e) => setFormData({ ...formData, custom_notes: e.target.value })}
-                    />
-                  </div>
-                )}
+                    <div>
+                      <label className="block text-[11px] font-semibold text-zinc-300 uppercase tracking-wider mb-1.5">Catatan Khusus (Opsional)</label>
+                      <input
+                        type="text"
+                        placeholder="Misal: Keluhan / Model request"
+                        className={`w-full px-4 py-3 bg-zinc-900/90 border border-zinc-800/90 rounded-2xl text-zinc-100 placeholder-zinc-500 text-sm outline-none transition-all duration-300 ${theme.accentRing}`}
+                        value={formData.custom_notes || ''}
+                        onChange={(e) => setFormData({ ...formData, custom_notes: e.target.value })}
+                      />
+                    </div>
+                  )}
 
                   {tenant?.enable_multi_staff && staffList?.length > 0 && (
                     <div>
@@ -1453,6 +1446,7 @@ function BookingFormContent({ initialTenant }: { initialTenant?: TenantData }) {
                           selectedTime={formData.booking_time}
                           onSelectTime={(time: string) => setFormData(prev => ({ ...prev, booking_time: time }))}
                           tenantData={tenant}
+                          theme={theme}
                         />
                       )}
                     </div>
@@ -1733,9 +1727,9 @@ function BookingFormContent({ initialTenant }: { initialTenant?: TenantData }) {
             </>
           )}
 
-          {/* ========================================================== */}
+          {/* -------------------------------------------------------- */}
           {/* OPSI 2: SINGLE PAGE LAYOUT (SEMUA DALAM 1 HALAMAN UTUH) */}
-          {/* ========================================================== */}
+          {/* -------------------------------------------------------- */}
           {isSinglePage && (
             <div className="space-y-6 animate-fadeIn">
               
@@ -1808,7 +1802,6 @@ function BookingFormContent({ initialTenant }: { initialTenant?: TenantData }) {
                   </div>
                 )}
 
-                {/* Render input Catatan Khusus hanya jika diaktifkan oleh Super Admin */}
                 {isNotesEnabled && (
                   <div>
                     <label className="block text-[11px] font-semibold text-zinc-300 uppercase tracking-wider mb-1.5">Catatan Khusus (Opsional)</label>
@@ -1882,6 +1875,7 @@ function BookingFormContent({ initialTenant }: { initialTenant?: TenantData }) {
                         selectedTime={formData.booking_time}
                         onSelectTime={(time: string) => setFormData(prev => ({ ...prev, booking_time: time }))}
                         tenantData={tenant}
+                        theme={theme}
                       />
                     )}
                   </div>
@@ -1919,7 +1913,7 @@ function BookingFormContent({ initialTenant }: { initialTenant?: TenantData }) {
                             onClick={() => handleServiceSelect(item.name)}
                             className={`cursor-pointer p-4 rounded-2xl border transition-all duration-300 flex flex-col group ${
                               active 
-                                ? `${theme.accentBgLight} ${theme.accentBorder} text-white shadow-[0_0_25px_rgba(var(--color-primary-rgb),0.25)] scale-[1.01]` 
+                                ? `${theme.accentBgLight}${theme.accentBorder} text-white shadow-[0_0_25px_rgba(var(--color-primary-rgb),0.25)] scale-[1.01]` 
                                 : 'bg-zinc-900/80 border-zinc-800/90 text-zinc-300 hover:border-zinc-700 hover:bg-zinc-900'
                             }`}
                           >
@@ -2098,132 +2092,98 @@ function BookingFormContent({ initialTenant }: { initialTenant?: TenantData }) {
                   </div>
                 )}
 
-                <div className="pt-2">
-                  <button
-                    type="submit"
-                    disabled={loading || (tenant?.requireConsent && !formData?.has_consent)}
-                    className={`w-full font-extrabold py-4 rounded-2xl transition-all duration-300 shadow-xl text-xs flex items-center justify-center space-x-2 tracking-wider uppercase transform active:scale-[0.99] ${
-                      tenant?.requireConsent && !formData?.has_consent
-                        ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
-                        : ''
-                    }`}
-                    style={
-                      tenant?.requireConsent && !formData?.has_consent
-                        ? undefined
-                        : {
-                            ...theme.inlineStyle,
-                            color: '#000000',
-                          }
-                    }
-                  >
-                    {loading ? 'Memproses...' : 'Kirim Konfirmasi via WhatsApp'}
-                  </button>
-                </div>
-
+                <button
+                  type="submit"
+                  disabled={loading || (tenant?.requireConsent && !formData?.has_consent)}
+                  className={`w-full font-extrabold py-4 rounded-2xl transition-all duration-300 shadow-xl text-xs flex items-center justify-center space-x-2 tracking-wider uppercase transform active:scale-[0.99] mt-4 ${
+                    tenant?.requireConsent && !formData?.has_consent
+                      ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
+                      : ''
+                  }`}
+                  style={
+                    tenant?.requireConsent && !formData?.has_consent
+                      ? undefined
+                      : {
+                          ...theme.inlineStyle,
+                          color: '#000000',
+                        }
+                  }
+                >
+                  {loading ? 'Memproses...' : 'Kirim Konfirmasi via WhatsApp'}
+                </button>
               </div>
 
             </div>
           )}
 
         </form>
-
       </div>
 
-      {/* POP-UP MODAL UNTUK DETAIL LAYANAN & FOTO */}
+      {/* POPUP MODAL DETAIL LAYANAN */}
       {selectedServiceDetail && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fadeIn">
-          <div 
-            style={theme.inlineBorder ? theme.inlineBorder : undefined}
-            className={`bg-zinc-950 border ${theme.accentBorder} rounded-3xl max-w-sm w-full overflow-hidden shadow-2xl relative`}
-          >
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 max-w-md w-full space-y-4 shadow-2xl relative">
+            <button
+              type="button"
+              onClick={() => setSelectedServiceDetail(null)}
+              className="absolute top-4 right-4 text-zinc-400 hover:text-white p-1 rounded-full bg-zinc-800/80 transition-colors"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
             
-            {selectedServiceDetail.image_url && (
-              <div className="relative w-full h-52 bg-zinc-900">
-                <img
-                  src={selectedServiceDetail.image_url}
-                  alt={'name' in selectedServiceDetail ? selectedServiceDetail.name : selectedServiceDetail.label}
-                  className="w-full h-full object-cover"
-                />
-                <button
-                  type="button"
-                  onClick={() => setSelectedServiceDetail(null)}
-                  className="absolute top-3.5 right-3.5 w-8 h-8 bg-black/60 hover:bg-black text-white rounded-full flex items-center justify-center backdrop-blur-md transition-all text-sm font-bold shadow-lg"
-                >
-                  ✕
-                </button>
-              </div>
+            {'name' in selectedServiceDetail ? (
+              <h3 className="text-lg font-bold text-white">{selectedServiceDetail.name}</h3>
+            ) : (
+              <h3 className="text-lg font-bold text-white">{(selectedServiceDetail as TenantAddonItem).label}</h3>
             )}
 
-            <div className="p-6 space-y-3.5">
-              {!selectedServiceDetail.image_url && (
-                <div className="flex justify-between items-start">
-                  <h3 className="text-base font-extrabold text-white">
-                    {'name' in selectedServiceDetail ? selectedServiceDetail.name : selectedServiceDetail.label}
-                  </h3>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedServiceDetail(null)}
-                    className="text-zinc-400 hover:text-white text-sm font-bold"
-                  >
-                    ✕
-                  </button>
-                </div>
-              )}
+            {selectedServiceDetail.image_url && (
+              <img
+                src={selectedServiceDetail.image_url}
+                alt="Detail Layanan"
+                className="w-full h-48 object-cover rounded-2xl border border-zinc-800"
+              />
+            )}
 
-              {selectedServiceDetail.image_url && (
-                <h3 className="text-base font-extrabold text-white">
-                  {'name' in selectedServiceDetail ? selectedServiceDetail.name : selectedServiceDetail.label}
-                </h3>
-              )}
+            <p className="text-xs text-zinc-300 leading-relaxed">
+              {selectedServiceDetail.long_description || selectedServiceDetail.desc || 'Tidak ada deskripsi detail.'}
+            </p>
 
-              <div className="flex items-center space-x-2 text-xs">
-                <span style={theme.inlineText ? theme.inlineText : undefined} className={`font-black ${theme.accentText}`}>
-                  {(() => {
-                    const priceVal = 'price' in selectedServiceDetail 
-                      ? selectedServiceDetail.price 
-                      : (selectedServiceDetail as any).price;
-                    const isService = 'name' in selectedServiceDetail;
-                    const prefix = isService ? 'Rp ' : '+Rp ';
-                    return `${prefix}${parsePrice(priceVal).toLocaleString('id-ID')}`;
-                  })()}
-                </span>
-                {selectedServiceDetail.duration && (
-                  <span className="text-zinc-400">• Estimasi {selectedServiceDetail.duration}</span>
-                )}
-              </div>
-
-              <div className="border-t border-zinc-800 pt-3.5">
-                <p className="text-xs text-zinc-300 leading-relaxed whitespace-pre-line">
-                  {selectedServiceDetail.long_description || selectedServiceDetail.desc || 'Tidak ada deskripsi rinci.'}
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setSelectedServiceDetail(null)}
-                className={`w-full py-4 px-4 rounded-2xl font-extrabold text-xs text-black ${theme.accentBg} transition-all duration-300 mt-3 tracking-wider uppercase transform active:scale-[0.99] shadow-[0_4px_30px_rgba(var(--color-primary-rgb),0.5)]`}
-                style={{
-                  ...(theme.inlineStyle || {}),
-                  color: '#000000',
-                }}
-              >
-                Tutup
-              </button>
+            <div className="pt-2 flex justify-between items-center border-t border-zinc-800">
+              <span className="text-xs font-bold text-zinc-400">Harga Layanan:</span>
+              <span className="text-sm font-extrabold text-white">
+                Rp {parsePrice('price' in selectedServiceDetail ? selectedServiceDetail.price : (selectedServiceDetail as any).price || 0).toLocaleString('id-ID')}
+              </span>
             </div>
+
+            <button
+              type="button"
+              onClick={() => setSelectedServiceDetail(null)}
+              className="w-full py-3 rounded-2xl font-bold text-xs bg-zinc-800 text-white hover:bg-zinc-700 transition-all"
+            >
+              Tutup
+            </button>
           </div>
         </div>
       )}
+
     </main>
   )
 }
 
 // ============================================================================
-// 5. ROOT COMPONENT AS NON-ASYNC SERVER COMPONENT WITH SUSPENSE
+// 6. EXPORTS & SUSPENSE WRAPPER
 // ============================================================================
-export default function Home() {
+export default function BookingForm({ initialTenant }: { initialTenant?: TenantData }) {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-[#09090b] text-white flex items-center justify-center font-sans">Loading...</div>}>
-      <BookingFormContent />
+    <Suspense fallback={
+      <main className="min-h-screen bg-[#09090b] text-white flex items-center justify-center font-sans">
+        <p className="text-xs text-zinc-400 font-medium">Memuat Halaman Booking...</p>
+      </main>
+    }>
+      <BookingFormContent initialTenant={initialTenant} />
     </Suspense>
   )
 }

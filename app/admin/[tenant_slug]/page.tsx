@@ -1732,236 +1732,249 @@ export default function AdminDashboard() {
         </div>
 
         {/* 17.5 PERFORMANCE SECTION */}
+        {/* ========================================================= */}
+        {/* PERFORMANCE SECTION (PERFORMA USAHA MODERN & ANALYTICS)   */}
+        {/* ========================================================= */}
         {isSuperAdminToggleActive && businessPerformanceEnabled && (
-          <div className="flex flex-col lg:flex-row gap-6 items-stretch">
+          <div className="flex flex-col gap-6">
             
-            {/* ========================================================= */}
-            {/* 1. KIRI: PERFORMA USAHA (DENGAN FILTER & DESAIN EKSKLUSIF)  */}
-            {/* ========================================================= */}
+            {/* --------------------------------------------------------- */}
+            {/* HELPER & LOGIKA DATA                                      */}
+            {/* --------------------------------------------------------- */}
             {(() => {
-              const activeColor3D = theme3DColors[selectedTheme] || theme3DColors.purple;
+              const dayNamesShort = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
+              const dayNamesFull = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+              const monthNamesShort = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Ags', 'Sep', 'Okt', 'Nov', 'Des'];
 
-              // Filter reservasi usaha berdasarkan bulan & tahun khusus Usaha
-              const filteredByMonthYear = reservations.filter(r => {
-                if (!r.booking_date) return false;
-                const d = new Date(r.booking_date);
-                const m = String(d.getMonth() + 1);
-                const y = String(d.getFullYear());
-                return m === businessMonth && y === businessYear;
-              });
+              const formatCurrency = (amt: number) => {
+                if (amt >= 1000000) return `Rp ${(amt / 1000000).toFixed(1)}jt`;
+                if (amt >= 1000) return `Rp ${(amt / 1000).toFixed(0)}rb`;
+                return `Rp ${amt}`;
+              };
 
-              const completedRes = filteredByMonthYear.filter(r => isCompleted(r.status));
-              
-              let actualBusinessData = [];
-              if (businessFilter === 'mingguan') {
-                const map: Record<string, number> = { 'Sen': 0, 'Sel': 0, 'Rab': 0, 'Kam': 0, 'Jum': 0, 'Sab': 0, 'Min': 0 };
-                const countMap: Record<string, number> = { 'Sen': 0, 'Sel': 0, 'Rab': 0, 'Kam': 0, 'Jum': 0, 'Sab': 0, 'Min': 0 };
-                
-                completedRes.forEach(r => {
+              const completedAllRes = reservations.filter(r => r.booking_date && isCompleted(r.status));
+
+              // 1. DATA BUSINESS CHART
+              let actualBusinessData: { label: string; subLabel?: string; count: number; amount: string; rawAmount: number }[] = [];
+
+              if (businessFilter === 'harian') {
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+
+                const last7Days: Date[] = [];
+                for (let i = 6; i >= 0; i--) {
+                  const d = new Date(today);
+                  d.setDate(today.getDate() - i);
+                  last7Days.push(d);
+                }
+
+                actualBusinessData = last7Days.map(dateObj => {
+                  const dateStr = dateObj.toISOString().split('T')[0];
+                  const dayRes = completedAllRes.filter(r => new Date(r.booking_date).toISOString().split('T')[0] === dateStr);
+                  const totalAmt = dayRes.reduce((acc, r) => acc + getItemPrice(r), 0);
+                  return {
+                    label: dayNamesShort[dateObj.getDay()],
+                    subLabel: `${dateObj.getDate()}/${dateObj.getMonth() + 1}`,
+                    count: dayRes.length,
+                    amount: formatCurrency(totalAmt),
+                    rawAmount: totalAmt
+                  };
+                });
+
+              } else if (businessFilter === 'mingguan') {
+                const selectedM = Number(businessMonth);
+                const selectedY = Number(businessYear);
+                const monthRes = completedAllRes.filter(r => {
                   const d = new Date(r.booking_date);
-                  const dayNames = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
-                  const name = dayNames[d.getDay()];
-                  map[name] = (map[name] || 0) + getItemPrice(r);
-                  countMap[name] = (countMap[name] || 0) + 1;
+                  return (d.getMonth() + 1) === selectedM && d.getFullYear() === selectedY;
                 });
+                const daysInMonth = new Date(selectedY, selectedM, 0).getDate();
+                const totalWeeks = Math.ceil(daysInMonth / 7);
+                const weekSums = Array(totalWeeks).fill(0);
+                const weekCounts = Array(totalWeeks).fill(0);
 
-                const barKeys = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'];
-                actualBusinessData = barKeys.map(k => {
-                  const amt = map[k];
-                  const formattedAmt = amt >= 1000000 ? `Rp ${(amt / 1000000).toFixed(1)}jt` : amt >= 1000 ? `Rp ${(amt / 1000).toFixed(0)}rb` : `Rp ${amt}`;
-                  return { label: k, value: `${countMap[k]} transaksi`, amount: formattedAmt, rawAmount: amt };
-                });
-              } else if (businessFilter === 'bulanan') {
-                const weekMap = [0, 0, 0, 0];
-                const weekCounts = [0, 0, 0, 0];
-                
-                completedRes.forEach(r => {
+                monthRes.forEach(r => {
                   const dayNum = new Date(r.booking_date).getDate();
-                  const weekIdx = Math.min(Math.floor((dayNum - 1) / 7), 3);
-                  weekMap[weekIdx] += getItemPrice(r);
+                  const weekIdx = Math.min(Math.floor((dayNum - 1) / 7), totalWeeks - 1);
+                  weekSums[weekIdx] += getItemPrice(r);
                   weekCounts[weekIdx] += 1;
                 });
 
-                actualBusinessData = weekMap.map((amt, idx) => {
-                  const formattedAmt = amt >= 1000000 ? `Rp ${(amt / 1000000).toFixed(1)}jt` : amt >= 1000 ? `Rp ${(amt / 1000).toFixed(0)}rb` : `Rp ${amt}`;
-                  return { label: `Minggu ${idx + 1}`, value: `${weekCounts[idx]} transaksi`, amount: formattedAmt, rawAmount: amt };
-                });
-              } else {
-                const qMap = [0, 0, 0, 0];
-                const qCounts = [0, 0, 0, 0];
-                
-                completedRes.forEach(r => {
-                  const month = new Date(r.booking_date).getMonth();
-                  const qIdx = Math.floor(month / 3);
-                  qMap[qIdx] += getItemPrice(r);
-                  qCounts[qIdx] += 1;
+                actualBusinessData = weekSums.map((amt, idx) => ({
+                  label: `Mgu ${idx + 1}`,
+                  subLabel: `Tgl ${idx * 7 + 1}-${Math.min((idx + 1) * 7, daysInMonth)}`,
+                  count: weekCounts[idx],
+                  amount: formatCurrency(amt),
+                  rawAmount: amt
+                }));
+
+              } else if (businessFilter === 'bulanan') {
+                const selectedY = Number(businessYear);
+                const yearRes = completedAllRes.filter(r => new Date(r.booking_date).getFullYear() === selectedY);
+                const monthSums = Array(12).fill(0);
+                const monthCounts = Array(12).fill(0);
+
+                yearRes.forEach(r => {
+                  const mIdx = new Date(r.booking_date).getMonth();
+                  monthSums[mIdx] += getItemPrice(r);
+                  monthCounts[mIdx] += 1;
                 });
 
-                actualBusinessData = qMap.map((amt, idx) => {
-                  const formattedAmt = amt >= 1000000 ? `Rp ${(amt / 1000000).toFixed(1)}jt` : amt >= 1000 ? `Rp ${(amt / 1000).toFixed(0)}rb` : `Rp ${amt}`;
-                  return { label: `Q${idx + 1}`, value: `${qCounts[idx]} transaksi`, amount: formattedAmt, rawAmount: amt };
+                actualBusinessData = monthSums.map((amt, idx) => ({
+                  label: monthNamesShort[idx],
+                  count: monthCounts[idx],
+                  amount: formatCurrency(amt),
+                  rawAmount: amt
+                }));
+
+              } else if (businessFilter === 'tahunan') {
+                const currentYear = new Date().getFullYear();
+                const startYear = currentYear - 4;
+                const yearSums = Array(5).fill(0);
+                const yearCounts = Array(5).fill(0);
+
+                completedAllRes.forEach(r => {
+                  const rYear = new Date(r.booking_date).getFullYear();
+                  if (rYear >= startYear && rYear <= currentYear) {
+                    const idx = rYear - startYear;
+                    yearSums[idx] += getItemPrice(r);
+                    yearCounts[idx] += 1;
+                  }
                 });
+
+                actualBusinessData = yearSums.map((amt, idx) => ({
+                  label: String(startYear + idx),
+                  count: yearCounts[idx],
+                  amount: formatCurrency(amt),
+                  rawAmount: amt
+                }));
               }
 
-              const businessColumnsClass = actualBusinessData.length === 7 ? 'grid-cols-7' : 'grid-cols-4';
-              const maxBusinessVal = Math.max(1, ...actualBusinessData.map((i) => Number(i.rawAmount) || 1));
+              // 2. ANALYTICS & INSIGHT FORMULA
+              const dayTrafficCounts = Array(7).fill(0);
+              completedAllRes.forEach(r => {
+                dayTrafficCounts[new Date(r.booking_date).getDay()] += 1;
+              });
+              const totalAllTrx = completedAllRes.length;
+              const maxDayCount = Math.max(...dayTrafficCounts, 0);
+              const busiestDayIndex = dayTrafficCounts.indexOf(maxDayCount);
+              const busiestDayName = maxDayCount > 0 ? dayNamesFull[busiestDayIndex] : '-';
+              const busiestDayPct = totalAllTrx > 0 ? ((maxDayCount / totalAllTrx) * 100).toFixed(1) : '0';
 
-              return (
-                <div className={'border p-4 sm:p-6 rounded-3xl transition-all flex flex-col justify-between gap-4 relative overflow-hidden flex-1 shadow-2xl ' + currentTheme.cardBg}>
-                  
-                  <div>
-                    {/* HEADER & FILTER HIDUP (USAHA) */}
-                    <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3">
-                      <div className="flex items-center space-x-3 sm:space-x-4">
-                        <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl border border-emerald-400/50 bg-gradient-to-br from-emerald-500/30 to-emerald-700/20 flex items-center justify-center text-xl sm:text-2xl shrink-0 shadow-lg shadow-emerald-500/20">
-                          📈
-                        </div>
-                        <div>
-                          <span className={'text-[9px] sm:text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full border shadow-inner ' + currentTheme.badgeBg}>
-                            Performa Usaha ({businessFilter})
-                          </span>
-                          <h3 className={'text-base sm:text-lg font-semibold mt-1 ' + (isDark ? 'text-zinc-200' : 'text-slate-800')}>
-                            Grafik Omzet & Bisnis (Actual)
-                          </h3>
-                        </div>
-                      </div>
+              const selectedYearNum = Number(businessYear);
+              const selectedYearRes = completedAllRes.filter(r => new Date(r.booking_date).getFullYear() === selectedYearNum);
+              const mCounts = Array(12).fill(0);
+              selectedYearRes.forEach(r => {
+                mCounts[new Date(r.booking_date).getMonth()] += 1;
+              });
+              const maxMonthCount = Math.max(...mCounts, 0);
+              const peakMonthIndex = mCounts.indexOf(maxMonthCount);
+              const peakMonthName = maxMonthCount > 0 ? monthNamesShort[peakMonthIndex] : '-';
+              const peakMonthPct = selectedYearRes.length > 0 ? ((maxMonthCount / selectedYearRes.length) * 100).toFixed(1) : '0';
 
-                      {/* KUMPULAN FILTER DENGAN EFEK GLOW & GLASSMORPHISM */}
-                      <div className="flex flex-wrap items-center gap-2">
-                        
-                        {/* DROPDOWN BULAN */}
-                        <div className="relative group">
-                          <select 
-                            value={businessMonth} 
-                            onChange={(e) => setBusinessMonth(e.target.value)}
-                            className={'px-3 py-2 text-[11px] sm:text-xs font-bold rounded-2xl border backdrop-blur-md outline-none transition-all duration-300 shadow-lg cursor-pointer ' + (isDark ? 'bg-zinc-900/80 border-emerald-500/40 text-emerald-300 hover:border-emerald-400 hover:shadow-emerald-500/20' : 'bg-white/90 border-emerald-500/40 text-emerald-700 hover:border-emerald-500')}
-                          >
-                            {[
-                              { v: '1', l: 'Januari' }, { v: '2', l: 'Februari' }, { v: '3', l: 'Maret' },
-                              { v: '4', l: 'April' }, { v: '5', l: 'Mei' }, { v: '6', l: 'Juni' },
-                              { v: '7', l: 'Juli' }, { v: '8', l: 'Agustus' }, { v: '9', l: 'September' },
-                              { v: '10', l: 'Oktober' }, { v: '11', l: 'November' }, { v: '12', l: 'Desember' }
-                            ].map(m => <option key={m.v} value={m.v} className={isDark ? 'bg-zinc-900 text-white' : 'bg-white text-black'}>{m.l}</option>)}
-                          </select>
-                        </div>
+              const currentYearVal = new Date().getFullYear();
+              const startYearVal = currentYearVal - 4;
+              const yCounts = Array(5).fill(0);
+              let total5YearTrx = 0;
 
-                        {/* DROPDOWN TAHUN */}
-                        <div className="relative group">
-                          <select 
-                            value={businessYear} 
-                            onChange={(e) => setBusinessYear(e.target.value)}
-                            className={'px-3 py-2 text-[11px] sm:text-xs font-bold rounded-2xl border backdrop-blur-md outline-none transition-all duration-300 shadow-lg cursor-pointer ' + (isDark ? 'bg-zinc-900/80 border-emerald-500/40 text-emerald-300 hover:border-emerald-400 hover:shadow-emerald-500/20' : 'bg-white/90 border-emerald-500/40 text-emerald-700 hover:border-emerald-500')}
-                          >
-                            {['2024', '2025', '2026', '2027'].map(y => <option key={y} value={y} className={isDark ? 'bg-zinc-900 text-white' : 'bg-white text-black'}>{y}</option>)}
-                          </select>
-                        </div>
+              completedAllRes.forEach(r => {
+                const y = new Date(r.booking_date).getFullYear();
+                if (y >= startYearVal && y <= currentYearVal) {
+                  yCounts[y - startYearVal] += 1;
+                  total5YearTrx += 1;
+                }
+              });
+              const maxYearCount = Math.max(...yCounts, 0);
+              const peakYearIndex = yCounts.indexOf(maxYearCount);
+              const peakYearVal = maxYearCount > 0 ? (startYearVal + peakYearIndex) : '-';
+              const peakYearPct = total5YearTrx > 0 ? ((maxYearCount / total5YearTrx) * 100).toFixed(1) : '0';
 
-                        {/* TAB FILTER (MINGGUAN/BULANAN/TAHUNAN) */}
-                        <div className={'flex items-center p-1 rounded-2xl border backdrop-blur-md shadow-inner ' + (isDark ? 'bg-black/60 border-zinc-800' : 'bg-slate-200/80 border-slate-300')}>
-                          {['mingguan', 'bulanan', 'tahunan'].map((tab) => (
-                            <button
-                              key={tab}
-                              type="button"
-                              onClick={() => setBusinessFilter(tab)}
-                              className={'px-3 py-1.5 text-[10px] sm:text-xs font-black rounded-xl transition-all duration-300 capitalize ' + (
-                                businessFilter === tab 
-                                  ? 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-lg shadow-emerald-500/30 scale-105' 
-                                  : (isDark ? 'text-zinc-400 hover:text-white hover:bg-zinc-800/50' : 'text-slate-600 hover:text-slate-900 hover:bg-white/60')
-                              )}
-                            >
-                              {tab}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+              const maxCount = Math.max(1, ...actualBusinessData.map((i) => i.count));
 
-                  <div className="pt-6 border-t border-zinc-800/60 flex flex-col justify-end h-[280px] sm:h-[300px] relative px-2">
-                    <div className="absolute inset-0 flex flex-col justify-between pointer-events-none opacity-20 px-2 py-4">
-                      <div className="border-b border-dashed border-zinc-500 w-full"></div>
-                      <div className="border-b border-dashed border-zinc-500 w-full"></div>
-                      <div className="border-b border-dashed border-zinc-500 w-full"></div>
-                    </div>
+              // PENYESUAIAN WAKTU DARK & LIGHT MODE PADA BADGE
+              const barGradients = [
+                { 
+                  bar: 'from-amber-400 to-orange-500', 
+                  glow: 'shadow-orange-500/40', 
+                  badge: isDark 
+                    ? 'bg-amber-500/30 text-amber-200 border-amber-400/50' 
+                    : 'bg-amber-100 text-amber-900 border-amber-400' 
+                },
+                { 
+                  bar: 'from-emerald-400 to-teal-500', 
+                  glow: 'shadow-emerald-500/40', 
+                  badge: isDark 
+                    ? 'bg-emerald-500/30 text-emerald-200 border-emerald-400/50' 
+                    : 'bg-emerald-100 text-emerald-900 border-emerald-400' 
+                },
+                { 
+                  bar: 'from-cyan-400 to-blue-600', 
+                  glow: 'shadow-blue-500/40', 
+                  badge: isDark 
+                    ? 'bg-cyan-500/30 text-cyan-200 border-cyan-400/50' 
+                    : 'bg-cyan-100 text-cyan-900 border-cyan-400' 
+                },
+                { 
+                  bar: 'from-purple-400 to-indigo-600', 
+                  glow: 'shadow-purple-500/40', 
+                  badge: isDark 
+                    ? 'bg-purple-500/30 text-purple-200 border-purple-400/50' 
+                    : 'bg-purple-100 text-purple-900 border-purple-400' 
+                },
+                { 
+                  bar: 'from-fuchsia-400 to-pink-600', 
+                  glow: 'shadow-pink-500/40', 
+                  badge: isDark 
+                    ? 'bg-fuchsia-500/30 text-fuchsia-200 border-fuchsia-400/50' 
+                    : 'bg-fuchsia-100 text-fuchsia-900 border-fuchsia-400' 
+                },
+                { 
+                  bar: 'from-rose-400 to-red-600', 
+                  glow: 'shadow-rose-500/40', 
+                  badge: isDark 
+                    ? 'bg-rose-500/30 text-rose-200 border-rose-400/50' 
+                    : 'bg-rose-100 text-rose-900 border-rose-400' 
+                },
+                { 
+                  bar: 'from-slate-300 to-zinc-500', 
+                  glow: 'shadow-zinc-500/40', 
+                  badge: isDark 
+                    ? 'bg-zinc-500/30 text-zinc-200 border-zinc-400/50' 
+                    : 'bg-zinc-200 text-zinc-900 border-zinc-400' 
+                },
+              ];
 
-                    <div className="relative w-full h-64 flex items-end justify-between px-4 pb-8 pt-6">
-                      
-                      {/* CONTAINER UTAMA BATANG CHART */}
-                      <div className="w-full h-full flex items-end justify-around gap-2 z-20 relative">
-                        {actualBusinessData.map((item, idx: number) => {
-                          const heightPct = Math.max(Math.round(((item.rawAmount || 0) / maxBusinessVal) * 100), 20);
-                          return (
-                            <div key={idx} className="flex flex-col items-center h-full justify-end group relative flex-1 max-w-[55px]">
-                              
-                              {/* TOOLTIP / VALUE DI ATAS */}
-                              <div className="mb-2 flex flex-col items-center whitespace-nowrap transition-all duration-300 group-hover:scale-110 z-30">
-                                <span className={'text-[9px] sm:text-[10px] font-black px-2 py-0.5 rounded-lg border shadow-lg backdrop-blur-md transform transition-transform group-hover:-translate-y-1 ' + (isDark ? 'bg-zinc-900/90 border-emerald-500/50 text-emerald-300 shadow-emerald-500/20' : 'bg-white/90 border-emerald-500/50 text-emerald-700 shadow-emerald-500/10')}>
-                                  ✨ {item.value}
-                                </span>
-                              </div>
-
-                              <div className="absolute -top-10 opacity-0 group-hover:opacity-100 transition-all duration-300 bg-zinc-900 border border-zinc-700 text-white text-[10px] font-bold px-2.5 py-1 rounded-lg shadow-2xl pointer-events-none whitespace-nowrap z-40">
-                                {item.amount} ({item.value})
-                              </div>
-
-                              {/* BATANG 3D UTAMA DENGAN EFEK GLOSSY */}
-                              <div 
-                                className={'w-full rounded-t-xl transition-all duration-700 relative flex flex-col items-center group-hover:scale-[1.06] ' + activeColor3D.glow}
-                                style={{ height: heightPct + '%' }}
-                              >
-                                {/* Tutup Atas Batang (Efek 3D Top Surface) */}
-                                <div className={'w-full h-3 rounded-t-lg bg-gradient-to-r ' + activeColor3D.top + ' border-t border-white/60 shadow-inner shrink-0'} />
-                                {/* Badan Batang (Body 3D) */}
-                                <div className={'w-full flex-1 bg-gradient-to-b ' + activeColor3D.body + ' backdrop-blur-md border-x border-white/20 shadow-[inset_0_2px_8px_rgba(255,255,255,0.2)]'} />
-                              </div>
-
-                              {/* LABEL HARI DI BAWAH */}
-                              <span className={'absolute -bottom-6 px-1.5 py-0.5 text-[8px] sm:text-[9px] font-black uppercase tracking-wider rounded border backdrop-blur-md transition-all duration-300 group-hover:scale-105 z-30 ' + (isDark ? 'bg-zinc-900/95 border-emerald-500/40 text-emerald-300' : 'bg-white/95 border-emerald-500/40 text-emerald-700')}>
-                                {item.label}
-                              </span>
-
-                            </div>
-                          );
-                        })}
-                      </div>
-
-                      {/* 👇 ALAS PODIUM 3D UTUH & TEBAL (MENYATU DENGAN SEKAT GRID SEPERTI CONTOH 2) 👇 */}
-                      <div className={'absolute bottom-2 left-3 right-3 h-6 rounded-xl bg-gradient-to-r ' + activeColor3D.top + ' border-2 border-white/40 shadow-[0_12px_30px_rgba(0,0,0,0.8),inset_0_2px_6px_rgba(255,255,255,0.4)] backdrop-blur-md z-10 flex overflow-hidden'}>
-                        {/* Garis-garis sekat grid podium per kolom */}
-                        {actualBusinessData.map((_, idx) => (
-                          <div key={idx} className="flex-1 h-full border-r border-white/20 last:border-r-0 bg-black/10 backdrop-blur-sm" />
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
-
-
-            {/* ========================================================= */}
-            {/* 2. KANAN: PERFORMA STAFF (DINAMIS DARI DATA STAFF & TABEL) */}
-            {/* ========================================================= */}
-            {(() => {
-              const activeColor3D = theme3DColors[selectedTheme] || theme3DColors.purple;
-              
-              // 1. Pastikan staffList aman dan ambil namanya dengan berbagai kemungkinan struktur properti
+              // LOGIKA STAFF PERFORMANCE
               const currentStaffList: any[] = Array.isArray(staffList) ? staffList : [];
-
               const registeredStaffNames: string[] = currentStaffList
                 .map((s: any) => s?.name || s?.staff_name || s?.nama || '')
                 .filter((name: string): name is string => typeof name === 'string' && name.trim().length > 0);
 
-              // 2. Filter reservasi staff berdasarkan bulan & tahun khusus Staff yang statusnya completed
               const staffFilteredRes = reservations.filter((r: any) => {
-                if (!r?.booking_date) return false;
+                if (!r?.booking_date || !isCompleted(r.status)) return false;
                 const d = new Date(r.booking_date);
-                const m = String(d.getMonth() + 1);
-                const y = String(d.getFullYear());
-                return m === staffMonth && y === staffYear && isCompleted(r.status);
+
+                if (businessFilter === 'harian') {
+                  const today = new Date();
+                  today.setHours(0, 0, 0, 0);
+                  const sevenDaysAgo = new Date(today);
+                  sevenDaysAgo.setDate(today.getDate() - 6);
+                  const rDate = new Date(d);
+                  rDate.setHours(0, 0, 0, 0);
+                  return rDate >= sevenDaysAgo && rDate <= today;
+                } else if (businessFilter === 'mingguan') {
+                  return String(d.getMonth() + 1) === String(businessMonth) && String(d.getFullYear()) === String(businessYear);
+                } else if (businessFilter === 'bulanan') {
+                  return String(d.getFullYear()) === String(businessYear);
+                } else if (businessFilter === 'tahunan') {
+                  const currentYear = new Date().getFullYear();
+                  const startYear = currentYear - 4;
+                  const rYear = d.getFullYear();
+                  return rYear >= startYear && rYear <= currentYear;
+                }
+                return true;
               });
 
-              // 3. Hitung jumlah transaksi per staff dari data reservasi
               const staffMap: Record<string, number> = {};
               staffFilteredRes.forEach((r: any) => {
                 let staffName = r?.staff_name || r?.staff || r?.staffName || '';
@@ -1970,122 +1983,275 @@ export default function AdminDashboard() {
                 }
               });
 
-              // 4. PERBAIKAN UTAMA: Gabungkan (Merge) nama dari database staff DAN transaksi reservasi 
-              // agar staff yang baru didaftarkan (seperti Fitri meski transaksinya masih 0) tetap muncul!
-              const combinedStaffSet = new Set<string>([
-                ...registeredStaffNames,
-                ...Object.keys(staffMap)
-              ]);
+              const combinedStaffSet = new Set<string>([...registeredStaffNames, ...Object.keys(staffMap)]);
+              const allStaffKeys: string[] = combinedStaffSet.size > 0 ? Array.from(combinedStaffSet) : ['Unassigned Staff'];
 
-              const allStaffKeys: string[] = combinedStaffSet.size > 0 
-                ? Array.from(combinedStaffSet) 
-                : ['Unassigned Staff'];
-
-              const staffData = allStaffKeys.map((name: string) => ({
-                label: name,
-                count: staffMap[name] || 0
-              }));
+              const staffData = allStaffKeys
+                .map((name: string) => ({
+                  label: name,
+                  count: staffMap[name] || 0
+                }))
+                .sort((a, b) => b.count - a.count);
 
               const maxStaffVal = Math.max(1, ...staffData.map((s: { count: number }) => s.count));
 
               return (
-                <div className={'border p-4 sm:p-6 rounded-3xl transition-all flex flex-col justify-between gap-5 relative overflow-hidden lg:w-[460px] shrink-0 shadow-2xl ' + currentTheme.cardBg}>
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
                   
-                  {/* HEADER & FILTER: Disusun vertikal responsif agar TIDAK TUMPANG TINDIH */}
-                  <div className="flex flex-col gap-4">
-                    <div className="flex items-center space-x-3 sm:space-x-4">
-                      <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl border border-amber-400/50 bg-gradient-to-br from-amber-500/30 to-amber-700/20 flex items-center justify-center text-xl sm:text-2xl shrink-0 shadow-lg shadow-amber-500/20">
-                        👑
-                      </div>
-                      <div>
-                        <span className={'text-[9px] sm:text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full border shadow-inner ' + currentTheme.badgeBg}>
-                          Performa Staff
-                        </span>
-                        <h3 className={'text-base sm:text-lg font-semibold mt-1 ' + (isDark ? 'text-zinc-200' : 'text-slate-800')}>
-                          Grafik Kinerja Staff
-                        </h3>
-                      </div>
-                    </div>
-
-                    {/* DROPDOWN FILTER BULAN & TAHUN: Pindah ke baris bawahnya secara rapi */}
-                    <div className="flex items-center justify-end gap-2 pt-1 border-t border-zinc-800/40">
-                      <div className="relative group">
-                        <select 
-                          value={staffMonth} 
-                          onChange={(e) => setStaffMonth(e.target.value)}
-                          className={'px-3 py-1.5 text-[11px] sm:text-xs font-bold rounded-2xl border backdrop-blur-md outline-none transition-all duration-300 shadow-lg cursor-pointer ' + (isDark ? 'bg-zinc-900/80 border-amber-500/40 text-amber-300 hover:border-amber-400 hover:shadow-amber-500/20' : 'bg-white/90 border-amber-500/40 text-amber-700 hover:border-amber-500')}
-                        >
-                          {[
-                            { v: '1', l: 'Januari' }, { v: '2', l: 'Februari' }, { v: '3', l: 'Maret' },
-                            { v: '4', l: 'April' }, { v: '5', l: 'Mei' }, { v: '6', l: 'Juni' },
-                            { v: '7', l: 'Juli' }, { v: '8', l: 'Agustus' }, { v: '9', l: 'September' },
-                            { v: '10', l: 'Oktober' }, { v: '11', l: 'November' }, { v: '12', l: 'Desember' }
-                          ].map(m => <option key={m.v} value={m.v} className={isDark ? 'bg-zinc-900 text-white' : 'bg-white text-black'}>{m.l}</option>)}
-                        </select>
-                      </div>
-
-                      <div className="relative group">
-                        <select 
-                          value={staffYear} 
-                          onChange={(e) => setStaffYear(e.target.value)}
-                          className={'px-3 py-1.5 text-[11px] sm:text-xs font-bold rounded-2xl border backdrop-blur-md outline-none transition-all duration-300 shadow-lg cursor-pointer ' + (isDark ? 'bg-zinc-900/80 border-amber-500/40 text-amber-300 hover:border-amber-400 hover:shadow-amber-500/20' : 'bg-white/90 border-amber-500/40 text-amber-700 hover:border-amber-500')}
-                        >
-                          {['2024', '2025', '2026', '2027'].map(y => <option key={y} value={y} className={isDark ? 'bg-zinc-900 text-white' : 'bg-white text-black'}>{y}</option>)}
-                        </select>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="pt-4 border-t border-zinc-800/60 flex flex-col justify-end h-[280px] sm:h-[300px] relative px-2">
-                    <div className="absolute inset-0 flex flex-col justify-between pointer-events-none opacity-20 px-2 py-4">
-                      <div className="border-b border-dashed border-zinc-500 w-full"></div>
-                      <div className="border-b border-dashed border-zinc-500 w-full"></div>
-                      <div className="border-b border-dashed border-zinc-500 w-full"></div>
-                    </div>
-
-                    <div className="relative w-full h-64 flex items-end justify-between px-6 pb-8 pt-6">
-
-                    {/* CONTAINER UTAMA BATANG STAFF */}
-                    <div className="w-full h-full flex items-end justify-around gap-6 z-20 relative">
-                      {staffData.map((item: { label: string; count: number }, idx: number) => {
-                        const heightPct = Math.max(Math.round((item.count / maxStaffVal) * 100), 20);
-                        return (
-                          <div key={idx} className="flex flex-col items-center h-full justify-end group relative flex-1 max-w-[70px]">
-                            
-                            {/* TEKS TRANSAKSI DI ATAS */}
-                            <div className="mb-2 flex flex-col items-center whitespace-nowrap transition-all duration-300 group-hover:scale-110 z-30">
-                              <span className={'text-[9px] sm:text-[10px] font-black px-2.5 py-1 rounded-xl border shadow-lg backdrop-blur-md transform transition-transform group-hover:-translate-y-1 ' + (isDark ? 'bg-zinc-900/90 border-amber-500/50 text-amber-300 shadow-amber-500/20' : 'bg-white/90 border-amber-500/50 text-amber-700 shadow-amber-500/10')}>
-                                ✨ {item.count} transaksi
-                              </span>
-                            </div>
-
-                            {/* BATANG 3D STAFF */}
-                            <div 
-                              className={'w-full rounded-t-xl transition-all duration-700 relative flex flex-col items-center group-hover:scale-[1.06] ' + activeColor3D.glow}
-                              style={{ height: heightPct + '%' }}
-                            >
-                              <div className={'w-full h-3 rounded-t-lg bg-gradient-to-r ' + activeColor3D.top + ' border-t border-white/60 shadow-inner shrink-0'} />
-                              <div className={'w-full flex-1 bg-gradient-to-b ' + activeColor3D.body + ' backdrop-blur-md border-x border-white/20 shadow-[inset_0_2px_8px_rgba(255,255,255,0.2)]'} />
-                            </div>
-
-                            {/* NAMA STAFF DI BAWAH */}
-                            <span className={'absolute -bottom-6 px-2 py-0.5 text-[9px] sm:text-[10px] font-bold uppercase tracking-wide truncate max-w-[95%][text-center] rounded-lg border backdrop-blur-md transition-all duration-300 group-hover:scale-105 z-30 ' + (isDark ? 'bg-zinc-900/95 border-amber-500/40 text-amber-300' : 'bg-white/95 border-amber-500/40 text-amber-700')} title={item.label}>
-                              {item.label}
+                  {/* ========================================================= */}
+                  {/* KOLOM KIRI (7/12): PERFORMA USAHA (TINGGI PENUH)          */}
+                  {/* ========================================================= */}
+                  <div className={'lg:col-span-7 border p-5 sm:p-6 rounded-3xl transition-all flex flex-col justify-between gap-6 relative overflow-hidden shadow-2xl backdrop-blur-xl ' + currentTheme.cardBg}>
+                    
+                    {/* HEADER & FILTER */}
+                    <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
+                      <div className="flex items-center space-x-3.5">
+                        <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl border border-emerald-400/40 bg-gradient-to-br from-emerald-500/20 to-teal-700/30 flex items-center justify-center text-2xl shrink-0 shadow-lg shadow-emerald-500/10">
+                          📊
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className={'text-[10px] font-black uppercase tracking-wider px-3 py-0.5 rounded-full border shadow-sm ' + currentTheme.badgeBg}>
+                              Performa Usaha ({businessFilter})
                             </span>
-
                           </div>
-                        );
-                      })}
+                          <h3 className={'text-base sm:text-lg font-black mt-1 tracking-tight ' + (isDark ? 'text-white' : 'text-slate-900')}>
+                            Grafik Omzet & Transaksi
+                          </h3>
+                        </div>
                       </div>
 
-                      {/* 👇 ALAS PODIUM 3D UTUH & TEBAL UNTUK STAFF (DENGAN SEKAT GRID) 👇 */}
-                      <div className={'absolute bottom-2 left-4 right-4 h-6 rounded-xl bg-gradient-to-r ' + activeColor3D.top + ' border-2 border-white/40 shadow-[0_12px_30px_rgba(0,0,0,0.8),inset_0_2px_6px_rgba(255,255,255,0.4)] backdrop-blur-md z-10 flex overflow-hidden'}>
-                        {staffData.map((_, idx) => (
-                          <div key={idx} className="flex-1 h-full border-r border-white/20 last:border-r-0 bg-black/10 backdrop-blur-sm" />
-                        ))}
+                      {/* FILTER TABS */}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <div className={'flex items-center p-1 rounded-xl border backdrop-blur-md ' + (isDark ? 'bg-zinc-900 border-zinc-800' : 'bg-slate-200 border-slate-300')}>
+                          {['harian', 'mingguan', 'bulanan', 'tahunan'].map((tab) => (
+                            <button
+                              key={tab}
+                              type="button"
+                              onClick={() => setBusinessFilter(tab)}
+                              className={'px-3 py-1 text-xs font-black rounded-lg transition-all capitalize ' + (
+                                businessFilter === tab 
+                                  ? 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-md' 
+                                  : (isDark ? 'text-zinc-400 hover:text-white' : 'text-slate-600 hover:text-slate-900')
+                              )}
+                            >
+                              {tab}
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     </div>
+
+                    {/* ARENA CHART */}
+                    <div className={'pt-8 border-t flex flex-col justify-end flex-1 min-h-[320px] relative px-2 ' + (isDark ? 'border-zinc-800/60' : 'border-slate-200')}>
+                      <div className="absolute inset-x-0 top-6 bottom-12 flex flex-col justify-between pointer-events-none opacity-20">
+                        <div className={'border-b border-dashed w-full ' + (isDark ? 'border-zinc-400' : 'border-slate-400')} />
+                        <div className={'border-b border-dashed w-full ' + (isDark ? 'border-zinc-400' : 'border-slate-400')} />
+                        <div className={'border-b border-dashed w-full ' + (isDark ? 'border-zinc-400' : 'border-slate-400')} />
+                        <div className={'border-b border-dashed w-full ' + (isDark ? 'border-zinc-400' : 'border-slate-400')} />
+                      </div>
+
+                      <div className="w-full h-full flex items-end justify-between gap-1.5 sm:gap-3 z-10 pb-1 overflow-x-auto">
+                        {actualBusinessData.map((item, idx: number) => {
+                          const heightPct = item.count > 0 ? Math.max(Math.round((item.count / maxCount) * 80), 14) : 8;
+                          const style = barGradients[idx % barGradients.length];
+
+                          return (
+                            <div key={idx} className="flex flex-col items-center h-full justify-end group relative flex-1 min-w-[32px]">
+                              <div className="mb-2 flex flex-col items-center gap-1 whitespace-nowrap transition-all duration-300 group-hover:-translate-y-1">
+                                <span className={'text-[11px] sm:text-[12px] font-black tracking-tight drop-shadow-sm ' + (
+                                  item.rawAmount > 0 
+                                    ? (isDark ? 'text-white' : 'text-slate-900') 
+                                    : (isDark ? 'text-zinc-500' : 'text-slate-500')
+                                )}>
+                                  {item.rawAmount > 0 ? item.amount : 'Rp 0'}
+                                </span>
+                                <div className={`px-2 py-0.5 rounded-full border text-[9px] sm:text-[10px] font-black shadow-md backdrop-blur-md transition-all ${
+                                  item.count > 0 
+                                    ? style.badge 
+                                    : (isDark ? 'bg-zinc-800/80 text-zinc-300 border-zinc-700/60' : 'bg-slate-200 text-slate-700 border-slate-300')
+                                }`}>
+                                  {item.count} Trx
+                                </div>
+                              </div>
+
+                              <div className={'w-full max-w-[32px] sm:max-w-[44px] rounded-t-2xl p-1 flex flex-col justify-end h-full border ' + (
+                                isDark ? 'bg-zinc-800/40 border-zinc-700/30' : 'bg-slate-100 border-slate-300'
+                              )}>
+                                <div 
+                                  className={`w-full rounded-t-xl bg-gradient-to-t ${
+                                    item.count > 0 
+                                      ? style.bar 
+                                      : (isDark ? 'from-zinc-800 to-zinc-700' : 'from-slate-300 to-slate-400')
+                                  } transition-all duration-500 shadow-lg group-hover:brightness-125 ${item.count > 0 ? style.glow : ''}`}
+                                  style={{ height: heightPct + '%' }}
+                                />
+                              </div>
+
+                              <div className="mt-2.5 text-center flex flex-col items-center">
+                                <span className={'text-[11px] sm:text-xs font-black uppercase tracking-wider transition-colors ' + (
+                                  isDark ? 'text-zinc-200 group-hover:text-emerald-400' : 'text-slate-900 group-hover:text-emerald-600'
+                                )}>
+                                  {item.label}
+                                </span>
+                                {item.subLabel && (
+                                  <span className={'text-[9px] font-bold mt-0.5 ' + (isDark ? 'text-zinc-400' : 'text-slate-600')}>
+                                    {item.subLabel}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
                   </div>
+
+
+                  {/* ========================================================= */}
+                  {/* KOLOM KANAN (5/12): STAFF PERFORMANCE + 3 CARD INSIGHT    */}
+                  {/* ========================================================= */}
+                  <div className="lg:col-span-5 flex flex-col gap-5 justify-between">
+                    
+                    {/* 1. CONTAINER PERFORMANCE STAFF (DIBUAT FLEX-1 AGAR MEMBESAR NGE-STRETCH KE BAWAH) */}
+                    <div className={'border p-5 sm:p-6 rounded-3xl transition-all flex flex-col flex-1 justify-between gap-4 relative overflow-hidden shadow-2xl backdrop-blur-xl ' + currentTheme.cardBg}>
+                      
+                      <div>
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center space-x-3">
+                            <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl border border-amber-400/50 bg-gradient-to-br from-amber-500/30 to-amber-700/20 flex items-center justify-center text-xl shrink-0 shadow-lg shadow-amber-500/20">
+                              👑
+                            </div>
+                            <div>
+                              <span className={'text-[9px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-full border shadow-sm ' + currentTheme.badgeBg}>
+                                Performa Staff
+                              </span>
+                              <h3 className={'text-base font-black mt-0.5 tracking-tight ' + (isDark ? 'text-white' : 'text-slate-900')}>
+                                Grafik Kinerja Staff
+                              </h3>
+                            </div>
+                          </div>
+
+                          {/* FILTER BULAN & TAHUN SELALU TAMPIL DI SINI */}
+                          <div className="flex items-center gap-1.5">
+                            <select 
+                              value={businessMonth} 
+                              onChange={(e) => setBusinessMonth(e.target.value)}
+                              className={'px-2.5 py-1 text-[11px] font-black rounded-xl border backdrop-blur-md outline-none cursor-pointer transition-all ' + (isDark ? 'bg-zinc-900 border-zinc-700 text-zinc-100 hover:border-amber-500' : 'bg-white border-slate-300 text-slate-800')}
+                            >
+                              {[
+                                { v: '1', l: 'Jan' }, { v: '2', l: 'Feb' }, { v: '3', l: 'Mar' },
+                                { v: '4', l: 'Apr' }, { v: '5', l: 'Mei' }, { v: '6', l: 'Jun' },
+                                { v: '7', l: 'Jul' }, { v: '8', l: 'Ags' }, { v: '9', l: 'Sep' },
+                                { v: '10', l: 'Okt' }, { v: '11', l: 'Nov' }, { v: '12', l: 'Des' }
+                              ].map(m => <option key={m.v} value={m.v} className={isDark ? 'bg-zinc-900 text-white' : 'bg-white text-black'}>{m.l}</option>)}
+                            </select>
+
+                            <select 
+                              value={businessYear} 
+                              onChange={(e) => setBusinessYear(e.target.value)}
+                              className={'px-2.5 py-1 text-[11px] font-black rounded-xl border backdrop-blur-md outline-none cursor-pointer transition-all ' + (isDark ? 'bg-zinc-900 border-zinc-700 text-zinc-100 hover:border-amber-500' : 'bg-white border-slate-300 text-slate-800')}
+                            >
+                              {['2024', '2025', '2026', '2027'].map(y => <option key={y} value={y} className={isDark ? 'bg-zinc-900 text-white' : 'bg-white text-black'}>{y}</option>)}
+                            </select>
+                          </div>
+                        </div>
+
+                        {/* LIST GRAFIK HORIZONTAL STAFF (DIBUAT OTOMATIS FLEXIBEL SISA RUANG) */}
+                        <div className="flex flex-col gap-3.5 pt-4 overflow-y-auto pr-1">
+                          {staffData.map((item: { label: string; count: number }, idx: number) => {
+                            const widthPct = item.count > 0 ? Math.max(Math.round((item.count / maxStaffVal) * 100), 12) : 6;
+                            const style = barGradients[idx % barGradients.length];
+
+                            return (
+                              <div key={idx} className="flex flex-col gap-1.5">
+                                <div className="flex items-center justify-between text-xs font-extrabold">
+                                  <span className={isDark ? 'text-zinc-200' : 'text-slate-800'}>
+                                    {item.label}
+                                  </span>
+                                  <span className={`px-2.5 py-0.5 rounded-full border text-[10px] font-black ${
+                                    item.count > 0 ? style.badge : 'bg-zinc-800/60 text-zinc-500 border-zinc-700/50'
+                                  }`}>
+                                    {item.count} Transaksi
+                                  </span>
+                                </div>
+
+                                <div className="w-full h-3.5 bg-zinc-800/50 rounded-full p-0.5 border border-zinc-700/30 overflow-hidden">
+                                  <div 
+                                    className={`h-full rounded-full bg-gradient-to-r ${item.count > 0 ? style.bar : 'from-zinc-800 to-zinc-700'} transition-all duration-500 shadow-md`}
+                                    style={{ width: widthPct + '%' }}
+                                  />
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                    </div>
+
+                    {/* 2. BARIS 3 CARD INSIGHT (TETAP DI BAWAH KONTAINER STAFF) */}
+                    <div className="grid grid-cols-3 gap-3 shrink-0">
+                      
+                      {/* CARD 1: HARI TERAMAI */}
+                      <div className={'border p-3.5 rounded-2xl backdrop-blur-xl flex flex-col justify-between gap-2 shadow-lg transition-all duration-300 hover:scale-[1.02] relative overflow-hidden group ' + (isDark ? 'bg-gradient-to-br from-zinc-900/90 to-amber-950/20 border-amber-500/30 hover:border-amber-400/60 shadow-amber-500/5' : 'bg-gradient-to-br from-white to-amber-50 border-amber-200 hover:border-amber-400')}>
+                        <div className="flex items-center justify-between">
+                          <span className="text-[9px] font-black uppercase tracking-wider text-amber-500">Hari Teramai</span>
+                          <div className="w-7 h-7 rounded-xl bg-amber-500/20 border border-amber-400/40 flex items-center justify-center text-xs shrink-0">
+                            🔥
+                          </div>
+                        </div>
+                        <div>
+                          <h4 className={'text-base font-black tracking-tight ' + (isDark ? 'text-white' : 'text-slate-900')}>
+                            {busiestDayName}
+                          </h4>
+                          <p className="text-[10px] font-bold text-amber-400 mt-0.5">
+                            {busiestDayPct}% Total Trx
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* CARD 2: BULAN PUNCAK */}
+                      <div className={'border p-3.5 rounded-2xl backdrop-blur-xl flex flex-col justify-between gap-2 shadow-lg transition-all duration-300 hover:scale-[1.02] relative overflow-hidden group ' + (isDark ? 'bg-gradient-to-br from-zinc-900/90 to-emerald-950/20 border-emerald-500/30 hover:border-emerald-400/60 shadow-emerald-500/5' : 'bg-gradient-to-br from-white to-emerald-50 border-emerald-200 hover:border-emerald-400')}>
+                        <div className="flex items-center justify-between">
+                          <span className="text-[9px] font-black uppercase tracking-wider text-emerald-500">Bulan Puncak</span>
+                          <div className="w-7 h-7 rounded-xl bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center text-xs shrink-0">
+                            🚀
+                          </div>
+                        </div>
+                        <div>
+                          <h4 className={'text-base font-black tracking-tight ' + (isDark ? 'text-white' : 'text-slate-900')}>
+                            {peakMonthName}
+                          </h4>
+                          <p className="text-[10px] font-bold text-emerald-400 mt-0.5">
+                            {peakMonthPct}% Thn Ini
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* CARD 3: TAHUN PUNCAK */}
+                      <div className={'border p-3.5 rounded-2xl backdrop-blur-xl flex flex-col justify-between gap-2 shadow-lg transition-all duration-300 hover:scale-[1.02] relative overflow-hidden group ' + (isDark ? 'bg-gradient-to-br from-zinc-900/90 to-cyan-950/20 border-cyan-500/30 hover:border-cyan-400/60 shadow-cyan-500/5' : 'bg-gradient-to-br from-white to-cyan-50 border-cyan-200 hover:border-cyan-400')}>
+                        <div className="flex items-center justify-between">
+                          <span className="text-[9px] font-black uppercase tracking-wider text-cyan-500">Tahun Puncak</span>
+                          <div className="w-7 h-7 rounded-xl bg-cyan-500/20 border border-cyan-400/40 flex items-center justify-center text-xs shrink-0">
+                            🏆
+                          </div>
+                        </div>
+                        <div>
+                          <h4 className={'text-base font-black tracking-tight ' + (isDark ? 'text-white' : 'text-slate-900')}>
+                            {peakYearVal}
+                          </h4>
+                          <p className="text-[10px] font-bold text-cyan-400 mt-0.5">
+                            {peakYearPct}% Kontribusi
+                          </p>
+                        </div>
+                      </div>
+
+                    </div>
+
+                  </div>
+
                 </div>
               );
             })()}
