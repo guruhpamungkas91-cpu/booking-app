@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import { sendWhatsAppMessage } from '@/lib/whatsapp'
+import { LogItem } from '@/types'
 
 // Helper untuk format YYYY-MM-DD sesuai Timezone WIB (Asia/Jakarta)
 function getWibDateString(addDays = 0) {
@@ -31,13 +32,13 @@ export async function GET(request: Request) {
   const tomorrowStr = getWibDateString(1)
 
   // Ambil reservasi untuk besok
-  const { data: upcomingBookings, error: dbError } = await supabase
-    .from('Reservations')
+  const { data: upcomingBookings } = await supabase
+    .from('reservations') // Fix: ubah ke lowercase
     .select('*')
     .eq('booking_date', tomorrowStr)
     .or('is_reminder_sent.eq.false,is_reminder_sent.is.null')
 
-  const logs: any[] = []
+  const logs: LogItem[] = []
 
   if (upcomingBookings && upcomingBookings.length > 0) {
     for (const booking of upcomingBookings) {
@@ -49,8 +50,17 @@ export async function GET(request: Request) {
         `✨ *Layanan:* ${booking.service_name}\n\n` +
         `Sampai jumpa besok ya Kak! Mohon datang tepat waktu.`
 
-      const res = await sendWhatsAppMessage(booking.whatsapp_number, msg)
-      logs.push({ customer: booking.customer_name, targetDate: tomorrowStr, fonnteResponse: res })
+      // Penyesuaian ke format object parameter baru
+      const res = await sendWhatsAppMessage({
+        targetPhone: booking.whatsapp_number,
+        message: msg,
+      })
+
+      logs.push({ 
+        customer: booking.customer_name, 
+        targetDate: tomorrowStr, 
+        fonnteResponse: res 
+      })
 
       if (res) {
         await supabase
@@ -65,7 +75,7 @@ export async function GET(request: Request) {
   const past21DaysStr = getWibDateString(-21)
 
   const { data: pastBookings } = await supabase
-    .from('Reservations')
+    .from('reservations') // Fix: ubah ke lowercase
     .select('*')
     .eq('booking_date', past21DaysStr)
     .or('is_retention_sent.eq.false,is_retention_sent.is.null')
@@ -78,7 +88,11 @@ export async function GET(request: Request) {
         `Waktunya *retouch / perawatan ulang* supaya tampilan kamu tetap maksimal! 💋\n\n` +
         `Yuk amankan slot kamu sekarang lewat link reservasi kami!`
 
-      const res = await sendWhatsAppMessage(booking.whatsapp_number, msg)
+      // Penyesuaian ke format object parameter baru
+      const res = await sendWhatsAppMessage({
+        targetPhone: booking.whatsapp_number,
+        message: msg,
+      })
 
       if (res) {
         await supabase

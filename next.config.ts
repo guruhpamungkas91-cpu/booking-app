@@ -6,7 +6,11 @@ const nextConfig: NextConfig = {
     remotePatterns: [
       {
         protocol: 'https',
-        hostname: '**',
+        hostname: '*.supabase.co', // Akses khusus domain Supabase Storage
+      },
+      {
+        protocol: 'https',
+        hostname: 'images.unsplash.com', // Opsional jika pakai Unsplash
       },
     ],
   },

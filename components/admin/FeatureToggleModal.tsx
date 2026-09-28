@@ -2,40 +2,13 @@
 
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase'
-
-interface Tenant {
-  id: string
-  business_name: string
-  tenant_slug: string
-  prevent_double_booking: boolean
-  enable_slot_blocking: boolean
-  enable_auto_disable_time_slots: boolean
-  hide_booked_slots: boolean
-  auto_wa_reminder: boolean
-  require_consent: boolean
-  show_extra_addon: boolean
-  is_system_maintenance?: boolean
-  is_maintenance_mode?: boolean
-  force_otp_verification?: boolean
-  auto_lunch_break?: boolean
-  custom_payment_dp?: boolean
-  public_reviews?: boolean
-  enable_multi_staff?: boolean
-  enable_multi_service?: boolean
-  financial_reports?: boolean
-  custom_dashboard_theme?: boolean
-  staff_performance?: boolean
-  business_performance?: boolean
-  layout_type?: string
-  enable_guest_count?: boolean
-  enable_notes?: boolean // <-- 1. Tambahkan properti enable_notes di interface Tenant
-}
+import { Tenant } from '@/types'
 
 interface FeatureToggleModalProps {
   tenant: Tenant
   isOpen: boolean
   onClose: () => void
-  onSuccess: (updatedFeatures: any) => void
+  onSuccess: (updatedFeatures: Record<string, unknown>) => void
 }
 
 export default function FeatureToggleModal({ tenant, isOpen, onClose, onSuccess }: FeatureToggleModalProps) {
@@ -65,10 +38,10 @@ export default function FeatureToggleModal({ tenant, isOpen, onClose, onSuccess 
     business_performance: tenant.business_performance ?? true,
     layout_type: tenant.layout_type || 'STEP_WIZARD',
     enable_guest_count: tenant.enable_guest_count ?? false,
-    enable_notes: tenant.enable_notes ?? true, // <-- 2. Set default value inisialisasi enable_notes (true/aktif secara default)
+    enable_notes: tenant.enable_notes ?? true,
   })
 
-  const [initialFeatures, setInitialFeatures] = useState(getInitialFeatures)
+  const [initialFeatures] = useState(getInitialFeatures)
   const [features, setFeatures] = useState(getInitialFeatures)
 
   if (!isOpen) return null
@@ -107,13 +80,12 @@ export default function FeatureToggleModal({ tenant, isOpen, onClose, onSuccess 
     }
   }
 
-  // 3. Masukkan ke dalam daftar list fitur agar muncul di modal
   const allFeaturesList = [
     { key: 'custom_dashboard_theme', icon: '🎨', title: 'Tema Dashboard Admin Kustom', desc: 'Izinkan admin klien mengubah tema warna antarmuka dashboard mereka sendiri.' },
     { key: 'enable_multi_staff', icon: '👥', title: 'Multi-Staff / Staff Selection', desc: 'Izinkan customer memilih terapis/staff favorit saat melakukan booking.' },
     { key: 'enable_multi_service', icon: '🛒', title: 'Multi-Layanan (Pilih Lebih dari 1)', desc: 'Izinkan customer memilih beberapa layanan sekaligus dalam satu kali booking.' },
     { key: 'enable_guest_count', icon: '👥', title: 'Opsi Jumlah Orang / Pasien', desc: 'Tampilkan pilihan jumlah orang atau pasien pada form pemesanan customer.' },
-    { key: 'enable_notes', icon: '📝', title: 'Catatan Khusus (Optional Notes)', desc: 'Tampilkan kolom input catatan khusus/keluhan pada form pemesanan customer.' }, // <-- Tambahan Fitur Toggle Catatan Khusus
+    { key: 'enable_notes', icon: '📝', title: 'Catatan Khusus (Optional Notes)', desc: 'Tampilkan kolom input catatan khusus/keluhan pada form pemesanan customer.' },
     { key: 'require_consent', icon: '📝', title: 'Require Consent', desc: 'Wajibkan persetujuan syarat & ketentuan sebelum booking.' },
     { key: 'show_extra_addon', icon: '🎁', title: 'Show Extra Add-on', desc: 'Menampilkan opsi tambahan layanan ekstra saat pemesanan.' },
     { key: 'prevent_double_booking', icon: '🛡️', title: 'Prevent Double Booking', desc: 'Mencegah bentrok jadwal booking pada waktu yang sama.' },
@@ -159,13 +131,13 @@ export default function FeatureToggleModal({ tenant, isOpen, onClose, onSuccess 
               </label>
               <p className="text-xs text-slate-400 mb-3">Pilih tampilan antarmuka form pemesanan untuk customer.</p>
               <select
-              value={features.layout_type}
-              onChange={(e) => setFeatures({ ...features, layout_type: e.target.value })}
-              className="w-full bg-black border border-cyan-500/40 rounded-xl px-4 py-2.5 text-xs text-cyan-300 font-bold focus:outline-none focus:border-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.1)] cursor-pointer"
-            >
-              <option value="STEP_WIZARD" className="bg-black text-white">Step Wizard (Bertahap per Langkah)</option>
-              <option value="SINGLE_PAGE" className="bg-black text-white">Single Page (Satu Halaman Sekaligus)</option>
-            </select>
+                value={features.layout_type || 'STEP_WIZARD'}
+                onChange={(e) => setFeatures({ ...features, layout_type: e.target.value })}
+                className="w-full bg-black border border-cyan-500/40 rounded-xl px-4 py-2.5 text-xs text-cyan-300 font-bold focus:outline-none focus:border-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.1)] cursor-pointer"
+              >
+                <option value="STEP_WIZARD" className="bg-black text-white">Step Wizard (Bertahap per Langkah)</option>
+                <option value="SINGLE_PAGE" className="bg-black text-white">Single Page (Satu Halaman Sekaligus)</option>
+              </select>
             </div>
           </div>
 

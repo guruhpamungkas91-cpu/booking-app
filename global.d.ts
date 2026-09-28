@@ -1,8 +1,10 @@
-import 'react';
+declare module '*.css';
 
-declare module 'react' {
+namespace React {
   interface CSSProperties {
     '--theme-primary'?: string;
     '--tw-ring-color'?: string;
+    '--primary-tenant'?: string;
+    '--background-tenant'?: string;
   }
 }

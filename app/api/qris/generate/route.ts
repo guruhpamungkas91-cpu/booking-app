@@ -19,7 +19,7 @@ export async function POST(request: Request) {
 
     // Ambil kolom qris_url dari tabel Tenants secara otomatis
     const { data: tenant, error } = await supabase
-      .from('Tenants')
+      .from('tenants') // Fix: ubah ke lowercase
       .select('qris_url')
       .eq('tenant_slug', tenantSlug)
       .maybeSingle()

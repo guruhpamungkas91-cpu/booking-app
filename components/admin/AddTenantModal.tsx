@@ -20,7 +20,7 @@ export default function AddTenantModal({ isOpen, onClose }: AddTenantModalProps)
     client_code: '',
     domain_url: '',
     subscription_plan: 'PROFESIONAL',
-    business_category: '',
+    business_category: 'Barbershop',
     admin_email: '',
     admin_whatsapp: '',
   })
@@ -31,19 +31,31 @@ export default function AddTenantModal({ isOpen, onClose }: AddTenantModalProps)
     e.preventDefault()
     setLoading(true)
 
-    const cleanSlug = formData.tenant_slug.toLowerCase().replace(/\s+/g, '-')
+    // Sanitasi Slug & Client Code
+    const cleanSlug = formData.tenant_slug
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9-]/g, '-')
+      .replace(/-+/g, '-')
+
+    const cleanClientCode = formData.client_code.toUpperCase().trim()
 
     const { error } = await supabase.from('tenants').insert([
       {
-        business_name: formData.business_name,
+        business_name: formData.business_name.trim(),
         tenant_slug: cleanSlug,
-        client_code: formData.client_code.toUpperCase(),
-        domain_url: formData.domain_url,
+        client_code: cleanClientCode,
+        domain_url: formData.domain_url.trim(),
         subscription_plan: formData.subscription_plan,
-        business_category: formData.business_category,
-        admin_email: formData.admin_email,
-        admin_whatsapp: formData.admin_whatsapp,
+        category: formData.business_category.trim() || 'Barbershop',
+        admin_email: formData.admin_email.trim(),
+        admin_whatsapp: formData.admin_whatsapp.trim(),
         is_active: true,
+        // Properti default bawaan agar tersimpan rapi sejak awal
+        staff_label: 'Capster',
+        control_center_label: '💈 Control Center',
+        prevent_double_booking: true,
+        enable_notes: true,
       },
     ])
 
@@ -58,7 +70,7 @@ export default function AddTenantModal({ isOpen, onClose }: AddTenantModalProps)
         client_code: '',
         domain_url: '',
         subscription_plan: 'PROFESIONAL',
-        business_category: '',
+        business_category: 'Barbershop',
         admin_email: '',
         admin_whatsapp: '',
       })
@@ -69,14 +81,11 @@ export default function AddTenantModal({ isOpen, onClose }: AddTenantModalProps)
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-fadeIn">
-      
-      {/* Modal Card Utama: Hitam Pekat dengan Neon Cyan Glow */}
+      {/* Modal Card Utama */}
       <div className="bg-black border border-cyan-500/40 rounded-2xl shadow-[0_0_50px_rgba(6,182,212,0.15)] w-full max-w-2xl overflow-hidden relative">
-        
-        {/* Garis pendar cahaya neon di bagian atas */}
         <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-cyan-400 to-transparent"></div>
 
-        {/* Header Modal - Murni Hitam Pekat */}
+        {/* Header Modal */}
         <div className="flex justify-between items-center p-6 border-b border-cyan-500/20 bg-black">
           <div>
             <h3 className="text-xl font-bold text-white tracking-wide flex items-center gap-2">
@@ -95,7 +104,7 @@ export default function AddTenantModal({ isOpen, onClose }: AddTenantModalProps)
           </button>
         </div>
 
-        {/* Form Input - Murni Hitam Pekat */}
+        {/* Form Input */}
         <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[75vh] overflow-y-auto bg-black">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             
@@ -108,7 +117,7 @@ export default function AddTenantModal({ isOpen, onClose }: AddTenantModalProps)
                 type="text"
                 required
                 placeholder="Contoh: M Cut Barbershop"
-                value={formData.business_name}
+                value={formData.business_name || ''}
                 onChange={(e) => setFormData({ ...formData, business_name: e.target.value })}
                 className="w-full bg-black border border-cyan-500/30 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.08)]"
               />
@@ -123,7 +132,7 @@ export default function AddTenantModal({ isOpen, onClose }: AddTenantModalProps)
                 type="text"
                 required
                 placeholder="Contoh: mcut"
-                value={formData.tenant_slug}
+                value={formData.tenant_slug || ''}
                 onChange={(e) => setFormData({ ...formData, tenant_slug: e.target.value })}
                 className="w-full bg-black border border-cyan-500/30 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.08)] font-mono text-xs"
               />
@@ -138,13 +147,13 @@ export default function AddTenantModal({ isOpen, onClose }: AddTenantModalProps)
                 type="text"
                 required
                 placeholder="Contoh: MCUT"
-                value={formData.client_code}
+                value={formData.client_code || ''}
                 onChange={(e) => setFormData({ ...formData, client_code: e.target.value })}
                 className="w-full bg-black border border-cyan-500/30 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.08)] font-mono text-xs uppercase"
               />
             </div>
 
-            {/* Domain / Vercel URL */}
+            {/* Domain URL */}
             <div>
               <label className="block text-xs font-bold text-cyan-400 uppercase tracking-wider mb-1.5">
                 Domain / Vercel URL
@@ -152,7 +161,7 @@ export default function AddTenantModal({ isOpen, onClose }: AddTenantModalProps)
               <input
                 type="text"
                 placeholder="Contoh: mcut.vercel.app"
-                value={formData.domain_url}
+                value={formData.domain_url || ''}
                 onChange={(e) => setFormData({ ...formData, domain_url: e.target.value })}
                 className="w-full bg-black border border-cyan-500/30 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.08)] font-mono text-xs"
               />
@@ -164,7 +173,7 @@ export default function AddTenantModal({ isOpen, onClose }: AddTenantModalProps)
                 Paket Langganan
               </label>
               <select
-                value={formData.subscription_plan}
+                value={formData.subscription_plan || 'PROFESIONAL'}
                 onChange={(e) => setFormData({ ...formData, subscription_plan: e.target.value })}
                 className="w-full bg-black border border-cyan-500/30 rounded-xl px-4 py-2.5 text-sm text-cyan-300 font-bold focus:outline-none focus:border-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.08)] cursor-pointer"
               >
@@ -181,7 +190,7 @@ export default function AddTenantModal({ isOpen, onClose }: AddTenantModalProps)
               <input
                 type="text"
                 placeholder="Contoh: Barbershop, Salon, F&B, dll"
-                value={formData.business_category}
+                value={formData.business_category || ''}
                 onChange={(e) => setFormData({ ...formData, business_category: e.target.value })}
                 className="w-full bg-black border border-cyan-500/30 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.08)]"
               />
@@ -196,7 +205,7 @@ export default function AddTenantModal({ isOpen, onClose }: AddTenantModalProps)
                 type="email"
                 required
                 placeholder="contoh@domain.com"
-                value={formData.admin_email}
+                value={formData.admin_email || ''}
                 onChange={(e) => setFormData({ ...formData, admin_email: e.target.value })}
                 className="w-full bg-black border border-cyan-500/30 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.08)]"
               />
@@ -210,7 +219,7 @@ export default function AddTenantModal({ isOpen, onClose }: AddTenantModalProps)
               <input
                 type="text"
                 placeholder="628123456789"
-                value={formData.admin_whatsapp}
+                value={formData.admin_whatsapp || ''}
                 onChange={(e) => setFormData({ ...formData, admin_whatsapp: e.target.value })}
                 className="w-full bg-black border border-cyan-500/30 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.08)] font-mono text-xs"
               />
@@ -218,7 +227,7 @@ export default function AddTenantModal({ isOpen, onClose }: AddTenantModalProps)
 
           </div>
 
-          {/* Tombol Aksi - Murni Hitam Pekat */}
+          {/* Tombol Aksi */}
           <div className="flex justify-end items-center gap-3 pt-6 border-t border-cyan-500/20 mt-6 bg-black">
             <button
               type="button"

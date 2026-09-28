@@ -3,13 +3,14 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { Reservation } from '@/types' // Sesuaikan path alias ke file interface kamu
 
 export default function InvoicePage() {
   const params = useParams()
   const bookingIdParam = params?.id as string
   const rawId = bookingIdParam ? bookingIdParam.replace('BK-', '') : ''
 
-  const [booking, setBooking] = useState<any>(null)
+  const [booking, setBooking] = useState<Reservation | null>(null);
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -80,9 +81,11 @@ export default function InvoicePage() {
             </div>
           )}
           <div className="flex justify-between py-1 border-b border-zinc-800/50">
-            <span className="text-zinc-400">Metode Bayar</span>
-            <span className="font-semibold text-zinc-200">{booking.payment_method} ({booking.payment_type})</span>
-          </div>
+          <span className="text-zinc-400">Metode Bayar</span>
+          <span className="font-semibold text-zinc-200">
+            {booking.payment_method} {booking.payment_type ? `(${booking.payment_type})` : ''}
+          </span>
+        </div>
         </div>
 
         <div className="p-4 bg-zinc-950 rounded-2xl border border-zinc-800 text-center">

@@ -1,6 +1,6 @@
 import { createServerSupabaseClient } from '@/lib/supabase-server'
-import TenantTable from '@/components/TenantTable'
-import LogoutButton from '@/components/LogoutButton' // 👈 Impor tombol logout
+import TenantTable from '@/components/admin/TenantTable'
+import LogoutButton from '@/components/shared/LogoutButton' // 👈 Impor tombol logout
 import { redirect } from 'next/navigation'
 
 export const dynamic = 'force-dynamic'
@@ -18,7 +18,7 @@ export default async function SuperAdminPage() {
   }
 
   // 3. Validasi ketat email super admin
-  const allowedAdminEmail = 'guruhpamungkas91@gmail.com'
+  const allowedAdminEmail = process.env.SUPER_ADMIN_EMAIL || 'guruhpamungkas91@gmail.com'
   if (user.email !== allowedAdminEmail) {
     redirect('/')
   }

@@ -1,81 +1,98 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import { supabase } from '@/lib/supabase' // 👈 GUNAKAN INI (instance global yang benar)
+import { createClient } from '@/lib/supabase'
 import { X } from 'lucide-react'
+import { Tenant, StaffItem, ServiceItem } from '@/types'
+import type { BankAccount, EWalletAccount, TenantAddonItem } from '@/types/tenant'
+
+interface ProfileDataState {
+  business_name: string
+  tenant_slug: string
+  client_code: string
+  domain_url: string
+  logo_url: string
+  category: string
+  staff_label: string
+  control_center_label: string
+  custom_terms_text: string
+}
 
 export default function TenantDetailPanel({ 
   tenantData, 
   onClose, 
   onSaveSuccess 
 }: { 
-  tenantData: any; 
+  tenantData: Tenant; 
   onClose: () => void; 
-  onSaveSuccess?: (updated: any) => void;
+  onSaveSuccess?: (updated: Partial<Tenant>) => void;
 }) {
+  const supabase = createClient()
+
+  // State Navigasi Tab
   const [activeTab, setActiveTab] = useState<'profile' | 'staff' | 'services' | 'addons' | 'general'>('profile')
 
+  // State Loading
   const [loadingProfile, setLoadingProfile] = useState(false)
   const [loadingStaff, setLoadingStaff] = useState(false)
   const [loadingServices, setLoadingServices] = useState(false)
   const [loadingAddons, setLoadingAddons] = useState(false)
   const [loadingGeneral, setLoadingGeneral] = useState(false)
   const [loadingStatus, setLoadingStatus] = useState(false)
+  const [, setLoadingData] = useState(false)
 
-  const [staffList, setStaffList] = useState<any[]>([])
-  const [servicesList, setServicesList] = useState<any[]>([])
-  const [addonsList, setAddonsList] = useState<any[]>([])
-  const [loadingData, setLoadingData] = useState(false)
+  // State Data
+  const [staffList, setStaffList] = useState<StaffItem[]>([])
+  const [servicesList, setServicesList] = useState<ServiceItem[]>([])
+  const [addonsList, setAddonsList] = useState<TenantAddonItem[]>([])
   
-  // State untuk Status Utama Tenant (is_active) di halaman utama
   const [isTenantActive, setIsTenantActive] = useState<boolean>(
     tenantData?.is_active !== undefined ? tenantData.is_active : true
   )
 
-  // State untuk Tab 1: Profil & Branding
-  const [profileData, setProfileData] = useState({
-    business_name: tenantData?.business_name || '',
-    tenant_slug: tenantData?.tenant_slug || '',
-    client_code: tenantData?.client_code || '',
-    domain_url: tenantData?.domain_url || tenantData?.domain || '',
-    logo_url: tenantData?.logo_url || '',
-    category: tenantData?.category || 'barbershop',
-    staff_label: tenantData?.staff_label || 'Capster',
-    control_center_label: tenantData?.control_center_label || '💈 Control Center',
-    custom_terms_text: tenantData?.custom_terms_text || '',
+  const [profileData, setProfileData] = useState<ProfileDataState>({
+    business_name: tenantData?.business_name ?? '',
+    tenant_slug: tenantData?.tenant_slug ?? '',
+    client_code: tenantData?.client_code ?? (tenantData as Record<string, unknown>)?.clientCode as string ?? '',
+    domain_url: tenantData?.domain_url ?? (tenantData as Record<string, unknown>)?.domain as string ?? '',
+    logo_url: tenantData?.logo_url ?? '',
+    category: tenantData?.category ?? 'barbershop',
+    staff_label: tenantData?.staff_label ?? 'Capster',
+    control_center_label: tenantData?.control_center_label ?? '💈 Control Center',
+    custom_terms_text: tenantData?.custom_terms_text ?? '',
   })
 
-  // State untuk Tab Keuangan / General (Termasuk bank_accounts & ewallet_accounts)
-  const [generalData, setGeneralData] = useState({
-    theme_color: tenantData?.theme_color || '#00ffff',
-    dp_type: tenantData?.dp_type || 'Percentage (%)',
-    dp_value: tenantData?.dp_value || 0,
-    qris_url: tenantData?.qris_url || '',
+  const [generalData, setGeneralData] = useState<{
+    theme_color: string
+    dp_type: string
+    dp_value: number | string
+    qris_url: string
+    bank_accounts: BankAccount[]
+    ewallet_accounts: EWalletAccount[]
+  }>({
+    theme_color: tenantData?.theme_color ?? '#00ffff',
+    dp_type: tenantData?.dp_type ?? 'Percentage (%)',
+    dp_value: tenantData?.dp_value ?? 0,
+    qris_url: tenantData?.qris_url ?? '',
     bank_accounts: Array.isArray(tenantData?.bank_accounts) ? tenantData.bank_accounts : [],
     ewallet_accounts: Array.isArray(tenantData?.ewallet_accounts) ? tenantData.ewallet_accounts : [],
   })
 
-  // Snapshot awal untuk mendeteksi perubahan per bagian
+  // Snapshot Unsaved Changes
   const [initialProfile, setInitialProfile] = useState<string>('')
   const [initialStaff, setInitialStaff] = useState<string>('')
   const [initialServices, setInitialServices] = useState<string>('')
   const [initialAddons, setInitialAddons] = useState<string>('')
   const [initialGeneral, setInitialGeneral] = useState<string>('')
 
-  // State untuk pop-up konfirmasi Batal per bagian / tutup modal
   const [showConfirmModal, setShowConfirmModal] = useState(false)
   const [pendingCancelAction, setPendingCancelAction] = useState<(() => void) | null>(null)
 
-  useEffect(() => {
-    if (tenantData?.id) {
-      fetchAllData()
-    }
-  }, [tenantData])
-
+  // Fetch Data
   const fetchAllData = async () => {
     try {
       setLoadingData(true)
-      // Fetch profil tenant terbaru dari tabel tenants
+      
       const { data: currentTenant } = await supabase
         .from('tenants')
         .select('*')
@@ -91,7 +108,7 @@ export default function TenantDetailPanel({
       const profObj = {
         business_name: tData?.business_name || '',
         tenant_slug: tData?.tenant_slug || '',
-        client_code: tData?.client_code || '',
+        client_code: tData?.client_code || tData?.clientCode || '',
         domain_url: tData?.domain_url || tData?.domain || '',
         logo_url: tData?.logo_url || '',
         category: tData?.category || 'barbershop',
@@ -127,7 +144,7 @@ export default function TenantDetailPanel({
       setAddonsList(addList)
       setInitialAddons(JSON.stringify(addList))
 
-      // Fetch General / Keuangan
+      // Fetch Keuangan
       const genObj = {
         theme_color: tData?.theme_color || '#00ffff',
         dp_type: tData?.dp_type || 'Percentage (%)',
@@ -146,7 +163,13 @@ export default function TenantDetailPanel({
     }
   }
 
-  // Handle Toggle Tenant Active Status langsung di halaman utama
+  useEffect(() => {
+    if (tenantData?.id) {
+      fetchAllData()
+    }
+  }, [tenantData])
+
+  // Handlers
   const handleToggleTenantActive = async (newStatus: boolean) => {
     setIsTenantActive(newStatus)
     setLoadingStatus(true)
@@ -163,15 +186,15 @@ export default function TenantDetailPanel({
       if (onSaveSuccess && data) {
         onSaveSuccess(data)
       }
-    } catch (err: any) {
-      alert('Gagal mengubah status aktif tenant: ' + err.message)
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      alert('Gagal mengubah status aktif tenant: ' + msg)
       setIsTenantActive(!newStatus)
     } finally {
       setLoadingStatus(false)
     }
   }
 
-  // Helper untuk cek perubahan saat tombol Batal ditekan
   const handleCheckAndCancel = (currentJson: string, initialJson: string, revertCallback: () => void) => {
     if (currentJson !== initialJson) {
       setPendingCancelAction(() => revertCallback)
@@ -187,39 +210,92 @@ export default function TenantDetailPanel({
   const revertAddons = () => fetchAllData()
   const revertGeneral = () => fetchAllData()
 
-  // upload logo
+  // Upload Handlers
   const handleUploadLogo = async (e: React.ChangeEvent<HTMLInputElement>) => {
-  const file = e.target.files?.[0]
+    const file = e.target.files?.[0]
     if (!file) return
 
     try {
       const fileExt = file.name.split('.').pop()
       const fileName = `logo_${Date.now()}.${fileExt}`
-      const filePath = `public/${fileName}`
 
-      // Upload ke bucket 'tenant-logos'
       const { error: uploadError } = await supabase.storage
         .from('tenant-logos')
-        .upload(filePath, file)
+        .upload(fileName, file, { upsert: true })
 
       if (uploadError) throw uploadError
 
-      // Ambil Public URL
       const { data: { publicUrl } } = supabase.storage
         .from('tenant-logos')
-        .getPublicUrl(filePath)
+        .getPublicUrl(fileName)
 
-      // Masukkan ke state profileData (sesuaikan dengan nama state form profil lu, misal setProfileData)
-      setProfileData({ ...profileData, logo_url: publicUrl })
-
+      setProfileData(prev => ({ ...prev, logo_url: publicUrl }))
       alert('Logo berhasil di-upload!')
-    } catch (error: any) {
-      console.error('Gagal upload logo:', error.message)
-      alert('Gagal mengupload logo. Pastikan ukuran file tidak terlalu besar.')
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : 'Unknown error'
+      alert('Gagal mengupload logo: ' + msg)
     }
   }
 
-  // SAVE PROFILE & BRANDING (TAB 1)
+  const handleUploadPhoto = async (e: React.ChangeEvent<HTMLInputElement>, idx: number) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    try {
+      const fileExt = file.name.split('.').pop()
+      const fileName = `staff_${Date.now()}_${idx}.${fileExt}`
+
+      const { error: uploadError } = await supabase.storage
+        .from('staff-photos')
+        .upload(fileName, file, { upsert: true })
+
+      if (uploadError) throw uploadError
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('staff-photos')
+        .getPublicUrl(fileName)
+
+      const updated = [...staffList]
+      updated[idx].photo_url = publicUrl
+      setStaffList(updated)
+
+      alert('Foto staff berhasil di-upload!')
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : 'Unknown error'
+      alert('Gagal mengupload foto staff: ' + msg)
+    }
+  }
+
+  const handleUploadServicePhoto = async (e: React.ChangeEvent<HTMLInputElement>, idx: number) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    try {
+      const fileExt = file.name.split('.').pop()
+      const fileName = `srv_${Date.now()}_${idx}.${fileExt}`
+
+      const { error: uploadError } = await supabase.storage
+        .from('service-photos')
+        .upload(fileName, file, { upsert: true })
+
+      if (uploadError) throw uploadError
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('service-photos')
+        .getPublicUrl(fileName)
+
+      const updated = [...servicesList]
+      updated[idx].image_url = publicUrl
+      setServicesList(updated)
+
+      alert('Foto layanan berhasil di-upload!')
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : 'Unknown error'
+      alert('Gagal mengupload foto layanan: ' + msg)
+    }
+  }
+
+  // Save Operations
   const handleSaveProfile = async () => {
     setLoadingProfile(true)
     try {
@@ -247,14 +323,14 @@ export default function TenantDetailPanel({
         onSaveSuccess(data)
       }
       await fetchAllData()
-    } catch (err: any) {
-      alert('Gagal menyimpan profil: ' + err.message)
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      alert('Gagal menyimpan profil: ' + msg)
     } finally {
       setLoadingProfile(false)
     }
   }
 
-  // SAVE STAFF
   const handleSaveStaff = async () => {
     setLoadingStaff(true)
     try {
@@ -271,12 +347,12 @@ export default function TenantDetailPanel({
         const payload = {
           tenant_id: tenantData.id,
           tenant_slug: profileData.tenant_slug || tenantData.tenant_slug,
-          name: stf.name,
+          name: stf.name || stf.staff_name || stf.nama || '',
           role: stf.role || 'Staff',
           is_active: Boolean(stf.is_active),
-          max_slots: stf.max_slots || 1,        // <-- Tambahan
-          phone: stf.phone || null,             // <-- Tambahan
-          photo_url: stf.photo_url || null,     // <-- Tambahan
+          max_slots: stf.max_slots || 1,
+          phone: stf.phone || null,
+          photo_url: stf.photo_url || null,
         }
 
         if (stf.id && typeof stf.id === 'number') {
@@ -288,45 +364,14 @@ export default function TenantDetailPanel({
 
       alert('Berhasil menyimpan data Staff!')
       await fetchAllData()
-    } catch (err: any) {
-      alert('Gagal menyimpan staff: ' + err.message)
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      alert('Gagal menyimpan staff: ' + msg)
     } finally {
       setLoadingStaff(false)
     }
   }
 
-    // 👉 SISIPKAN DI SINI (Fungsi Upload Foto Staff)
-    const handleUploadPhoto = async (e: React.ChangeEvent<HTMLInputElement>, idx: number) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-
-    try {
-      const fileExt = file.name.split('.').pop()
-      const fileName = `${Math.random().toString(36).substring(2)}_${Date.now()}.${fileExt}`
-      const filePath = `public/${fileName}`
-
-      const { error: uploadError } = await supabase.storage
-        .from('staff-photos')
-        .upload(filePath, file)
-
-      if (uploadError) throw uploadError
-
-      const { data: { publicUrl } } = supabase.storage
-        .from('staff-photos')
-        .getPublicUrl(filePath)
-
-      const updated = [...staffList]
-      updated[idx].photo_url = publicUrl
-      setStaffList(updated)
-
-      alert('Foto berhasil di-upload!')
-    } catch (error: any) {
-      console.error('Gagal upload foto:', error.message)
-      alert('Gagal mengupload foto. Pastikan ukuran file tidak terlalu besar.')
-    }
-  }
-
-  // SAVE SERVICES
   const handleSaveServices = async () => {
     setLoadingServices(true)
     try {
@@ -347,7 +392,8 @@ export default function TenantDetailPanel({
           name: srv.name,
           price: Number(srv.price || 0),
           duration: Number(srv.duration || 0),
-          desc: srv.desc || '',
+          desc: srv.desc || srv.description || '',
+          image_url: srv.image_url || null,
           is_addon: false,
         }
 
@@ -360,44 +406,14 @@ export default function TenantDetailPanel({
 
       alert('Berhasil menyimpan Layanan Utama!')
       await fetchAllData()
-    } catch (err: any) {
-      alert('Gagal menyimpan layanan: ' + err.message)
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      alert('Gagal menyimpan layanan: ' + msg)
     } finally {
       setLoadingServices(false)
     }
   }
 
-  const handleUploadServicePhoto = async (e: React.ChangeEvent<HTMLInputElement>, idx: number) => {
-  const file = e.target.files?.[0]
-    if (!file) return
-
-    try {
-      const fileExt = file.name.split('.').pop()
-      const fileName = `srv_${Date.now()}.${fileExt}`
-      const filePath = `public/${fileName}`
-
-      const { error: uploadError } = await supabase.storage
-        .from('service-photos')
-        .upload(filePath, file)
-
-      if (uploadError) throw uploadError
-
-      const { data: { publicUrl } } = supabase.storage
-        .from('service-photos')
-        .getPublicUrl(filePath)
-
-      const updated = [...servicesList]
-      updated[idx].image_url = publicUrl
-      setServicesList(updated)
-
-      alert('Foto layanan berhasil di-upload!')
-    } catch (error: any) {
-      console.error('Gagal upload foto layanan:', error.message)
-      alert('Gagal mengupload foto.')
-    }
-  }
-
-  // SAVE ADD-ONS (Dual-Sync: Tabel Services + Kolom JSONB Tenants)
   const handleSaveAddons = async () => {
     setLoadingAddons(true)
     try {
@@ -407,7 +423,6 @@ export default function TenantDetailPanel({
         return
       }
 
-      // 1. Sinkronisasi ke tabel 'services' (untuk manajemen baris data)
       const { data: existing, error: fetchError } = await supabase
         .from('services')
         .select('id')
@@ -417,7 +432,9 @@ export default function TenantDetailPanel({
       if (fetchError) throw fetchError
 
       const existingIds = (existing || []).map(s => s.id)
-      const currentIds = addonsList.filter((s: any) => s.id && typeof s.id === 'number').map(s => s.id)
+      const currentIds = addonsList
+        .filter((s: TenantAddonItem) => s.id !== undefined && s.id !== null)
+        .map(s => s.id)
       const idsToDelete = existingIds.filter(id => !currentIds.includes(id))
 
       if (idsToDelete.length > 0) {
@@ -428,16 +445,15 @@ export default function TenantDetailPanel({
       const formattedAddonsForJson = []
 
       for (const add of addonsList) {
-        // Ambil dari 'name' (karena form UI menggunakan add.name)
         const addonName = add.name || add.label || ''
         const addonPrice = Number(add.price || 0)
         const addonDuration = Number(add.duration || 0)
-        const addonDesc = add.desc || ''
+        const addonDesc = add.desc || add.description || ''
 
         const payload = {
           tenant_id: tenantData.id,
-          tenant_slug: tenantData?.tenant_slug || '',
-          client_code: tenantData?.client_code || '',
+          tenant_slug: tenantData?.tenant_slug || profileData.tenant_slug || '',
+          client_code: tenantData?.client_code || profileData.client_code || '',
           name: addonName,
           price: addonPrice,
           duration: addonDuration,
@@ -452,12 +468,12 @@ export default function TenantDetailPanel({
           const { data: inserted, error: insertError } = await supabase.from('services').insert([payload]).select()
           if (insertError) throw insertError
           if (inserted && inserted[0]) {
-            add.id = inserted[0].id
+            setAddonsList((prev) =>
+              prev.map((item) => (item === add ? { ...item, id: inserted[0].id } : item))
+            )
           }
         }
 
-        // 2. Siapkan format JSON yang valid untuk kolom 'addons' di tabel 'tenants'
-        // Catatan: Frontend booking publik membaca properti 'label', jadi kita mapping 'name' ke 'label'
         formattedAddonsForJson.push({
           label: addonName,
           price: addonPrice,
@@ -466,7 +482,6 @@ export default function TenantDetailPanel({
         })
       }
 
-      // 3. EKSEKUSI OTOMATIS: Update kolom 'addons' di tabel 'tenants'
       const { error: tenantError } = await supabase
         .from('tenants')
         .update({ 
@@ -478,19 +493,15 @@ export default function TenantDetailPanel({
       if (tenantError) throw tenantError
 
       alert('Berhasil! Add-ons tersimpan ke Services dan otomatis ter-sync ke Tenant.')
-      
-      if (typeof fetchAllData === 'function') {
-        await fetchAllData()
-      }
-    } catch (err: any) {
-      console.error('Error detail saat save addons:', err)
-      alert('Gagal menyimpan add-ons: ' + (err.message || JSON.stringify(err)))
+      await fetchAllData()
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      alert('Gagal menyimpan add-ons: ' + msg)
     } finally {
       setLoadingAddons(false)
     }
   }
 
-  // SAVE GENERAL / KEUANGAN
   const handleSaveGeneral = async () => {
     setLoadingGeneral(true)
     try {
@@ -515,14 +526,14 @@ export default function TenantDetailPanel({
         onSaveSuccess(data)
       }
       await fetchAllData()
-    } catch (err: any) {
-      alert('Gagal menyimpan pengaturan: ' + err.message)
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      alert('Gagal menyimpan pengaturan: ' + msg)
     } finally {
       setLoadingGeneral(false)
     }
   }
 
-  // Cek apakah ada perubahan global untuk tombol Close (X)
   const hasAnyUnsavedChanges = () => {
     return (
       JSON.stringify(profileData) !== initialProfile ||
@@ -545,7 +556,7 @@ export default function TenantDetailPanel({
   return (
     <div className="bg-[#020408] text-white border border-cyan-500/30 rounded-2xl p-6 relative w-full max-w-4xl shadow-[0_0_40px_rgba(6,182,212,0.15)] space-y-6">
       
-      {/* Header Modal, Status Toggle Utama, & Tombol Close (X) */}
+      {/* Header Modal */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center border-b border-cyan-500/20 pb-4 gap-4">
         <div>
           <div className="flex items-center gap-2">
@@ -556,7 +567,6 @@ export default function TenantDetailPanel({
         </div>
 
         <div className="flex items-center gap-4 w-full md:w-auto justify-between md:justify-end">
-          {/* Toggle Cepat Status Tenant di Halaman Utama */}
           <div className="flex items-center gap-2 bg-black/60 border border-cyan-500/30 px-3 py-1.5 rounded-xl">
             <span className={`text-xs font-bold ${isTenantActive ? 'text-cyan-400' : 'text-slate-400'}`}>
               {isTenantActive ? '🟢 Tenant Aktif' : '🔴 Tenant Nonaktif'}
@@ -582,7 +592,7 @@ export default function TenantDetailPanel({
         </div>
       </div>
 
-      {/* NAVIGASI TAB */}
+      {/* Navigasi Tab */}
       <div className="flex border-b border-cyan-500/20 gap-2 overflow-x-auto pb-2">
         <button 
           onClick={() => setActiveTab('profile')}
@@ -616,10 +626,10 @@ export default function TenantDetailPanel({
         </button>
       </div>
 
-      {/* KONTEN BERDASARKAN TAB AKTIF */}
+      {/* Content */}
       <div className="space-y-6 max-h-[60vh] overflow-y-auto pr-2">
         
-        {/* ================= TAB 1: PROFIL & BRANDING ================= */}
+        {/* TAB 1: PROFIL & BRANDING */}
         {activeTab === 'profile' && (
           <div className="border border-cyan-500/30 bg-[#070b14] p-5 rounded-xl space-y-4">
             <h3 className="text-sm font-bold uppercase tracking-wider text-cyan-300 border-b border-cyan-500/20 pb-3">📁 Informasi Identitas & Branding Tenant</h3>
@@ -629,8 +639,8 @@ export default function TenantDetailPanel({
                 <label className="text-xs font-semibold text-cyan-300 uppercase tracking-wider">Nama Bisnis (business_name)</label>
                 <input 
                   type="text" 
-                  value={profileData.business_name} 
-                  onChange={(e) => setProfileData({...profileData, business_name: e.target.value})}
+                  value={profileData.business_name || ''} 
+                  onChange={(e) => setProfileData({ ...profileData, business_name: e.target.value })}
                   className="w-full bg-black border border-cyan-500/30 p-2.5 rounded-lg text-sm text-white focus:border-cyan-400 outline-none"
                 />
               </div>
@@ -647,8 +657,8 @@ export default function TenantDetailPanel({
                 <label className="text-xs font-semibold text-cyan-300 uppercase tracking-wider">Client Code (client_code)</label>
                 <input 
                   type="text" 
-                  value={profileData.client_code} 
-                  onChange={(e) => setProfileData({...profileData, client_code: e.target.value})}
+                  value={profileData.client_code || ''} 
+                  onChange={(e) => setProfileData({ ...profileData, client_code: e.target.value })}
                   className="w-full bg-black border border-cyan-500/30 p-2.5 rounded-lg text-sm text-white focus:border-cyan-400 outline-none font-mono"
                 />
               </div>
@@ -657,8 +667,8 @@ export default function TenantDetailPanel({
                 <input 
                   type="text" 
                   placeholder="https://..."
-                  value={profileData.domain_url} 
-                  onChange={(e) => setProfileData({...profileData, domain_url: e.target.value})}
+                  value={profileData.domain_url || ''} 
+                  onChange={(e) => setProfileData({ ...profileData, domain_url: e.target.value })}
                   className="w-full bg-black border border-cyan-500/30 p-2.5 rounded-lg text-sm text-white focus:border-cyan-400 outline-none"
                 />
               </div>
@@ -682,7 +692,6 @@ export default function TenantDetailPanel({
                 />
               </div>
               
-              {/* Logo URL dengan Choose File */}
               <div className="space-y-1 md:col-span-2">
                 <label className="text-xs font-semibold text-cyan-300 uppercase tracking-wider">Logo URL (logo_url)</label>
                 <div className="flex gap-2 items-center">
@@ -720,7 +729,7 @@ export default function TenantDetailPanel({
                   rows={2}
                   placeholder="Saya menyetujui ketentuan layanan dan konfirmasi data yang diberikan sudah benar."
                   value={profileData.custom_terms_text || ''} 
-                  onChange={(e) => setProfileData({...profileData, custom_terms_text: e.target.value})}
+                  onChange={(e) => setProfileData({ ...profileData, custom_terms_text: e.target.value })}
                   className="w-full bg-black border border-cyan-500/30 p-2.5 rounded-lg text-sm text-white focus:border-cyan-400 outline-none resize-none"
                 />
                 <p className="text-[10px] text-slate-500 mt-1">
@@ -748,7 +757,7 @@ export default function TenantDetailPanel({
           </div>
         )}
 
-        {/* ================= TAB 2: STAFF ================= */}
+        {/* TAB 2: STAFF */}
         {activeTab === 'staff' && (
           <div className="border border-cyan-500/30 bg-[#070b14] p-5 rounded-xl space-y-4">
             <div className="flex justify-between items-center">
@@ -771,12 +780,11 @@ export default function TenantDetailPanel({
             <div className="space-y-3">
               {staffList.map((stf, idx) => (
                 <div key={stf.id || idx} className="bg-[#020408] p-3 rounded-lg border border-cyan-500/20 space-y-3">
-                  {/* Baris Pertama: Nama, Role, Max Slot, Status Aktif, & Tombol Hapus */}
                   <div className="flex gap-3 items-center">
                     <input 
                       type="text" 
                       placeholder="Nama Staff" 
-                      value={stf.name} 
+                      value={stf.name || stf.staff_name || stf.nama || ''} 
                       onChange={(e) => {
                         const updated = [...staffList]
                         updated[idx].name = e.target.value
@@ -787,7 +795,7 @@ export default function TenantDetailPanel({
                     <input 
                       type="text" 
                       placeholder="Role / Jabatan" 
-                      value={stf.role} 
+                      value={stf.role || ''} 
                       onChange={(e) => {
                         const updated = [...staffList]
                         updated[idx].role = e.target.value
@@ -811,7 +819,7 @@ export default function TenantDetailPanel({
                     <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer select-none">
                       <input 
                         type="checkbox" 
-                        checked={stf.is_active} 
+                        checked={Boolean(stf.is_active)} 
                         onChange={(e) => {
                           const updated = [...staffList]
                           updated[idx].is_active = e.target.checked
@@ -829,7 +837,6 @@ export default function TenantDetailPanel({
                     </button>
                   </div>
 
-                  {/* Baris Kedua: No HP & Tombol Upload Foto */}
                   <div className="flex gap-3 items-center">
                     <input 
                       type="text" 
@@ -842,8 +849,6 @@ export default function TenantDetailPanel({
                       }}
                       className="bg-black border border-cyan-500/30 p-2 rounded-lg text-xs flex-1 text-white focus:border-cyan-400 outline-none"
                     />
-                    
-                    {/* Input File untuk Upload ke Supabase Storage */}
                     <div className="flex items-center gap-2 flex-[2] bg-black border border-cyan-500/30 p-1.5 rounded-lg">
                       <input 
                         type="file" 
@@ -877,7 +882,7 @@ export default function TenantDetailPanel({
           </div>
         )}
 
-        {/* ================= TAB 3: LAYANAN UTAMA ================= */}
+        {/* TAB 3: LAYANAN UTAMA */}
         {activeTab === 'services' && (
           <div className="border border-cyan-500/30 bg-[#070b14] p-5 rounded-xl space-y-4">
             <div className="flex justify-between items-center">
@@ -887,7 +892,7 @@ export default function TenantDetailPanel({
                   name: '', 
                   price: 0, 
                   duration: 30, 
-                  description: '', 
+                  desc: '', 
                   image_url: '' 
                 }])}
                 className="bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 text-xs px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer"
@@ -899,15 +904,13 @@ export default function TenantDetailPanel({
             <div className="space-y-4">
               {servicesList.map((srv, idx) => (
                 <div key={srv.id || idx} className="bg-[#020408] p-4 rounded-xl border border-cyan-500/20 space-y-3">
-                  
-                  {/* Baris 1: Nama Layanan, Harga, Durasi, Tombol Hapus */}
                   <div className="flex gap-3 items-center">
                     <div className="flex-1 space-y-1">
                       <label className="text-[10px] font-semibold text-cyan-300 uppercase tracking-wider">Nama Layanan</label>
                       <input 
                         type="text" 
                         placeholder="Cth: Glowing Express Treatment" 
-                        value={srv.name} 
+                        value={srv.name || ''} 
                         onChange={(e) => {
                           const updated = [...servicesList]
                           updated[idx].name = e.target.value
@@ -953,13 +956,12 @@ export default function TenantDetailPanel({
                     </button>
                   </div>
 
-                  {/* Baris 2: Deskripsi Detail Paket (Konek ke field .desc) */}
                   <div className="space-y-1">
                     <label className="text-[10px] font-semibold text-cyan-300 uppercase tracking-wider">Deskripsi Detail Layanan</label>
                     <textarea 
                       rows={2}
                       placeholder="Jelaskan detail fasilitas atau tahapan treatment paket ini..." 
-                      value={srv.desc || ''} 
+                      value={srv.desc || srv.description || ''} 
                       onChange={(e) => {
                         const updated = [...servicesList]
                         updated[idx].desc = e.target.value
@@ -969,7 +971,6 @@ export default function TenantDetailPanel({
                     />
                   </div>
 
-                  {/* Baris 3: Upload Foto Layanan */}
                   <div className="space-y-1">
                     <label className="text-[10px] font-semibold text-cyan-300 uppercase tracking-wider">Foto / Gambar Layanan</label>
                     <div className="flex gap-2 items-center bg-black border border-cyan-500/30 p-1.5 rounded-lg">
@@ -992,7 +993,6 @@ export default function TenantDetailPanel({
                       />
                     </div>
                   </div>
-
                 </div>
               ))}
               {servicesList.length === 0 && <p className="text-xs text-slate-500 italic">Belum ada layanan utama terdaftar.</p>}
@@ -1017,7 +1017,7 @@ export default function TenantDetailPanel({
           </div>
         )}
 
-        {/* ================= TAB 4: ADD-ONS ================= */}
+        {/* TAB 4: ADD-ONS */}
         {activeTab === 'addons' && (
           <div className="border border-cyan-500/30 bg-[#070b14] p-5 rounded-xl space-y-4">
             <div className="flex justify-between items-center">
@@ -1037,7 +1037,7 @@ export default function TenantDetailPanel({
                     <input 
                       type="text" 
                       placeholder="Nama Add-on" 
-                      value={add.name} 
+                      value={add.name || add.label || ''} 
                       onChange={(e) => {
                         const updated = [...addonsList]
                         updated[idx].name = e.target.value
@@ -1048,21 +1048,22 @@ export default function TenantDetailPanel({
                     <input 
                       type="number" 
                       placeholder="Harga (Rp)" 
-                      value={add.price} 
+                      value={add.price || 0} 
                       onChange={(e) => {
                         const updated = [...addonsList]
-                        updated[idx].price = e.target.value
+                        updated[idx].price = Number(e.target.value)
                         setAddonsList(updated)
                       }}
                       className="bg-black border border-cyan-500/30 p-2 rounded-lg text-sm flex-1 text-white focus:border-cyan-400 outline-none"
                     />
+
                     <input 
                       type="number" 
                       placeholder="Durasi (menit)" 
-                      value={add.duration} 
+                      value={add.duration || 15} 
                       onChange={(e) => {
                         const updated = [...addonsList]
-                        updated[idx].duration = e.target.value
+                        updated[idx].duration = Number(e.target.value)
                         setAddonsList(updated)
                       }}
                       className="bg-black border border-cyan-500/30 p-2 rounded-lg text-sm flex-1 text-white focus:border-cyan-400 outline-none"
@@ -1077,7 +1078,7 @@ export default function TenantDetailPanel({
                   <input 
                     type="text" 
                     placeholder="Deskripsi singkat add-on..." 
-                    value={add.desc || ''} 
+                    value={add.desc || add.description || ''} 
                     onChange={(e) => {
                       const updated = [...addonsList]
                       updated[idx].desc = e.target.value
@@ -1109,22 +1110,38 @@ export default function TenantDetailPanel({
           </div>
         )}
 
-        {/* ================= TAB 5: KEUANGAN & PEMBAYARAN ================= */}
+        {/* TAB 5: KEUANGAN & PEMBAYARAN */}
         {activeTab === 'general' && (
           <div className="border border-cyan-500/30 bg-[#070b14] p-5 rounded-xl space-y-6">
-            <h3 className="text-sm font-bold uppercase tracking-wider text-cyan-300">💰 Keuangan & Pembayaran</h3>
+            <h3 className="text-sm font-bold uppercase tracking-wider text-cyan-300">💰 Keuangan, Pembayaran & Branding Warna</h3>
             
-            {/* Pengaturan Utama: DP & QRIS */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div>
+                <label className="text-xs text-cyan-400 block mb-1">Warna Tema (theme_color)</label>
+                <div className="flex items-center gap-2">
+                  <input 
+                    type="color" 
+                    value={generalData.theme_color || '#00ffff'} 
+                    onChange={(e) => setGeneralData({...generalData, theme_color: e.target.value})}
+                    className="w-9 h-9 rounded bg-black border border-cyan-500/30 cursor-pointer"
+                  />
+                  <input 
+                    type="text" 
+                    value={generalData.theme_color || '#00ffff'} 
+                    onChange={(e) => setGeneralData({...generalData, theme_color: e.target.value})}
+                    className="w-full bg-black border border-cyan-500/30 p-2 rounded-lg text-xs text-white font-mono focus:border-cyan-400 outline-none"
+                  />
+                </div>
+              </div>
               <div>
                 <label className="text-xs text-cyan-400 block mb-1">Tipe DP (dp_type)</label>
                 <select 
                   value={generalData.dp_type} 
                   onChange={(e) => setGeneralData({...generalData, dp_type: e.target.value})}
-                  className="w-full bg-black border border-cyan-500/30 p-2.5 rounded-lg text-sm text-white focus:border-cyan-400 outline-none"
+                  className="w-full bg-black border border-cyan-500/30 p-2 rounded-lg text-xs text-white focus:border-cyan-400 outline-none"
                 >
-                  <option value="PERCENTAGE">PERCENTAGE (%)</option>
-                  <option value="FIXED">FIXED AMOUNT (Rp)</option>
+                  <option value="Percentage (%)">Percentage (%)</option>
+                  <option value="Fixed (Rp)">Fixed Amount (Rp)</option>
                 </select>
               </div>
               <div>
@@ -1133,7 +1150,7 @@ export default function TenantDetailPanel({
                   type="number" 
                   value={generalData.dp_value} 
                   onChange={(e) => setGeneralData({...generalData, dp_value: e.target.value})}
-                  className="w-full bg-black border border-cyan-500/30 p-2.5 rounded-lg text-sm text-white focus:border-cyan-400 outline-none"
+                  className="w-full bg-black border border-cyan-500/30 p-2 rounded-lg text-xs text-white focus:border-cyan-400 outline-none"
                 />
               </div>
               <div>
@@ -1143,12 +1160,12 @@ export default function TenantDetailPanel({
                   placeholder="https://..." 
                   value={generalData.qris_url} 
                   onChange={(e) => setGeneralData({...generalData, qris_url: e.target.value})}
-                  className="w-full bg-black border border-cyan-500/30 p-2.5 rounded-lg text-sm text-white focus:border-cyan-400 outline-none"
+                  className="w-full bg-black border border-cyan-500/30 p-2 rounded-lg text-xs text-white focus:border-cyan-400 outline-none"
                 />
               </div>
             </div>
 
-            {/* ================= REKENING BANK (bank_accounts) ================= */}
+            {/* Rekening Bank */}
             <div className="border-t border-cyan-500/20 pt-4 space-y-3">
               <div className="flex justify-between items-center">
                 <label className="text-xs font-bold uppercase tracking-wider text-cyan-300">Daftar Rekening Bank (bank_accounts)</label>
@@ -1167,7 +1184,7 @@ export default function TenantDetailPanel({
                 </button>
               </div>
 
-              {(Array.isArray(generalData.bank_accounts) ? generalData.bank_accounts : []).map((bank: any, index: number) => (
+              {(Array.isArray(generalData.bank_accounts) ? generalData.bank_accounts : []).map((bank: BankAccount, index: number) => (
                 <div key={index} className="p-3 bg-black border border-cyan-500/20 rounded-xl space-y-2 relative">
                   <button
                     type="button"
@@ -1219,7 +1236,7 @@ export default function TenantDetailPanel({
               ))}
             </div>
 
-            {/* ================= E-WALLET ACCOUNTS (ewallet_accounts) ================= */}
+            {/* E-Wallet Accounts */}
             <div className="border-t border-cyan-500/20 pt-4 space-y-3">
               <div className="flex justify-between items-center">
                 <label className="text-xs font-bold uppercase tracking-wider text-cyan-300">Daftar E-Wallet (ewallet_accounts)</label>
@@ -1238,7 +1255,7 @@ export default function TenantDetailPanel({
                 </button>
               </div>
 
-              {(Array.isArray(generalData.ewallet_accounts) ? generalData.ewallet_accounts : []).map((wallet: any, index: number) => (
+              {(Array.isArray(generalData.ewallet_accounts) ? generalData.ewallet_accounts : []).map((wallet: EWalletAccount, index: number) => (
                 <div key={index} className="p-3 bg-black border border-cyan-500/20 rounded-xl space-y-2 relative">
                   <button
                     type="button"
@@ -1290,7 +1307,6 @@ export default function TenantDetailPanel({
               ))}
             </div>
 
-            {/* Tombol Aksi Batal & Simpan */}
             <div className="flex justify-end gap-3 pt-2">
               <button 
                 type="button" 
@@ -1312,7 +1328,7 @@ export default function TenantDetailPanel({
 
       </div>
 
-      {/* POP-UP KONFIRMASI DISCARD CHANGES */}
+      {/* Pop-up Modal Discard */}
       {showConfirmModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
           <div className="bg-[#020408] border border-cyan-500/40 p-6 rounded-2xl max-w-sm w-full text-center space-y-4 shadow-[0_0_40px_rgba(6,182,212,0.25)]">

@@ -21,7 +21,7 @@ export async function POST(request: Request) {
     const { data: tenantSettings } = await supabase
       .from('tenants')
       .select('id, prevent_double_booking')
-      .or(`slug.eq.${body.tenant_slug},client_code.eq.${body.client_code}`)
+      .or(`tenant_slug.eq.${body.tenant_slug},client_code.eq.${body.client_code}`) // Fix: slug -> tenant_slug
       .maybeSingle()
 
     // Jika toggle belum diset atau kosong, default-nya TRUE (aktif)
@@ -32,7 +32,7 @@ export async function POST(request: Request) {
       .from('blocked_slots')
       .select('id')
       .eq('tenant_slug', body.tenant_slug)
-      .eq('date', body.booking_date)
+      .eq('block_date', body.booking_date) // Fix: date -> block_date
       .eq('start_time', body.booking_time)
       .maybeSingle()
 
@@ -94,7 +94,7 @@ export async function POST(request: Request) {
       const { data: tenantData } = await supabase
         .from('tenants')
         .select('id')
-        .eq('slug', body.tenant_slug)
+        .eq('tenant_slug', body.tenant_slug) // Fix: slug -> tenant_slug
         .maybeSingle()
       
       if (tenantData) {
@@ -182,11 +182,11 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true, data: rpcData }, { status: 200 })
 
-  } catch (err: any) {
-    console.error('Server Internal Error:', err)
-    return NextResponse.json(
-      { error: err.message || 'Internal Server Error' },
-      { status: 500 }
-    )
-  }
-}
+  } catch (err: unknown) {
+  const errorMessage = err instanceof Error ? err.message : 'Internal Server Error'
+  console.error('Server Internal Error:', err)
+  return NextResponse.json(
+    { error: errorMessage },
+    { status: 500 }
+  )
+}}

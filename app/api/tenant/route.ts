@@ -27,7 +27,7 @@ export async function PATCH(request: Request) {
       );
     }
 
-    const updateData: Record<string, any> = {};
+    const updateData: Record<string, boolean | string | number> = {}
     if (typeof auto_wa_reminder === 'boolean') updateData.auto_wa_reminder = auto_wa_reminder;
     if (typeof prevent_double_booking === 'boolean') updateData.prevent_double_booking = prevent_double_booking;
     if (typeof hide_booked_slots === 'boolean') updateData.hide_booked_slots = hide_booked_slots;
@@ -74,11 +74,11 @@ export async function PATCH(request: Request) {
       data,
     });
 
-  } catch (err: any) {
-    console.error('Server Internal Error:', err);
+  } catch (err: unknown) {
+    const errorMessage = err instanceof Error ? err.message : 'Terjadi kesalahan internal'
+    console.error('Server Internal Error:', err)
     return NextResponse.json(
-      { success: false, message: `Server Crash: ${err?.message || 'Terjadi kesalahan internal'}` },
-      { status: 500 }
-    );
-  }
-}
+    { success: false, message: `Server Crash: ${errorMessage}` },
+    { status: 500 }
+  )
+}}

@@ -1,50 +1,70 @@
-import { NextResponse } from 'next/server';
-import type { NextRequest } from 'next/server';
+import { createServerClient } from '@supabase/ssr'
+import { NextResponse, type NextRequest } from 'next/server'
 
-export function middleware(request: NextRequest) {
-  const hostname = request.headers.get('host') || '';
-  const url = request.nextUrl.clone();
+export async function middleware(request: NextRequest) {
+  let response = NextResponse.next({
+    request: {
+      headers: request.headers,
+    },
+  })
 
-  // 1. Abaikan file internal Next.js, API, file statis, localhost, HALAMAN ADMIN, DAN SUPER ADMIN
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll()
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value }) =>
+            request.cookies.set(name, value)
+          )
+          response = NextResponse.next({
+            request,
+          })
+          cookiesToSet.forEach(({ name, value, options }) =>
+            response.cookies.set(name, value, options)
+          )
+        },
+      },
+    }
+  )
+
+  const { data: { user } } = await supabase.auth.getUser()
+  const url = request.nextUrl.clone()
+  const hostname = request.headers.get('host') || ''
+  const isPlainLocalhost = hostname === 'localhost' || hostname.startsWith('localhost:')
+
+  // 1. Proteksi Khusus Super Admin (/super-admin)
+  // Hanya rute /super-admin yang butuh redirect paksa ke /admin/login jika belum login
+  if (url.pathname.startsWith('/super-admin') && !user) {
+    url.pathname = '/admin/login'
+    return NextResponse.redirect(url)
+  }
+
+  // 2. Subdomain Rewriting (Multi-tenancy)
   if (
     url.pathname.startsWith('/_next') ||
     url.pathname.startsWith('/api') ||
     url.pathname.startsWith('/admin') ||
-    url.pathname.startsWith('/super-admin') || // 👈 Ditambahkan agar /super-admin tidak dibaca sebagai tenant
+    url.pathname.startsWith('/super-admin') ||
     url.pathname.includes('.') ||
-    hostname.includes('localhost') ||
+    isPlainLocalhost ||
     hostname === 'booking-app.vercel.app'
   ) {
-    return NextResponse.next();
+    return response
   }
 
-  // 2. Deteksi apakah ini diakses lewat domain utama kita (bookingpage.site)
-  const rootDomain = 'bookingpage.site';
-  
-  // Jika diakses menggunakan domain utama (bukan subdomain), lewati middleware rewrite
-  if (hostname === rootDomain || hostname === `www.${rootDomain}`) {
-    return NextResponse.next();
+  const currentHost = hostname.replace(`.localhost:3000`, '').replace(`.booking-app.vercel.app`, '')
+  if (currentHost && currentHost !== hostname) {
+    url.pathname = `/${currentHost}${url.pathname}`
+    return NextResponse.rewrite(url)
   }
 
-  // 3. Ambil slug dari subdomain secara aman (contoh: fitri dari fitri.bookingpage.site)
-  const currentHost = hostname.replace(/^(https?:\/\/)?/, '');
-  const parts = currentHost.split('.');
-  
-  // Pastikan format subdomain valid (minimal ada subdomain sebelum domain utama)
-  if (parts.length >= 2) {
-    const tenantSlug = parts[0].toLowerCase();
-
-    // 4. Jika user akses root publik ('/'), rewrite ke dynamic route tenant
-    if (url.pathname === '/') {
-      url.pathname = `/${tenantSlug}`;
-      return NextResponse.rewrite(url);
-    }
-  }
-
-  return NextResponse.next();
+  return response
 }
 
 export const config = {
-  // Tambahkan 'super-admin' ke dalam pengecualian matcher
-  matcher: ['/((?!api|_next/static|_next/image|favicon.ico|admin|super-admin).*)'],
-};
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)'],
+}

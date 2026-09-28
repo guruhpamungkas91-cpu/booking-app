@@ -41,14 +41,15 @@ export async function GET(request: Request) {
     const cleanStaffParam = staff ? staff.toLowerCase().replace(/^dr\.?\s*/i, '').trim() : ''
 
     // 2. Query blocked_slots (admin manual block) dengan insensitive match
-    let blockedQuery = supabase
+    // Fix: Tambahkan block_time pada select
+    const blockedQuery = supabase
       .from('blocked_slots')
-      .select('start_time, staff_name, staff_id')
+      .select('start_time, block_time, staff_name, staff_id')
       .ilike('tenant_slug', activeTenantSlug)
       .eq('block_date', date)
 
     // 3. Query Reservations (Gunakan .ilike untuk tenant_slug & client_code agar lebih toleran)
-    let bookedQuery = supabase
+    const bookedQuery = supabase
       .from('reservations') 
       .select('booking_time, staff_name, staff_id, status, tenant_slug, client_code, booking_date')
       .or(`tenant_slug.ilike.${activeTenantSlug},client_code.ilike.${activeClientCode}`)
@@ -56,7 +57,7 @@ export async function GET(request: Request) {
       .not('status', 'in', '("cancelled","refunded","rejected")')
 
     // 4. Ambil data staff untuk mendapatkan max_slots masing-masing staff
-    let staffQuery = supabase
+    const staffQuery = supabase
       .from('staff')
       .select('id, name, max_slots')
       .or(`tenant_slug.ilike.${activeTenantSlug},client_code.ilike.${activeClientCode}`)
