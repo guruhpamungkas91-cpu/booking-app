@@ -1,6 +1,7 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+// 1. Gabungkan semua hook dari 'react' di baris paling atas
+import React, { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase'
 import { X } from 'lucide-react'
 import { Tenant, StaffItem, ServiceItem } from '@/types'
@@ -88,8 +89,10 @@ export default function TenantDetailPanel({
   const [showConfirmModal, setShowConfirmModal] = useState(false)
   const [pendingCancelAction, setPendingCancelAction] = useState<(() => void) | null>(null)
 
-  // Fetch Data
-  const fetchAllData = async () => {
+  // 2. Wrap fungsi fetchAllData menggunakan useCallback (tanpa import tambahan di tengah)
+  const fetchAllData = useCallback(async () => {
+    if (!tenantData?.id) return
+
     try {
       setLoadingData(true)
       
@@ -161,13 +164,11 @@ export default function TenantDetailPanel({
     } finally {
       setLoadingData(false)
     }
-  }
+  }, [tenantData, supabase])
 
   useEffect(() => {
-    if (tenantData?.id) {
-      fetchAllData()
-    }
-  }, [tenantData])
+    fetchAllData()
+  }, [fetchAllData])
 
   // Handlers
   const handleToggleTenantActive = async (newStatus: boolean) => {
@@ -415,92 +416,112 @@ export default function TenantDetailPanel({
   }
 
   const handleSaveAddons = async () => {
-    setLoadingAddons(true)
-    try {
-      if (!tenantData?.id) {
-        alert("Error: ID Tenant tidak ditemukan!")
-        setLoadingAddons(false)
-        return
-      }
-
-      const { data: existing, error: fetchError } = await supabase
-        .from('services')
-        .select('id')
-        .eq('tenant_id', tenantData.id)
-        .eq('is_addon', true)
-
-      if (fetchError) throw fetchError
-
-      const existingIds = (existing || []).map(s => s.id)
-      const currentIds = addonsList
-        .filter((s: TenantAddonItem) => s.id !== undefined && s.id !== null)
-        .map(s => s.id)
-      const idsToDelete = existingIds.filter(id => !currentIds.includes(id))
-
-      if (idsToDelete.length > 0) {
-        const { error: deleteError } = await supabase.from('services').delete().in('id', idsToDelete)
-        if (deleteError) throw deleteError
-      }
-
-      const formattedAddonsForJson = []
-
-      for (const add of addonsList) {
-        const addonName = add.name || add.label || ''
-        const addonPrice = Number(add.price || 0)
-        const addonDuration = Number(add.duration || 0)
-        const addonDesc = add.desc || add.description || ''
-
-        const payload = {
-          tenant_id: tenantData.id,
-          tenant_slug: tenantData?.tenant_slug || profileData.tenant_slug || '',
-          client_code: tenantData?.client_code || profileData.client_code || '',
-          name: addonName,
-          price: addonPrice,
-          duration: addonDuration,
-          desc: addonDesc,
-          is_addon: true,
-        }
-
-        if (add.id && typeof add.id === 'number') {
-          const { error: updateError } = await supabase.from('services').update(payload).eq('id', add.id)
-          if (updateError) throw updateError
-        } else {
-          const { data: inserted, error: insertError } = await supabase.from('services').insert([payload]).select()
-          if (insertError) throw insertError
-          if (inserted && inserted[0]) {
-            setAddonsList((prev) =>
-              prev.map((item) => (item === add ? { ...item, id: inserted[0].id } : item))
-            )
-          }
-        }
-
-        formattedAddonsForJson.push({
-          label: addonName,
-          price: addonPrice,
-          desc: addonDesc,
-          duration: addonDuration
-        })
-      }
-
-      const { error: tenantError } = await supabase
-        .from('tenants')
-        .update({ 
-          addons: formattedAddonsForJson,
-          show_extra_addon: true 
-        })
-        .eq('id', tenantData.id)
-
-      if (tenantError) throw tenantError
-
-      alert('Berhasil! Add-ons tersimpan ke Services dan otomatis ter-sync ke Tenant.')
-      await fetchAllData()
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err)
-      alert('Gagal menyimpan add-ons: ' + msg)
-    } finally {
+  setLoadingAddons(true)
+  try {
+    if (!tenantData?.id) {
+      alert("Error: ID Tenant tidak ditemukan!")
       setLoadingAddons(false)
+      return
     }
+
+    // 1. Ambil data Add-ons lama yang ada di tabel services
+    const { data: existing, error: fetchError } = await supabase
+      .from('services')
+      .select('id')
+      .eq('tenant_id', tenantData.id)
+      .eq('is_addon', true)
+
+    if (fetchError) throw fetchError
+
+    // Kumpulkan ID sebagai string agar konsisten (baik UUID maupun integer)
+    const existingIds = (existing || []).map((s) => String(s.id))
+    const currentIds = addonsList
+      .filter((s: TenantAddonItem) => s.id !== undefined && s.id !== null && s.id !== '')
+      .map((s) => String(s.id))
+    
+    const idsToDelete = existingIds.filter((id) => !currentIds.includes(id))
+
+    // 2. Hapus Add-on yang sudah dihapus dari UI
+    if (idsToDelete.length > 0) {
+      const { error: deleteError } = await supabase
+        .from('services')
+        .delete()
+        .in('id', idsToDelete)
+      if (deleteError) throw deleteError
+    }
+
+    const formattedAddonsForJson = []
+
+    // 3. Loop simpan/update setiap Add-on
+    for (const add of addonsList) {
+      const addonName = add.name || add.label || ''
+      const addonPrice = Number(add.price || 0)
+      
+      // Ambil durasi dengan fallback menyeluruh
+      const addonDuration = Number(add.duration || 0)
+
+      const addonDesc = add.desc || add.description || ''
+
+      const payload = {
+        tenant_id: tenantData.id,
+        tenant_slug: tenantData?.tenant_slug || profileData.tenant_slug || '',
+        client_code: tenantData?.client_code || profileData.client_code || '',
+        name: addonName,
+        price: addonPrice,
+        duration: addonDuration, // Dipastikan angka (misal: 15)
+        desc: addonDesc,
+        is_addon: true,
+      }
+
+      // PERBAIKAN DI SINI: Cukup cek apakah add.id ada (tanpa pembatasan typeof 'number')
+      if (add.id) {
+        const { error: updateError } = await supabase
+          .from('services')
+          .update(payload)
+          .eq('id', add.id)
+        if (updateError) throw updateError
+      } else {
+        const { data: inserted, error: insertError } = await supabase
+          .from('services')
+          .insert([payload])
+          .select()
+        
+        if (insertError) throw insertError
+        if (inserted && inserted[0]) {
+          setAddonsList((prev) =>
+            prev.map((item) => (item === add ? { ...item, id: inserted[0].id } : item))
+          )
+        }
+      }
+
+      formattedAddonsForJson.push({
+        label: addonName,
+        price: addonPrice,
+        desc: addonDesc,
+        duration: addonDuration,
+      })
+    }
+
+    // 4. Sync data array addons ke tabel tenants
+    const { error: tenantError } = await supabase
+      .from('tenants')
+      .update({
+        addons: formattedAddonsForJson,
+        show_extra_addon: true,
+      })
+      .eq('id', tenantData.id)
+
+    if (tenantError) throw tenantError
+
+    alert('Berhasil! Add-ons tersimpan ke Services dan otomatis ter-sync ke Tenant.')
+    await fetchAllData()
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err)
+    alert('Gagal menyimpan add-ons: ' + msg)
+  } finally {
+    setLoadingAddons(false)
   }
+}
 
   const handleSaveGeneral = async () => {
     setLoadingGeneral(true)
@@ -1034,6 +1055,7 @@ export default function TenantDetailPanel({
               {addonsList.map((add, idx) => (
                 <div key={add.id || idx} className="bg-[#020408] p-3 rounded-lg border border-cyan-500/20 space-y-2">
                   <div className="flex gap-3 items-center">
+                    {/* INPUT NAMA */}
                     <input 
                       type="text" 
                       placeholder="Nama Add-on" 
@@ -1041,14 +1063,17 @@ export default function TenantDetailPanel({
                       onChange={(e) => {
                         const updated = [...addonsList]
                         updated[idx].name = e.target.value
+                        updated[idx].label = e.target.value
                         setAddonsList(updated)
                       }}
                       className="bg-black border border-cyan-500/30 p-2 rounded-lg text-sm flex-2 text-white focus:border-cyan-400 outline-none"
                     />
+
+                    {/* INPUT HARGA */}
                     <input 
                       type="number" 
                       placeholder="Harga (Rp)" 
-                      value={add.price || 0} 
+                      value={add.price ?? 0} 
                       onChange={(e) => {
                         const updated = [...addonsList]
                         updated[idx].price = Number(e.target.value)
@@ -1057,17 +1082,20 @@ export default function TenantDetailPanel({
                       className="bg-black border border-cyan-500/30 p-2 rounded-lg text-sm flex-1 text-white focus:border-cyan-400 outline-none"
                     />
 
+                    {/* INPUT DURASI (PERBAIKAN DI SINI) */}
                     <input 
                       type="number" 
                       placeholder="Durasi (menit)" 
-                      value={add.duration || 15} 
+                      value={add.duration ?? 0} 
                       onChange={(e) => {
                         const updated = [...addonsList]
-                        updated[idx].duration = Number(e.target.value)
+                        updated[idx].duration = Math.max(0, Number(e.target.value) || 0)
                         setAddonsList(updated)
                       }}
                       className="bg-black border border-cyan-500/30 p-2 rounded-lg text-sm flex-1 text-white focus:border-cyan-400 outline-none"
                     />
+
+                    {/* TOMBOL HAPUS */}
                     <button 
                       onClick={() => setAddonsList(addonsList.filter((_, i) => i !== idx))}
                       className="text-red-400 hover:text-red-300 p-1 text-sm font-bold cursor-pointer"
@@ -1075,6 +1103,8 @@ export default function TenantDetailPanel({
                       ✕
                     </button>
                   </div>
+
+                  {/* INPUT DESKRIPSI */}
                   <input 
                     type="text" 
                     placeholder="Deskripsi singkat add-on..." 
@@ -1082,6 +1112,7 @@ export default function TenantDetailPanel({
                     onChange={(e) => {
                       const updated = [...addonsList]
                       updated[idx].desc = e.target.value
+                      updated[idx].description = e.target.value
                       setAddonsList(updated)
                     }}
                     className="w-full bg-black border border-cyan-500/20 p-2 rounded-lg text-xs text-slate-300 focus:border-cyan-400 outline-none"

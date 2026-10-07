@@ -1,214 +1,298 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
+// ----------------------------------------------------------------------
+// STRICT TYPESCRIPT INTERFACES (ZERO 'any')
+// ----------------------------------------------------------------------
+interface TenantRecord {
+  id: string | number
+  tenant_slug?: string | null
+  client_code?: string | null
+  slug?: string | null
+  open_time?: string | null
+  close_time?: string | null
+  slot_interval?: number | null
+  slot_interval_minutes?: number | null
+  lunch_start_time?: string | null
+  lunch_end_time?: string | null
+  hide_booked_slots?: boolean | null
+  enable_auto_disable_time_slots?: boolean | null
+}
+
+interface BlockedSlotRecord {
+  start_time: string
+  end_time?: string | null
+}
+
+interface ReservationRecord {
+  booking_time: string
+  duration_minutes?: number | null
+  staff_id?: string | number | null
+  staff_name?: string | null
+  status?: string | null
+}
+
+interface StaffRecord {
+  id: string | number
+  name?: string | null
+  is_active?: boolean | null
+}
+
+// ----------------------------------------------------------------------
+// HELPER FUNCTIONS (STRICT TYPED & ROBUST)
+// ----------------------------------------------------------------------
+function timeToMinutes(timeStr: unknown): number {
+  if (!timeStr || typeof timeStr !== 'string') return 0
+  const clean = timeStr.trim().substring(0, 5)
+  const [hours, minutes] = clean.split(':').map(Number)
+  if (isNaN(hours) || isNaN(minutes)) return 0
+  return hours * 60 + minutes
+}
+
+function minutesToTime(minutes: number): string {
+  const h = Math.floor(minutes / 60).toString().padStart(2, '0')
+  const m = (minutes % 60).toString().padStart(2, '0')
+  return `${h}:${m}`
+}
+
+function normalizeStaffName(name: string): string {
+  if (!name) return ''
+  return name
+    .toLowerCase()
+    .replace(/^dr\.\s*/i, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function generateDynamicSlots(
+  openTimeStr: string,
+  closeTimeStr: string,
+  intervalMinutes: number
+): string[] {
+  const slots: string[] = []
+  const startMin = timeToMinutes(openTimeStr)
+  const endMin = timeToMinutes(closeTimeStr)
+  const interval = intervalMinutes > 0 ? intervalMinutes : 30
+
+  if (startMin >= endMin || interval <= 0) {
+    return []
+  }
+
+  for (let current = startMin; current < endMin; current += interval) {
+    slots.push(minutesToTime(current))
+  }
+
+  return slots
+}
+
+// ----------------------------------------------------------------------
+// ROUTE HANDLER
+// ----------------------------------------------------------------------
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
-    const date = searchParams.get('date')
+    const dateStr = searchParams.get('date')
     const tenantSlug = searchParams.get('tenant_slug')
-    const staff = searchParams.get('staff') // Bisa berupa staff_name atau staff_id
+    const staffQuery = searchParams.get('staff')
+    const durationParam = Number(searchParams.get('duration')) || 0
 
-    if (!date || !tenantSlug) {
-      return NextResponse.json({ success: false, blockedTimes: [], bookedReservations: [], slots: [], tenantSettings: {} }, { status: 200 })
+    if (!dateStr || !tenantSlug) {
+      return NextResponse.json(
+        { success: false, error: 'Parameter date dan tenant_slug wajib diisi.' },
+        { status: 400 }
+      )
     }
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
-    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
-    
-    if (!supabaseUrl || !supabaseKey) {
-      return NextResponse.json({ success: true, blockedTimes: [], bookedReservations: [], slots: [], tenantSettings: {} }, { status: 200 })
-    }
-
+    const supabaseKey =
+      process.env.SUPABASE_SERVICE_ROLE_KEY ||
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+      ''
     const supabase = createClient(supabaseUrl, supabaseKey)
-    const lowerTenantSlug = tenantSlug.toLowerCase().trim()
 
-    // 1. Ambil pengaturan tenant (gunakan .ilike agar aman dari perbedaan huruf besar/kecil)
-    const { data: tenantData, error: tenantErr } = await supabase
+    // 1. FETCH TENANT DATA
+    let tenantData: TenantRecord | null = null
+
+    const { data: tSlug } = await supabase
       .from('tenants')
-      .select('id, tenant_slug, client_code, enable_slot_blocking, enable_auto_disable_time_slots, hide_booked_slots, prevent_double_booking')
-      .or(`tenant_slug.ilike.${lowerTenantSlug},client_code.ilike.${lowerTenantSlug}`)
-      .maybeSingle()
+      .select('*')
+      .eq('tenant_slug', tenantSlug)
+      .maybeSingle<TenantRecord>()
 
-    if (tenantErr || !tenantData) {
-      console.error("Tenant tidak ditemukan lewat slug:", tenantSlug, tenantErr)
+    if (tSlug) {
+      tenantData = tSlug
+    } else {
+      const { data: tCode } = await supabase
+        .from('tenants')
+        .select('*')
+        .or(`client_code.eq.${tenantSlug},slug.eq.${tenantSlug}`)
+        .maybeSingle<TenantRecord>()
+      tenantData = tCode
     }
 
-    // Gunakan tenant_slug yang valid dari database jika ada, fallback ke parameter
-    const activeTenantSlug = tenantData?.tenant_slug || tenantSlug
-    const activeClientCode = tenantData?.client_code || tenantSlug
+    if (!tenantData) {
+      return NextResponse.json(
+        { success: false, error: 'Tenant tidak ditemukan di database.' },
+        { status: 404 }
+      )
+    }
 
-    const enableSlotBlocking = tenantData?.enable_slot_blocking ?? true
-    const cleanStaffParam = staff ? staff.toLowerCase().replace(/^dr\.?\s*/i, '').trim() : ''
+    const openTime = tenantData.open_time || '09:00:00'
+    const closeTime = tenantData.close_time || '21:00:00'
+    const intervalMinutes =
+      Number(tenantData.slot_interval) ||
+      Number(tenantData.slot_interval_minutes) ||
+      30
+    const tenantId = tenantData.id
 
-    // 2. Query blocked_slots (admin manual block) dengan insensitive match
-    // Fix: Tambahkan block_time pada select
-    const blockedQuery = supabase
+    // GENERASI SLOT JAM DINAMIS
+    const generatedSlots = generateDynamicSlots(openTime, closeTime, intervalMinutes)
+    const blockedTimesSet = new Set<string>()
+
+    // 2. FETCH BLOCKED SLOTS DARI MANAJEMEN ADMIN
+    let blockedQuery = supabase
       .from('blocked_slots')
-      .select('start_time, block_time, staff_name, staff_id')
-      .ilike('tenant_slug', activeTenantSlug)
-      .eq('block_date', date)
+      .select('start_time, end_time')
+      .eq('block_date', dateStr)
 
-    // 3. Query Reservations (Gunakan .ilike untuk tenant_slug & client_code agar lebih toleran)
-    const bookedQuery = supabase
-      .from('reservations') 
-      .select('booking_time, staff_name, staff_id, status, tenant_slug, client_code, booking_date')
-      .or(`tenant_slug.ilike.${activeTenantSlug},client_code.ilike.${activeClientCode}`)
-      .eq('booking_date', date)
-      .not('status', 'in', '("cancelled","refunded","rejected")')
-
-    // 4. Ambil data staff untuk mendapatkan max_slots masing-masing staff
-    const staffQuery = supabase
-      .from('staff')
-      .select('id, name, max_slots')
-      .or(`tenant_slug.ilike.${activeTenantSlug},client_code.ilike.${activeClientCode}`)
-
-    const [slotConfigsRes, blockedDataRes, bookedDataRes, staffDataRes] = await Promise.all([
-      supabase
-        .from('tenant_slots')
-        .select('time_slot, max_quota')
-        .ilike('tenant_slug', activeTenantSlug)
-        .eq('is_active', true),
-      enableSlotBlocking ? blockedQuery : Promise.resolve({ data: [] }),
-      bookedQuery,
-      staffQuery
-    ])
-
-    const slotConfigs = slotConfigsRes.data || []
-    const blockedData = blockedDataRes.data || []
-    const bookedData = bookedDataRes.data || []
-    const staffList = staffDataRes.data || []
-
-    // DEBUG TERMINAL (Cek di terminal VS Code lu nanti)
-    console.log("=== BACKEND AVAILABILITY DEBUG ===")
-    console.log("Tanggal:", date, "| Tenant Slug:", activeTenantSlug, "| Staff Dipilih:", staff)
-    console.log("Total Reservasi Ditemukan di DB:", bookedData.length, bookedData)
-
-    // Buat mapping max_slots per staff
-    const staffMaxSlotsMap: Record<string, number> = {}
-    staffList.forEach((s: { name?: string | null; id?: string | null; max_slots?: number | null }) => {
-      const maxSlotsVal = s.max_slots ?? 1
-      if (s.name) {
-        const rawName = String(s.name).toLowerCase().trim()
-        const cleanName = rawName.replace(/^dr\.?\s*/i, '').trim()
-        staffMaxSlotsMap[rawName] = maxSlotsVal
-        staffMaxSlotsMap[cleanName] = maxSlotsVal
-      }
-      if (s.id) {
-        staffMaxSlotsMap[String(s.id).trim()] = maxSlotsVal
-      }
-    })
-
-    // 1. Ambil jam yang diblokir manual oleh admin
-    const blockedTimes: string[] = []
-    
-    blockedData.forEach((item: { block_time?: string | null; start_time?: string | null; staff_name?: string | null; staff_id?: string | null }) => {
-      const time = (item.block_time || item.start_time)?.substring(0, 5)
-      if (!time) return
-
-      if (staff && cleanStaffParam) {
-        const itemStaffName = String(item.staff_name || '').toLowerCase().replace(/^dr\.?\s*/i, '').trim()
-        const itemStaffId = String(item.staff_id || '').trim()
-        if (itemStaffName.includes(cleanStaffParam) || itemStaffId === staff.trim()) {
-          if (!blockedTimes.includes(time)) blockedTimes.push(time)
-        }
-      } else {
-        if (!blockedTimes.includes(time)) blockedTimes.push(time)
-      }
-    })
-
-    // 2. Akumulasi data booking menggunakan array list agar pencocokan fleksibel
-    const bookingCountPerSlot: Record<string, number> = {}
-    const activeBookingsList: Array<{ time: string; staffName: string }> = []
-    
-    bookedData.forEach((item: { booking_time?: string | null; staff_name?: string | null; staff_id?: string | null }) => {
-      const timeSlot = item.booking_time?.substring(0, 5)
-      const itemStaff = String(item.staff_name || '').toLowerCase().replace(/^dr\.?\s*/i, '').trim()
-      
-      if (timeSlot) {
-        bookingCountPerSlot[timeSlot] = (bookingCountPerSlot[timeSlot] || 0) + 1
-        
-        if (itemStaff) {
-          activeBookingsList.push({
-            time: timeSlot,
-            staffName: itemStaff
-          })
-        }
-      }
-    })
-
-    // 3. Masukkan hasil cek kapasitas ke dalam array blockedTimes
-    slotConfigs.forEach((slot: { time_slot?: string | null; max_quota?: number | null }) => {
-      const timeSlot = slot.time_slot?.substring(0, 5)
-      if (!timeSlot) return
-
-      const globalMaxQuota = slot.max_quota ?? 1
-      const totalGlobalBookings = bookingCountPerSlot[timeSlot] || 0
-
-      // Kondisi Global: Jika kuota global tenant habis
-      if (totalGlobalBookings >= globalMaxQuota) {
-        if (!blockedTimes.includes(timeSlot)) {
-          blockedTimes.push(timeSlot)
-        }
-      }
-
-      // Kondisi Per-Staff: Jika staff tertentu sudah penuh
-      if (staff && cleanStaffParam) {
-        // Ambil max_slots staff dari mapping database, atau fallback ke 1
-        const maxSlots = staffMaxSlotsMap[cleanStaffParam] || 1
-        
-        const currentStaffBookings = activeBookingsList.filter(
-          b => b.time === timeSlot && (b.staffName.includes(cleanStaffParam) || cleanStaffParam.includes(b.staffName))
-        ).length
-
-        console.log(`Cek Jam ${timeSlot} untuk Staff ${cleanStaffParam}: Booking=${currentStaffBookings}, MaxSlots=${maxSlots}`)
-
-        if (currentStaffBookings >= maxSlots && !blockedTimes.includes(timeSlot)) {
-          blockedTimes.push(timeSlot)
-        }
-      }
-    })
-    
-    const bookedReservations = bookedData.map((item: { booking_time?: string | null; staff_name?: string | null; staff_id?: string | null; status?: string | null }) => ({
-      time: item.booking_time?.substring(0, 5),
-      staff: item.staff_name || item.staff_id,
-      status: item.status
-    }))
-    
-    const hideBookedSlots = tenantData?.hide_booked_slots ?? false
-    const autoDisableSlots = tenantData?.enable_auto_disable_time_slots ?? true
-
-    let slots = slotConfigs.map((s: { time_slot?: string | null; max_quota?: number | null }) => {
-      const time = s.time_slot?.substring(0, 5) || ''
-      const isBlocked = blockedTimes.includes(time)
-
-      return {
-        time,
-        max_quota: s.max_quota,
-        is_available: autoDisableSlots ? !isBlocked : true,
-        disabled: autoDisableSlots ? isBlocked : false
-      }
-    })
-
-    if (hideBookedSlots) {
-      slots = slots.filter(slot => !blockedTimes.includes(slot.time))
+    if (tenantId) {
+      blockedQuery = blockedQuery.or(`tenant_id.eq.${tenantId},tenant_slug.eq.${tenantSlug}`)
+    } else {
+      blockedQuery = blockedQuery.eq('tenant_slug', tenantSlug)
     }
 
-    console.log("Final Blocked Times yang dikirim ke Frontend:", blockedTimes)
+    const { data: adminBlocked } = await blockedQuery.returns<BlockedSlotRecord[]>()
+
+    // 3. FETCH STAF AKTIF
+    let totalActiveStaffCount = 1
+    if (tenantId) {
+      const { data: staffs } = await supabase
+        .from('staff')
+        .select('id, name, is_active')
+        .eq('tenant_id', tenantId)
+        .eq('is_active', true)
+        .returns<StaffRecord[]>()
+
+      if (staffs && staffs.length > 0) {
+        totalActiveStaffCount = staffs.length
+      }
+    }
+
+    // 4. FETCH RESERVASI TERDAFTAR
+    let resQuery = supabase
+      .from('reservations')
+      .select('booking_time, duration_minutes, staff_id, staff_name, status')
+      .eq('booking_date', dateStr)
+
+    if (tenantId) {
+      resQuery = resQuery.or(`tenant_id.eq.${tenantId},tenant_slug.eq.${tenantSlug}`)
+    } else {
+      resQuery = resQuery.eq('tenant_slug', tenantSlug)
+    }
+
+    const { data: existingBookings, error: bookingErr } =
+      await resQuery.returns<ReservationRecord[]>()
+
+    if (bookingErr) {
+      console.error('[API Availability] Error fetch reservations:', bookingErr)
+    }
+
+    const activeBookings = (existingBookings || []).filter(
+      (b) =>
+        b.status !== 'cancelled' &&
+        b.status !== 'refunded' &&
+        b.status !== 'rejected'
+    )
+
+    // 5. EVALUASI PENABRAKAN DURASI UNTUK SETIAP SLOT
+    const lunchStartMin = tenantData.lunch_start_time ? timeToMinutes(tenantData.lunch_start_time) : null
+    const lunchEndMin = tenantData.lunch_end_time ? timeToMinutes(tenantData.lunch_end_time) : null
+    const closeTimeMin = timeToMinutes(closeTime)
+    const effectiveDuration = durationParam > 0 ? durationParam : intervalMinutes
+
+    generatedSlots.forEach((slotStr) => {
+      const slotStartMin = timeToMinutes(slotStr)
+      const slotEndMin = slotStartMin + effectiveDuration
+
+      // A. Menabrak Jam Tutup
+      if (slotEndMin > closeTimeMin) {
+        blockedTimesSet.add(slotStr)
+        return
+      }
+
+      // B. Menabrak Jam Istirahat
+      if (lunchStartMin !== null && lunchEndMin !== null) {
+        if (slotStartMin < lunchEndMin && slotEndMin > lunchStartMin) {
+          blockedTimesSet.add(slotStr)
+          return
+        }
+      }
+
+      // C. Menabrak Blocked Slots Admin
+      if (adminBlocked && adminBlocked.length > 0) {
+        const isBlockedByAdmin = adminBlocked.some((b) => {
+          if (!b.start_time) return false
+          const bStart = timeToMinutes(b.start_time)
+          const bEnd = b.end_time ? timeToMinutes(b.end_time) : bStart + intervalMinutes
+          return slotStartMin < bEnd && slotEndMin > bStart
+        })
+        if (isBlockedByAdmin) {
+          blockedTimesSet.add(slotStr)
+          return
+        }
+      }
+
+      // D. Menabrak Jadwal Reservasi Lain
+      if (activeBookings.length > 0) {
+        if (!staffQuery || staffQuery === 'all' || staffQuery === 'any') {
+          const busyStaff = activeBookings.filter((b) => {
+            if (!b.booking_time) return false
+            const bStart = timeToMinutes(b.booking_time)
+            const bEnd = bStart + (Number(b.duration_minutes) || intervalMinutes)
+            return slotStartMin < bEnd && slotEndMin > bStart
+          })
+
+          if (busyStaff.length >= totalActiveStaffCount) {
+            blockedTimesSet.add(slotStr)
+          }
+        } else {
+          const cleanParam = normalizeStaffName(staffQuery)
+          const isStaffBusy = activeBookings.some((b) => {
+            if (!b.booking_time) return false
+            const cleanResName = normalizeStaffName(b.staff_name || '')
+            const isMatch =
+              (cleanResName && cleanResName === cleanParam) ||
+              (b.staff_id && String(b.staff_id) === String(staffQuery))
+
+            if (!isMatch) return false
+
+            const bStart = timeToMinutes(b.booking_time)
+            const bEnd = bStart + (Number(b.duration_minutes) || intervalMinutes)
+            return slotStartMin < bEnd && slotEndMin > bStart
+          })
+
+          if (isStaffBusy) {
+            blockedTimesSet.add(slotStr)
+          }
+        }
+      }
+    })
+
+    const blockedTimes = Array.from(blockedTimesSet)
 
     return NextResponse.json({
       success: true,
-      slots,
+      slots: generatedSlots,
       blockedTimes,
-      bookedReservations,
+      bookedReservations: activeBookings,
       tenantSettings: {
-        hide_booked_slots: tenantData?.hide_booked_slots ?? false,
-        enable_auto_disable_time_slots: autoDisableSlots
-      }
+        hide_booked_slots: tenantData.hide_booked_slots ?? false,
+        enable_auto_disable_time_slots: tenantData.enable_auto_disable_time_slots ?? true,
+      },
     })
-
   } catch (err: unknown) {
-    const errorMessage = err instanceof Error ? err.message : 'Unknown error'
-    console.error('API Availability Error:', errorMessage)
-    return NextResponse.json({ success: false, blockedTimes: [], bookedReservations: [], slots: [], tenantSettings: {} }, { status: 200 })
+    const msg = err instanceof Error ? err.message : 'Internal Server Error'
+    console.error('[API Availability] Error:', err)
+    return NextResponse.json({ success: false, error: msg }, { status: 500 })
   }
 }

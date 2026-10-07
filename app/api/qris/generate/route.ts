@@ -30,7 +30,7 @@ export async function POST(request: Request) {
 
     // Mengembalikan URL publik dari database
     return NextResponse.json({ qrUrl: tenant.qris_url })
-  } catch (error) {
+  } catch {
     return NextResponse.json({ error: 'Gagal generate QRIS' }, { status: 500 })
   }
 }

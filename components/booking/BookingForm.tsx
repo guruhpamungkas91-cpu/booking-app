@@ -5,26 +5,27 @@ export const dynamic = 'force-dynamic'
 // ============================================================================
 // 1. IMPORTS & DEPENDENCIES
 // ============================================================================
-import React, { useState, useEffect, Suspense, type CSSProperties } from 'react'
+import React, { useState, useEffect, type CSSProperties } from 'react'
+import Image from 'next/image'
 import { useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import type { 
   BankAccount, 
   EWalletAccount, 
-  TenantAddonItem,
-  Reservation, 
+  TenantAddonItem, 
   ServiceItem, 
   AddonService, 
   StaffItem, 
   Tenant, 
-  TimeSlot 
+  TimeSlot,
+  BookedReservation,
+  AvailabilityApiResponse
 } from '@/types'
 
 // ============================================================================
 // 2. TYPE DEFINITIONS & INTERFACES (LOCAL EXTENSIONS)
 // ============================================================================
 
-// Perluas TimeSlot untuk mengakomodasi time_slot dari API/DB Supabase
 interface ExtendedTimeSlot extends TimeSlot {
   time_slot?: string
 }
@@ -87,6 +88,16 @@ const isValidWhatsAppNumber = (phone: string): boolean => {
   return true
 }
 
+// 🟢 TARO HELPER DENGAN PENYESUAIAN TIPE DI SINI:
+const getServiceDisplayLabel = (
+  detail?: ServiceItem | TenantAddonItem | null
+): string => {
+  if (!detail) return '-'
+  
+  const addonLabel = 'addon_label' in detail ? detail.addon_label : undefined
+  return detail.name ?? addonLabel ?? detail.label ?? '-'
+}
+
 // ============================================================================
 // 4. SUB-COMPONENTS
 // ============================================================================
@@ -99,25 +110,29 @@ function TimePicker({
   tenantData,
   theme
 }: TimePickerProps) {
-  // Safe access camelCase & snake_case dari interface Tenant
   const shouldHideBooked = Boolean(tenantData?.hide_booked_slots || tenantData?.hideBookedSlots)
   const shouldAutoDisable = tenantData?.enable_auto_disable_time_slots ?? tenantData?.enableAutoDisableTimeSlots ?? true
 
-  const displayedSlots = availableSlots.map((slot) => {
-    // FIX Poin 2: Safe access time_slot
+  const displayedSlots = (availableSlots || [])
+  .map((slot: TimeSlot) => {
     const rawTime = slot.time || slot.time_slot || ''
     const timeStr = typeof rawTime === 'string' ? rawTime.substring(0, 5) : ''
 
-    const isBlockedByApi = blockedTimes.some(b => typeof b === 'string' && b.substring(0, 5) === timeStr)
-    const isSlotDisabled = slot.disabled === true || slot.is_available === false || isBlockedByApi
+    const isBlockedByApi = blockedTimes.some(
+      (b) => typeof b === 'string' && b.substring(0, 5) === timeStr
+    )
+    const isSlotDisabled =
+      slot.disabled === true || slot.is_available === false || isBlockedByApi
 
     return {
       ...slot,
       time: timeStr,
       isDisabled: shouldAutoDisable ? isSlotDisabled : false,
-      isHidden: shouldHideBooked && isSlotDisabled
+      isHidden: shouldHideBooked && isSlotDisabled,
+      reason: isBlockedByApi ? 'Jam Istirahat' : slot.reason || 'Penuh',
     }
-  }).filter(slot => !slot.isHidden && slot.time)
+  })
+  .filter((slot) => !slot.isHidden && slot.time)
 
   if (displayedSlots.length === 0) {
     return (
@@ -153,7 +168,9 @@ function TimePicker({
           >
             <span className="relative z-10">{slot.time}</span>
             {slot.isDisabled && (
-              <span className="block text-[9px] text-rose-500 font-semibold tracking-wide mt-0.5">Penuh</span>
+              <span className="block text-[9px] text-rose-500 font-semibold tracking-wide mt-0.5">
+                {slot.reason === 'Jam Istirahat' ? 'Istirahat' : 'Penuh'}
+              </span>
             )}
           </button>
         )
@@ -165,12 +182,12 @@ function TimePicker({
 // ============================================================================
 // 5. MAIN BOOKING FORM COMPONENT
 // ============================================================================
-function BookingFormContent({ initialTenant }: { initialTenant?: Tenant }) {
+export default function BookingFormContent({ initialTenant }: { initialTenant?: Tenant }) {
   const params = useParams()
   const routerSlug = (params?.tenant_slug as string) || ''
 
   // --------------------------------------------------------------------------
-  // 5.1 State Management (Deklarasi State Hooks)
+  // 5.1 State Management
   // --------------------------------------------------------------------------
   const [step, setStep] = useState<number>(1)
   const [tenant, setTenant] = useState<Tenant | null>(initialTenant || null)
@@ -185,11 +202,11 @@ function BookingFormContent({ initialTenant }: { initialTenant?: Tenant }) {
 
   const [isAddonExpanded, setIsAddonExpanded] = useState<boolean>(false)
 
-  const [blockedSlots, setBlockedSlots] = useState<{ block_date: string; block_time: string }[]>([])
+  const [, setBlockedSlots] = useState<{ block_date: string; block_time: string }[]>([])
   const [blockedTimes, setBlockedTimes] = useState<string[]>([])
-  const [bookedReservations, setBookedReservations] = useState<Reservation[]>([])
+  const [bookedReservations, setBookedReservations] = useState<BookedReservation[]>([])
   const [loadingSlots, setLoadingSlots] = useState<boolean>(false)
-  const [availableSlots, setAvailableSlots] = useState<ExtendedTimeSlot[]>([])
+  const [availableSlots, setAvailableSlots] = useState<TimeSlot[]>([])
 
   const [formData, setFormData] = useState({
     customer_name: '',
@@ -200,6 +217,7 @@ function BookingFormContent({ initialTenant }: { initialTenant?: Tenant }) {
     selectedAddonIds: [] as (number | string)[],
     selectedTenantAddons: [] as { label: string; price: number }[],
     selected_staff: '',
+    selected_staff_id: '',
     payment_method: 'Cash / Bayar di Tempat',
     person_count: 1,
     payment_type: 'FULL',
@@ -207,11 +225,11 @@ function BookingFormContent({ initialTenant }: { initialTenant?: Tenant }) {
     custom_notes: ''
   })
   
-  const [addonQuantities, setAddonQuantities] = useState<{ [key: string | number]: number }>({})
+  const [addonQuantities] = useState<{ [key: string | number]: number }>({})
   const [loading, setLoading] = useState<boolean>(false)
-
+  
   // --------------------------------------------------------------------------
-  // 5.4 Side Effects (Deklarasi useEffect Hooks - WAJIB DI ATAS GUARD CLAUSES)
+  // 5.2 Side Effects
   // --------------------------------------------------------------------------
   
   // Effect 1: Fetch Tenant & Initial Data
@@ -248,7 +266,7 @@ function BookingFormContent({ initialTenant }: { initialTenant?: Tenant }) {
           .maybeSingle()
 
         if (tenantErr || !tenantData) {
-          console.error("Tenant tidak ditemukan:", tenantErr)
+          console.error('Tenant tidak ditemukan:', tenantErr)
           return
         }
 
@@ -263,7 +281,7 @@ function BookingFormContent({ initialTenant }: { initialTenant?: Tenant }) {
         const dbPlan = ((tenantData?.subscription_plan || 'PROFESIONAL') as string).toUpperCase()
         const rawCategory = tenantData?.category || 'Layanan'
 
-        const activeTenant = {
+        const activeTenant: Tenant = {
           id: uniqueTenantId,
           client_code: dbClientCode,
           tenant_slug: dbSlug,
@@ -273,7 +291,7 @@ function BookingFormContent({ initialTenant }: { initialTenant?: Tenant }) {
           subscription_plan: dbPlan,
           category: rawCategory,
           staff_label: tenantData?.staff_label || 'Staff',
-          layout_type: tenantData?.layout_type || 'STEP_WIZARD',
+          layout_type: 'STEP_WIZARD',
           theme_color: tenantData?.theme_color || 'rose',
           require_consent: tenantData?.require_consent ?? false,
           custom_terms_text: tenantData?.custom_terms_text || '',
@@ -284,7 +302,9 @@ function BookingFormContent({ initialTenant }: { initialTenant?: Tenant }) {
           qris_url: tenantData?.qris_url || '',
           is_system_maintenance: tenantData?.is_system_maintenance ?? false,
           is_maintenance_mode: tenantData?.is_maintenance_mode ?? false,
-          maintenance_message: tenantData?.maintenance_message || 'Mohon maaf, halaman pemesanan layanan saat ini sedang ditutup sementara.',
+          maintenance_message:
+            tenantData?.maintenance_message ||
+            'Mohon maaf, halaman pemesanan layanan saat ini sedang ditutup sementara.',
           bank_accounts: Array.isArray(tenantData?.bank_accounts) ? tenantData.bank_accounts : [],
           ewallet_accounts: Array.isArray(tenantData?.ewallet_accounts) ? tenantData.ewallet_accounts : [],
           prevent_double_booking: tenantData?.prevent_double_booking ?? true,
@@ -294,30 +314,12 @@ function BookingFormContent({ initialTenant }: { initialTenant?: Tenant }) {
           enable_multi_staff: tenantData?.enable_multi_staff ?? false,
           enable_multi_service: tenantData?.enable_multi_service ?? true,
           enable_notes: tenantData?.enable_notes ?? true,
-          addons: Array.isArray(tenantData?.addons) ? tenantData.addons : []
-        } as Tenant
+          addons: Array.isArray(tenantData?.addons) ? tenantData.addons : [],
+        }
 
         setTenant(activeTenant)
 
-        const { data: slotData } = await supabase
-          .from('tenant_slots')
-          .select('time_slot, max_quota')
-          .eq('tenant_id', uniqueTenantId)
-          .eq('is_active', true)
-          .order('time_slot', { ascending: true })
-
-        if (slotData && slotData.length > 0) {
-          const formattedSlots: ExtendedTimeSlot[] = slotData.map((s) => ({
-            time: s.time_slot.substring(0, 5),
-            time_slot: s.time_slot.substring(0, 5),
-            max_quota: s.max_quota,
-            booked_count: 0
-          }))
-          setAvailableSlots(formattedSlots)
-        } else {
-          setAvailableSlots([])
-        }
-
+        // 1. Fetch Services
         const { data: serviceData } = await supabase
           .from('services')
           .select('*')
@@ -333,6 +335,7 @@ function BookingFormContent({ initialTenant }: { initialTenant?: Tenant }) {
           setServices([])
         }
 
+        // 2. Fetch Staff
         const { data: staffData } = await supabase
           .from('staff')
           .select('*')
@@ -342,12 +345,17 @@ function BookingFormContent({ initialTenant }: { initialTenant?: Tenant }) {
         if (staffData && staffData.length > 0) {
           setStaffList(staffData)
           if (staffData[0].name) {
-            setFormData((prev) => ({ ...prev, selected_staff: staffData[0].name! }))
+            setFormData((prev) => ({
+              ...prev,
+              selected_staff: staffData[0].name!,
+              selected_staff_id: String(staffData[0].id),
+            }))
           }
         } else {
           setStaffList([])
         }
 
+        // 3. Fetch Blocked Slots Initial
         const { data: blockedData } = await supabase
           .from('blocked_slots')
           .select('date, start_time')
@@ -368,13 +376,12 @@ function BookingFormContent({ initialTenant }: { initialTenant?: Tenant }) {
           ...(confirmedReservations?.map((item) => ({
             block_date: item.booking_date,
             block_time: item.booking_time ? item.booking_time.substring(0, 5) : '',
-          })) || [])
+          })) || []),
         ]
 
         setBlockedSlots(combinedBlockedSlots)
-
-      } catch (err) {
-        console.error(err)
+      } catch {
+        console.error('Fetch tenant error:')
       } finally {
         setFetchingServices(false)
       }
@@ -383,33 +390,109 @@ function BookingFormContent({ initialTenant }: { initialTenant?: Tenant }) {
     fetchTenantAndData()
   }, [routerSlug])
 
-  // Effect 2: Availability Check
+  // Effect 2: Fetch Availability secara Dinamis
   useEffect(() => {
-    if (!formData.booking_date || !tenant?.tenant_slug) return
-
     const fetchAvailability = async () => {
+      if (!tenant?.tenant_slug || !formData.booking_date) {
+        return
+      }
+
       setLoadingSlots(true)
       try {
-        const staffParam = formData.selected_staff ? `&staff=${encodeURIComponent(formData.selected_staff)}` : ''
-        const res = await fetch(`/api/availability?date=${formData.booking_date}&tenant_slug=${tenant.tenant_slug}${staffParam}`)
-        
+        const isSpecificStaff =
+          formData.selected_staff &&
+          formData.selected_staff !== 'all' &&
+          formData.selected_staff !== 'any'
+
+        const staffParam = isSpecificStaff
+          ? `&staff=${encodeURIComponent(formData.selected_staff)}`
+          : ''
+
+        const selectedServiceList: string[] = (formData.selected_services || []).map(
+          (item) => String(item)
+        )
+
+        let selectedAddonList: string[] = []
+        if (formData.selectedAddonIds && formData.selectedAddonIds.length > 0) {
+          selectedAddonList = formData.selectedAddonIds.map((id) => String(id))
+        } else if (
+          formData.selectedTenantAddons &&
+          formData.selectedTenantAddons.length > 0
+        ) {
+          selectedAddonList = formData.selectedTenantAddons
+            .map((addon: TenantAddonItem) => {
+              const item = addon as { id?: string | number; name?: string; label?: string }
+              return item.label || item.name || (item.id ? String(item.id) : '')
+            })
+            .filter((val: string) => val.trim().length > 0)
+        }
+
+        const allSelectedItems: string[] = [
+          ...selectedServiceList,
+          ...selectedAddonList,
+        ]
+
+        let totalDuration = 0
+        if (allSelectedItems.length > 0 && services && services.length > 0) {
+          allSelectedItems.forEach((itemIdOrName) => {
+            const foundItem = services.find(
+              (s: ServiceItem) => String(s.id) === itemIdOrName || s.name === itemIdOrName
+            )
+            if (foundItem && foundItem.duration) {
+              totalDuration += Number(foundItem.duration)
+            }
+          })
+        }
+
+        const durationParam = totalDuration > 0 ? `&duration=${totalDuration}` : ''
+        const servicesParam =
+          selectedServiceList.length > 0
+            ? `&services=${encodeURIComponent(JSON.stringify(selectedServiceList))}`
+            : ''
+        const addonsParam =
+          selectedAddonList.length > 0
+            ? `&addons=${encodeURIComponent(JSON.stringify(selectedAddonList))}`
+            : ''
+
+        const res = await fetch(
+          `/api/availability?date=${formData.booking_date}&tenant_slug=${tenant.tenant_slug}${staffParam}${durationParam}${servicesParam}${addonsParam}`
+        )
+
         if (res.ok) {
-          const data = await res.json()
-          setBlockedTimes(data.blockedTimes || [])
-          
-          const activeBookings = (data.bookedReservations || []).filter(
-            (b: { status?: string }) => b.status !== 'cancelled' && b.status !== 'refunded'
+          const data: AvailabilityApiResponse = await res.json()
+
+          const formattedSlots: TimeSlot[] = (data.slots || []).map((slotStr: string) => ({
+            time: slotStr.substring(0, 5),
+            time_slot: slotStr.substring(0, 5),
+            is_available: true,
+            disabled: false,
+          }))
+          setAvailableSlots(formattedSlots)
+
+          const blocked: string[] = (data.blockedTimes || []).map((t) =>
+            String(t).substring(0, 5)
+          )
+          setBlockedTimes(blocked)
+
+          const activeBookings: BookedReservation[] = (data.bookedReservations || []).filter(
+            (b: BookedReservation) =>
+              b.status !== 'cancelled' &&
+              b.status !== 'refunded' &&
+              b.status !== 'rejected'
           )
           setBookedReservations(activeBookings)
-          setAvailableSlots(data.slots || []) 
 
-          if (data.tenantSettings && Object.keys(data.tenantSettings).length > 0) {
+          if (data.tenantSettings) {
             setTenant((prev) => {
               if (!prev) return prev
               return {
                 ...prev,
-                hide_booked_slots: data.tenantSettings.hide_booked_slots ?? prev.hide_booked_slots ?? false,
-                enable_auto_disable_time_slots: data.tenantSettings.enable_auto_disable_time_slots ?? prev.enable_auto_disable_time_slots ?? true,
+                hide_booked_slots:
+                  data.tenantSettings?.hide_booked_slots ?? prev.hide_booked_slots ?? false,
+                enable_auto_disable_time_slots:
+                  data.tenantSettings?.enable_auto_disable_time_slots ??
+                  prev.enable_auto_disable_time_slots ??
+                  true,
               }
             })
           }
@@ -419,6 +502,8 @@ function BookingFormContent({ initialTenant }: { initialTenant?: Tenant }) {
           setAvailableSlots([])
         }
       } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : 'Fetch availability error'
+        console.error('Fetch availability error:', errorMsg, err)
         setBlockedTimes([])
         setBookedReservations([])
         setAvailableSlots([])
@@ -428,13 +513,37 @@ function BookingFormContent({ initialTenant }: { initialTenant?: Tenant }) {
     }
 
     fetchAvailability()
-  }, [formData.booking_date, formData.selected_staff, tenant?.tenant_slug])
+  }, [
+    formData.booking_date,
+    formData.selected_staff,
+    formData.selected_staff_id,
+    formData.selected_services,
+    formData.selectedAddonIds,
+    formData.selectedTenantAddons,
+    tenant?.tenant_slug,
+    services,
+  ])
 
-  // Effect 3: Dynamic QRIS Generation
+  // Effect 3: Auto-Reset Jam Kedatangan Saat Pilihan Tanggal/Staff/Layanan Berubah
+  useEffect(() => {
+    setFormData((prev) => {
+      if (prev.booking_time) {
+        return { ...prev, booking_time: '' }
+      }
+      return prev
+    })
+  }, [
+    formData.booking_date, 
+    formData.selected_staff, 
+    formData.selected_services, 
+    formData.selectedAddonIds,
+    formData.selectedTenantAddons
+  ])
+
+  // Effect 4: Dynamic QRIS Generation
   useEffect(() => {
     let isMounted = true
 
-    // Note: payableAmount akan dihitung setelah Hooks
     const calcPrice = (priceVal?: string | number) => {
       if (typeof priceVal === 'number') return isNaN(priceVal) ? 0 : priceVal
       if (!priceVal) return 0
@@ -496,7 +605,7 @@ function BookingFormContent({ initialTenant }: { initialTenant?: Tenant }) {
         } else {
           setQrisData(null)
         }
-      } catch (err) {
+      } catch {
         if (isMounted) setQrisData(null)
       } finally {
         if (isMounted) setLoadingQris(false)
@@ -513,10 +622,9 @@ function BookingFormContent({ initialTenant }: { initialTenant?: Tenant }) {
   }, [formData.payment_method, formData.payment_type, formData.selected_services, formData.selectedAddonIds, formData.selectedTenantAddons, formData.person_count, addonQuantities, services, tenant, formData.customer_name])
 
   // --------------------------------------------------------------------------
-  // 🛡️ GUARD CLAUSES (Tepat Setelah Seluruh Hook Selesai Dideklarasikan)
+  // 🛡️ GUARD CLAUSES
   // --------------------------------------------------------------------------
   
-  // 1. Tampilan Loading saat Fetching Data Tenant
   if (fetchingServices) {
     return (
       <div className="min-h-screen bg-[#09090b] text-white flex items-center justify-center p-4">
@@ -530,7 +638,6 @@ function BookingFormContent({ initialTenant }: { initialTenant?: Tenant }) {
     )
   }
 
-  // 2. Tampilan Error jika Tenant Tidak Ditemukan
   if (!tenant) {
     return (
       <div className="min-h-screen bg-[#09090b] text-white flex items-center justify-center p-4">
@@ -544,37 +651,44 @@ function BookingFormContent({ initialTenant }: { initialTenant?: Tenant }) {
     )
   }
 
-  // ==========================================================================
-  // ✅ DI BAWAH INI: `tenant` DIJAMIN NON-NULL
-  // ==========================================================================
+  if (tenant?.is_maintenance_mode) {
+    return (
+      <main className="min-h-screen bg-[#09090b] text-zinc-100 flex items-center justify-center p-4 font-sans">
+        <div className="max-w-md w-full bg-zinc-900/90 border border-amber-500/30 rounded-3xl p-8 text-center space-y-5 backdrop-blur-xl shadow-2xl">
+          <h1 className="text-xl font-black tracking-tight text-white uppercase">{tenant.name || 'Reservasi'}</h1>
+          <p className="text-xs font-bold text-amber-400 uppercase tracking-widest">⚠️ TOKO SEMENTARA DITUTUP</p>
+          <p className="text-xs text-zinc-300 leading-relaxed bg-zinc-950/50 p-4 rounded-2xl border border-zinc-800/50">
+            {tenant.maintenance_message || 'Mohon maaf, halaman pemesanan layanan saat ini sedang ditutup sementara.'}
+          </p>
+        </div>
+      </main>
+    )
+  }
 
   // --------------------------------------------------------------------------
-  // 5.2 Derived States & Calculations
+  // 5.3 Derived States & Calculations
   // --------------------------------------------------------------------------
   const mainServices = services.filter((s) => !s.is_addon)
-  
-  const addonServices: AddonService[] = services
-    .filter((s) => s.is_addon)
-    .map((s) => {
-      const parsedPrice = typeof s.price === 'number' ? s.price : Number(s.price || 0)
-      return {
-        id: s.id,
-        tenant_slug: s.tenant_slug || '',
-        name: s.name || '',
-        price: parsedPrice,
-        addon_label: s.name || s.label || '',
-        addon_price: parsedPrice,
-        desc: s.desc || '',
-        long_description: s.long_description || '',
-        image_url: s.image_url || '',
-        duration: s.duration || 0,
-        is_active: (s as unknown as { is_active?: boolean }).is_active ?? true
-      }
-    })
 
-  const currentLayout = tenant.layout_type || 'STEP_WIZARD'
-  const isSinglePage = String(currentLayout).toUpperCase() === 'SINGLE_PAGE'
-  const isWizard = !isSinglePage
+  const addonServices: AddonService[] = services
+  .filter((s) => s.is_addon)
+  .map((s) => {
+    const parsedPrice = typeof s.price === 'number' ? s.price : Number(s.price || 0)
+    return {
+      id: s.id,
+      tenant_slug: s.tenant_slug || '',
+      name: s.name || '',
+      price: parsedPrice,
+      addon_label: s.name || '',
+      addon_price: parsedPrice,
+      desc: s.desc || '',
+      long_description: s.long_description || '',
+      image_url: s.image_url || '',
+      duration: s.duration || 0,
+      is_active: s.is_active ?? true
+    }
+  })
+
   const isNotesEnabled = tenant.enable_notes ?? true
 
   const parsePrice = (priceVal?: string | number) => {
@@ -584,33 +698,105 @@ function BookingFormContent({ initialTenant }: { initialTenant?: Tenant }) {
     return numeric ? parseInt(numeric, 10) : 0
   }
 
+  const getEndTime = (startTime: string, durationMinutes: number): string => {
+    if (!startTime) return ''
+    const [hours, minutes] = startTime.split(':').map(Number)
+    if (isNaN(hours) || isNaN(minutes)) return ''
+
+    const date = new Date()
+    date.setHours(hours, minutes + durationMinutes, 0)
+
+    const endHours = String(date.getHours()).padStart(2, '0')
+    const endMinutes = String(date.getMinutes()).padStart(2, '0')
+    return `${endHours}:${endMinutes}`
+  }
+
+  const calculateTotalDuration = (): number => {
+    let totalMinutes = 0
+
+    const selectedServices = formData.selected_services || []
+    if (selectedServices.length > 0 && services && services.length > 0) {
+      selectedServices.forEach((serviceIdentifier) => {
+        const found = services.find(
+          (s) =>
+            !s.is_addon &&
+            (String(s.id) === String(serviceIdentifier) || s.name === serviceIdentifier)
+        )
+        if (found && found.duration) {
+          totalMinutes += Number(found.duration)
+        }
+      })
+    }
+
+    if (formData.selectedTenantAddons && formData.selectedTenantAddons.length > 0) {
+      formData.selectedTenantAddons.forEach((addonObj) => {
+        const foundAddon = services?.find(
+          (s) =>
+            s.is_addon &&
+            (s.name === addonObj.label ||
+              s.name === (addonObj as unknown as { name?: string }).name ||
+              String(s.id) === String((addonObj as unknown as { id?: string | number }).id))
+        )
+        if (foundAddon && foundAddon.duration) {
+          totalMinutes += Number(foundAddon.duration)
+        }
+      })
+    } else if (formData.selectedAddonIds && formData.selectedAddonIds.length > 0) {
+      formData.selectedAddonIds.forEach((addonIdentifier) => {
+        const foundAddon = services?.find(
+          (s) =>
+            s.is_addon &&
+            (String(s.id) === String(addonIdentifier) || s.name === addonIdentifier)
+        )
+        if (foundAddon && foundAddon.duration) {
+          totalMinutes += Number(foundAddon.duration)
+        }
+      })
+    }
+
+    return totalMinutes > 0 ? totalMinutes : 45
+  }
+
+  const totalDuration = calculateTotalDuration()
+
   const calculateTotal = () => {
-    let serviceTotal = mainServices
-      .filter((s) => s.name && formData.selected_services.includes(s.name))
-      .reduce((sum, item) => sum + parsePrice(item.price), 0)
+    const selectedServices = formData?.selected_services || []
+    const mainServicesList = mainServices || []
 
-    serviceTotal = serviceTotal * formData.person_count
+    let serviceTotal = mainServicesList
+      .filter((s) => s.name && (selectedServices.includes(s.name) || (s.id && selectedServices.includes(String(s.id)))))
+      .reduce((sum, item) => sum + (typeof parsePrice === 'function' ? parsePrice(item.price) : Number(item.price) || 0), 0)
 
-    const extraFeeOld = addonServices
-      .filter((addon) => addon.id !== undefined && formData.selectedAddonIds.includes(addon.id))
-      .reduce((sum, addon) => {
-        const addonKey = addon.id ?? ''
-        const qty = addonQuantities[addonKey] || 1
-        return sum + (parsePrice(addon.addon_price ?? addon.price) * qty)
+    const personCount = Number(formData?.person_count) || 1
+    serviceTotal = serviceTotal * personCount
+
+    let extraFee = 0
+
+    if (formData?.selectedTenantAddons && formData.selectedTenantAddons.length > 0) {
+      extraFee = formData.selectedTenantAddons.reduce((sum, addon) => {
+        const price = typeof parsePrice === 'function' ? parsePrice(addon.price) : Number(addon.price) || 0
+        return sum + price
       }, 0)
+    } else if (formData?.selectedAddonIds && formData.selectedAddonIds.length > 0 && addonServices) {
+      extraFee = addonServices
+        .filter((addon) => addon.id !== undefined && formData.selectedAddonIds.includes(addon.id))
+        .reduce((sum, addon) => {
+          const addonKey = addon.id ?? ''
+          const qty = addonQuantities[addonKey] || 1
+          const price = typeof parsePrice === 'function' ? parsePrice(addon.addon_price ?? addon.price) : Number(addon.price) || 0
+          return sum + (price * qty)
+        }, 0)
+    }
 
-    const extraFeeNew = formData.selectedTenantAddons
-      .reduce((sum, addon) => sum + parsePrice(addon.price), 0)
-
-    return serviceTotal + extraFeeOld + extraFeeNew
+    return serviceTotal + extraFee
   }
 
   const grandTotal = calculateTotal()
 
   const calculateDP = () => {
-    const rawDpValue = tenant.dp_value ?? 50
+    const rawDpValue = tenant?.dp_value ?? 50
     const dpVal = typeof rawDpValue === 'number' ? rawDpValue : Number(rawDpValue || 50)
-    const dpType = tenant.dp_type || 'PERCENTAGE'
+    const dpType = tenant?.dp_type || 'PERCENTAGE'
 
     if (dpType === 'FIXED') {
       return dpVal > grandTotal ? grandTotal : dpVal
@@ -619,19 +805,19 @@ function BookingFormContent({ initialTenant }: { initialTenant?: Tenant }) {
   }
 
   const dpAmount = calculateDP()
-  const payableAmount = formData.payment_type === 'DP' ? dpAmount : grandTotal
+  const payableAmount = formData?.payment_type === 'DP' ? dpAmount : grandTotal
   const remainingAmount = grandTotal - payableAmount
 
   const getAvailablePaymentMethods = () => {
     const methods: { id: string; title: string; detail?: string }[] = []
-    const isPayingDp = formData.payment_type === 'DP' || formData.payment_type === 'PERCENTAGE' || Boolean(tenant.custom_payment_dp)
+    const isPayingDp = formData?.payment_type === 'DP'
 
-    const qris = String(tenant.qris_url || '')
+    const qris = String(tenant?.qris_url || '')
     if (qris && qris.trim() !== '') {
       methods.push({ id: 'QRIS', title: 'QRIS Instan', detail: 'Scan QR langsung dari HP' })
     }
 
-    if (Array.isArray(tenant.bank_accounts) && tenant.bank_accounts.length > 0) {
+    if (Array.isArray(tenant?.bank_accounts) && tenant.bank_accounts.length > 0) {
       tenant.bank_accounts.forEach((bank: BankAccount) => {
         methods.push({
           id: `Transfer ${bank.bank_name}`,
@@ -641,7 +827,7 @@ function BookingFormContent({ initialTenant }: { initialTenant?: Tenant }) {
       })
     }
 
-    if (Array.isArray(tenant.ewallet_accounts) && tenant.ewallet_accounts.length > 0) {
+    if (Array.isArray(tenant?.ewallet_accounts) && tenant.ewallet_accounts.length > 0) {
       tenant.ewallet_accounts.forEach((wallet: EWalletAccount) => {
         methods.push({
           id: wallet.wallet_name,
@@ -665,7 +851,7 @@ function BookingFormContent({ initialTenant }: { initialTenant?: Tenant }) {
   const availablePaymentMethods = getAvailablePaymentMethods()
 
   // --------------------------------------------------------------------------
-  // 5.3 Theme Configuration Helper
+  // 5.4 Theme Configuration Helper
   // --------------------------------------------------------------------------
   const getThemeClasses = (color?: string): ThemeConfig => {
     const trimmedColor = (color || 'rose').trim()
@@ -790,29 +976,30 @@ function BookingFormContent({ initialTenant }: { initialTenant?: Tenant }) {
 
   const handleNextStep = () => {
     if (step === 1) {
-      if (!formData.customer_name || !formData.whatsapp_number) {
-        alert('Mohon isi nama dan nomor WhatsApp!')
+      if (!formData.selected_services || formData.selected_services.length === 0) {
+        alert('Mohon pilih minimal 1 layanan utama!')
         return
       }
-      if (!isValidWhatsAppNumber(formData.whatsapp_number)) {
-        alert('⚠️ Mohon masukkan Nomor WhatsApp yang aktif dan valid! Nomor dengan format dummy/palsu tidak dapat diproses.')
-        return
-      }
+      setStep(2)
+      return
+    }
 
+    if (step === 2) {
       if (!formData.booking_date || !formData.booking_time) {
         alert('Mohon tentukan tanggal dan jam kedatangan!')
         return
       }
+
       if (isSlotBlocked(formData.booking_date, formData.booking_time)) {
         alert('Maaf, tanggal/jam yang Anda pilih sedang tidak tersedia. Silakan pilih jam lain.')
         return
       }
 
-      if (formData.selected_staff && tenant.preventDoubleBooking) {
-        const activeBookings = bookedReservations.filter(
-          (b: Reservation) => (b.time || b.booking_time) === formData.booking_time && b.status !== 'cancelled' && b.status !== 'refunded'
+      if (formData.selected_staff && (tenant?.preventDoubleBooking || tenant?.prevent_double_booking)) {
+        const activeBookings = (bookedReservations || []).filter(
+          (b: BookedReservation) => (b.time || b.booking_time) === formData.booking_time && b.status !== 'cancelled' && b.status !== 'refunded'
         )
-        const currentStaffObj = staffList.find(
+        const currentStaffObj = (staffList || []).find(
           s => s.name === formData.selected_staff || (s.id && s.id.toString() === formData.selected_staff)
         )
         
@@ -828,16 +1015,10 @@ function BookingFormContent({ initialTenant }: { initialTenant?: Tenant }) {
           }
         }
       }
-    }
 
-    if (step === 2) {
-      if (!formData.selected_services || formData.selected_services.length === 0) {
-        alert('Pilih minimal 1 layanan!')
-        return
-      }
+      setStep(3)
+      return
     }
-    
-    setStep((prev) => Math.min(prev + 1, 3))
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -884,17 +1065,22 @@ function BookingFormContent({ initialTenant }: { initialTenant?: Tenant }) {
       whatsapp_number: formData.whatsapp_number,
       booking_date: formData.booking_date,
       booking_time: formData.booking_time,
+      selected_services: formData.selected_services,
       service_name: formattedServicesText,
+      selected_addons: formData.selectedAddonIds,
+      selected_addon_ids: formData.selectedAddonIds,
+      
       staff_name: formData.selected_staff || null,
-      payment_method: formData.payment_method,
-      status: 'pending',
+      staff_id: formData.selected_staff_id || null,
       client_code: tenant.clientCode,
       tenant_slug: tenant.tenantSlug,
       tenant_id: tenant.id || null,
+
       total_price: grandTotal,
       person_count: formData.person_count,
       payment_type: formData.payment_type,
-      selected_addon_ids: formData.selectedAddonIds,
+      payment_method: formData.payment_method,
+      status: 'pending',
       has_eye_allergy_consent: formData.has_consent,
       eye_shape_notes: formData.custom_notes
     }
@@ -909,7 +1095,17 @@ function BookingFormContent({ initialTenant }: { initialTenant?: Tenant }) {
       const result = await response.json()
 
       if (!response.ok) {
-        alert(result.error || 'Gagal membuat reservasi!')
+        if (
+          response.status === 409 || 
+          result.error?.toLowerCase().includes('terisi') || 
+          result.error?.toLowerCase().includes('bentrok')
+        ) {
+          alert('⚠️ Maaf, slot waktu ini baru saja dipesan oleh pelanggan lain. Halaman akan diperbarui.')
+          setFormData((prev) => ({ ...prev, booking_time: '' }))
+        } else {
+          alert(result.error || 'Gagal membuat reservasi!')
+        }
+        
         setLoading(false)
         return
       }
@@ -984,8 +1180,8 @@ function BookingFormContent({ initialTenant }: { initialTenant?: Tenant }) {
             },
             body: formDataBody
           })
-        } catch (err) {
-          console.error('Gagal memicu WA Gateway:', err)
+        } catch {
+          console.error('Gagal memicu WA Gateway:')
         }
       }
 
@@ -994,7 +1190,7 @@ function BookingFormContent({ initialTenant }: { initialTenant?: Tenant }) {
 
       const waUrl = `https://wa.me/${formattedPhone}?text=${encodeURIComponent(messageText)}`
       window.open(waUrl, '_blank')
-    } catch (err: unknown) {
+    } catch {
       alert('Terjadi kesalahan koneksi ke server.')
     } finally {
       setLoading(false)
@@ -1002,7 +1198,7 @@ function BookingFormContent({ initialTenant }: { initialTenant?: Tenant }) {
   }
 
   // --------------------------------------------------------------------------
-  // 5.6 Render Helper Methods (Sub-views)
+  // 5.6 Render Helper Methods
   // --------------------------------------------------------------------------
   const renderQrisSection = () => {
     const qrisSrc = qrisData?.qrUrl || tenant?.qrisUrl
@@ -1023,13 +1219,13 @@ function BookingFormContent({ initialTenant }: { initialTenant?: Tenant }) {
           </div>
         ) : qrisSrc ? (
           <div className="p-2 bg-white rounded-2xl inline-block shadow-2xl border border-zinc-200 overflow-hidden w-full max-w-[260px]">
-            <img
+            <Image
               src={qrisSrc}
-              onError={(e) => { 
-                e.currentTarget.onerror = null
-              }}
               alt={`QRIS ${tenant?.name || 'Tenant'}`}
+              width={400}
+              height={400}
               className="w-full h-auto object-cover rounded-xl mx-auto"
+              unoptimized={qrisSrc.startsWith('data:')}
             />
           </div>
         ) : (
@@ -1043,15 +1239,33 @@ function BookingFormContent({ initialTenant }: { initialTenant?: Tenant }) {
   }
 
   const renderAddonsSection = () => {
-    if (!tenant?.showExtraAddon) return null
     if (!tenant?.addons || tenant.addons.length === 0) return null
 
-    const hasAnyChecked = formData.selectedTenantAddons.length > 0
+    const selectedAddons = formData.selectedTenantAddons || []
+    const selectedIds = formData.selectedAddonIds || []
+    const hasAnyChecked = selectedAddons.length > 0
+
+    const getAddonName = (addon: { name?: string; label?: string; addon_label?: string }) => {
+      return addon?.name || addon?.label || addon?.addon_label || 'Addon'
+    }
+
+    const getAddonPrice = (price: number | string | null | undefined): number => {
+      if (price === null || price === undefined) return 0
+      if (typeof parsePrice === 'function') {
+        return parsePrice(price)
+      }
+      const numericValue = typeof price === 'number' ? price : Number(price)
+      return isNaN(numericValue) ? 0 : numericValue
+    }
 
     return (
       <div 
-        style={hasAnyChecked && theme.inlineBorder ? theme.inlineBorder : undefined}
-        className={`mt-4 border ${hasAnyChecked ? `${theme.accentBorder} shadow-[0_0_25px_rgba(var(--color-primary-rgb),0.25)]` : 'border-zinc-800/80'} rounded-2xl bg-zinc-950/70 overflow-hidden transition-all duration-300 shadow-2xl`}
+        style={hasAnyChecked && theme?.inlineBorder ? theme.inlineBorder : undefined}
+        className={`mt-4 border ${
+          hasAnyChecked 
+            ? `${theme?.accentBorder || 'border-purple-500'} shadow-[0_0_25px_rgba(var(--color-primary-rgb),0.25)]` 
+            : 'border-zinc-800/80'
+        } rounded-2xl bg-zinc-950/70 overflow-hidden transition-all duration-300 shadow-2xl`}
       >
         <div
           onClick={() => setIsAddonExpanded(!isAddonExpanded)}
@@ -1060,13 +1274,17 @@ function BookingFormContent({ initialTenant }: { initialTenant?: Tenant }) {
           <div className="flex items-center space-x-3">
             <input
               type="checkbox"
-              style={theme.inlineStyle ? { accentColor: tenant.themeColor } : undefined}
-              className={`w-4 h-4 rounded-md ${theme.checkbox} cursor-pointer`}
+              style={theme?.inlineStyle ? { accentColor: tenant.themeColor } : undefined}
+              className={`w-4 h-4 rounded-md ${theme?.checkbox || ''} cursor-pointer`}
               checked={hasAnyChecked}
               onClick={(e) => e.stopPropagation()}
               onChange={(e) => {
                 if (!e.target.checked) {
-                  setFormData((prev) => ({ ...prev, selectedTenantAddons: [] }))
+                  setFormData((prev) => ({ 
+                    ...prev, 
+                    selectedTenantAddons: [], 
+                    selectedAddonIds: [] 
+                  }))
                 } else {
                   setIsAddonExpanded(true)
                 }
@@ -1080,10 +1298,10 @@ function BookingFormContent({ initialTenant }: { initialTenant?: Tenant }) {
           <div className="flex items-center space-x-2">
             {hasAnyChecked && (
               <span 
-                style={theme.inlineBgLight && theme.inlineText ? { ...theme.inlineBgLight, ...theme.inlineText } : undefined}
-                className={`text-[10px] px-2.5 py-0.5 rounded-full ${theme.accentBgLight} ${theme.accentText} font-bold border border-current/20`}
+                style={theme?.inlineBgLight && theme?.inlineText ? { ...theme.inlineBgLight, ...theme.inlineText } : undefined}
+                className={`text-[10px] px-2.5 py-0.5 rounded-full ${theme?.accentBgLight || 'bg-purple-900/40'} ${theme?.accentText || 'text-purple-300'} font-bold border border-current/20`}
               >
-                {formData.selectedTenantAddons.length} Dipilih
+                {selectedAddons.length} Dipilih
               </span>
             )}
             <svg
@@ -1100,36 +1318,55 @@ function BookingFormContent({ initialTenant }: { initialTenant?: Tenant }) {
         {isAddonExpanded && (
           <div className="px-3.5 pb-3.5 pt-1 space-y-2.5 border-t border-zinc-800/60 animate-fadeIn">
             {tenant.addons.map((addon, index) => {
-              const isChecked = formData.selectedTenantAddons.some((item) => item.label === addon.label)
+              const addonName = getAddonName(addon)
+              const addonPrice = getAddonPrice(addon.price)
+              const addonId = addon.id || index
+
+              const isChecked = selectedAddons.some(
+                (item) => item.label === addonName
+              ) || selectedIds.includes(addonId)
+
               return (
                 <div
-                  key={index}
-                  style={isChecked && theme.inlineBgLight && theme.inlineBorder ? { ...theme.inlineBgLight, ...theme.inlineBorder } : undefined}
+                  key={addonId}
+                  style={isChecked && theme?.inlineBgLight && theme?.inlineBorder ? { ...theme.inlineBgLight, ...theme.inlineBorder } : undefined}
                   onClick={() => {
-                    if (isChecked) {
-                      setFormData((prev) => ({
-                        ...prev,
-                        selectedTenantAddons: prev.selectedTenantAddons.filter((item) => item.label !== addon.label)
-                      }))
-                    } else {
-                      setFormData((prev) => ({
-                        ...prev,
-                        selectedTenantAddons: [...prev.selectedTenantAddons, { label: addon.label || '', price: parsePrice(addon.price) }]
-                      }))
-                    }
+                    setFormData((prev) => {
+                      const currentAddons = prev.selectedTenantAddons || []
+                      const currentIds = prev.selectedAddonIds || []
+
+                      if (isChecked) {
+                        return {
+                          ...prev,
+                          selectedTenantAddons: currentAddons.filter((item) => item.label !== addonName),
+                          selectedAddonIds: currentIds.filter((id) => id !== addonId)
+                        }
+                      } else {
+                        return {
+                          ...prev,
+                          selectedTenantAddons: [
+                            ...currentAddons, 
+                            { label: addonName, name: addonName, price: addonPrice }
+                          ],
+                          selectedAddonIds: [...currentIds, addonId]
+                        }
+                      }
+                    })
                   }}
                   className={`cursor-pointer p-3.5 rounded-2xl border transition-all duration-300 flex flex-col group ${
                     isChecked
-                      ? `${theme.accentBgLight} ${theme.accentBorder} text-white shadow-[0_0_25px_rgba(var(--color-primary-rgb),0.25)] scale-[1.01]`
+                      ? `${theme.accentBgLight}${theme?.accentBorder || 'border-purple-500'} text-white shadow-[0_0_25px_rgba(var(--color-primary-rgb),0.25)] scale-[1.01]`
                       : 'bg-zinc-950/80 border-zinc-800/80 text-zinc-400 hover:border-zinc-700 hover:bg-zinc-900/60'
                   }`}
                 >
                   <div className="flex items-center justify-between w-full">
                     <div className="flex items-center space-x-3">
                       <div 
-                        style={isChecked && theme.inlineStyle ? { background: tenant.themeColor } : undefined}
+                        style={isChecked && theme?.inlineStyle ? { background: tenant.themeColor } : undefined}
                         className={`w-4 h-4 rounded-lg border flex items-center justify-center transition-all duration-300 ${
-                          isChecked ? `${theme.accentSolidBg} border-white shadow-[0_0_12px_currentColor]` : 'border-zinc-700 bg-zinc-900 group-hover:border-zinc-600'
+                          isChecked 
+                            ? `${theme?.accentSolidBg || 'bg-purple-600'} border-white shadow-[0_0_12px_currentColor]` 
+                            : 'border-zinc-700 bg-zinc-900 group-hover:border-zinc-600'
                         }`}
                       >
                         {isChecked && (
@@ -1139,28 +1376,35 @@ function BookingFormContent({ initialTenant }: { initialTenant?: Tenant }) {
                         )}
                       </div>
                       <div>
-                        <p style={isChecked && theme.inlineText ? theme.inlineText : undefined} className={`text-xs font-bold transition-colors ${isChecked ? theme.accentText : 'text-zinc-200 group-hover:text-white'}`}>
-                          {addon.label}
+                        <p 
+                          style={isChecked && theme?.inlineText ? theme.inlineText : undefined} 
+                          className={`text-xs font-bold transition-colors ${isChecked ? (theme?.accentText || 'text-purple-300') : 'text-zinc-200 group-hover:text-white'}`}
+                        >
+                          {addonName}
                         </p>
-                        {addon.desc && (
-                          <p className="text-[10px] text-zinc-400 mt-0.5 leading-relaxed">{addon.desc}</p>
+                        {(addon.desc || addon.description) && (
+                          <p className="text-[10px] text-zinc-400 mt-0.5 leading-relaxed">
+                            {addon.desc || addon.description}
+                          </p>
                         )}
                       </div>
                     </div>
                     <span className="text-xs font-extrabold text-zinc-200 bg-zinc-900/90 px-3 py-1.5 rounded-xl border border-zinc-800 shadow-inner whitespace-nowrap ml-2">
-                      +Rp {parsePrice(addon.price).toLocaleString('id-ID')}
+                      +Rp {addonPrice.toLocaleString('id-ID')}
                     </span>
                   </div>
 
                   {(addon.long_description || addon.desc || addon.image_url) && (
                     <button
                       type="button"
-                      style={theme.inlineText ? theme.inlineText : undefined}
+                      style={theme?.inlineText ? theme.inlineText : undefined}
                       onClick={(e) => {
                         e.stopPropagation()
-                        setSelectedServiceDetail(addon)
+                        if (typeof setSelectedServiceDetail === 'function') {
+                          setSelectedServiceDetail(addon)
+                        }
                       }}
-                      className={`mt-2.5 self-start inline-flex items-center space-x-1 text-[10px] font-bold ${theme.accentText} hover:underline`}
+                      className={`mt-2.5 self-start inline-flex items-center space-x-1 text-[10px] font-bold ${theme?.accentText || 'text-purple-400'} hover:underline`}
                     >
                       <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -1178,38 +1422,7 @@ function BookingFormContent({ initialTenant }: { initialTenant?: Tenant }) {
   }
 
   // --------------------------------------------------------------------------
-  // 5.7 Early Return Views (Loading & Maintenance)
-  // --------------------------------------------------------------------------
-  if (fetchingServices) {
-    return (
-      <main className="min-h-screen bg-[#09090b] text-white flex items-center justify-center font-sans">
-        <div className="flex flex-col items-center space-y-3">
-          <div style={theme.inlineStyle ? { background: tenant.themeColor } : undefined} className={`w-8 h-8 border-2 ${theme.accentSolidBg} border-t-transparent rounded-full animate-spin shadow-[0_0_20px_currentColor]`}></div>
-          <p className="text-xs text-zinc-400 font-medium tracking-wide">Memuat Halaman Reservasi...</p>
-        </div>
-      </main>
-    )
-  }
-
-  if (tenant?.is_maintenance_mode) {
-    return (
-      <main className="min-h-screen bg-[#09090b] text-zinc-100 flex items-center justify-center p-4 font-sans">
-        <div 
-          style={theme.inlineBorder ? theme.inlineBorder : undefined}
-          className={`max-w-md w-full bg-zinc-900/90 border ${theme.accentBorder} rounded-3xl p-8 text-center space-y-5 backdrop-blur-xl shadow-2xl`}
-        >
-          <h1 className="text-xl font-black tracking-tight text-white uppercase">{tenant.name || 'Reservasi'}</h1>
-          <p className="text-xs font-bold text-amber-400 uppercase tracking-widest">⚠️ TOKO SEMENTARA DITUTUP</p>
-          <p className="text-xs text-zinc-300 leading-relaxed bg-zinc-950/50 p-4 rounded-2xl border border-zinc-800/50">
-            {tenant.maintenance_message || 'Mohon maaf, halaman pemesanan layanan saat ini sedang ditutup sementara.'}
-          </p>
-        </div>
-      </main>
-    )
-  }
-
-  // --------------------------------------------------------------------------
-  // 5.8 Main JSX Render
+  // 5.7 Main JSX Render
   // --------------------------------------------------------------------------
   return (
     <main className="min-h-screen bg-[#060608] bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(120,119,198,0.12),rgba(255,255,255,0))] text-zinc-100 flex items-center justify-center p-3 sm:p-6 font-sans relative overflow-x-hidden">
@@ -1246,638 +1459,308 @@ function BookingFormContent({ initialTenant }: { initialTenant?: Tenant }) {
           <h1 className="text-2xl font-black tracking-tight text-white uppercase drop-shadow-md">{tenant.name}</h1>
           <p style={theme.inlineText ? theme.inlineText : undefined} className={`text-[11px] font-extrabold uppercase tracking-[0.25em] mt-1.5 ${theme.accentText}`}>{tenant.category}</p>
 
-          {/* INDIKATOR STEP (Hanya jika layoutType = STEP_WIZARD) */}
-          {isWizard && (
-            <div className="flex items-center justify-center space-x-2.5 mt-5">
-              {[1, 2, 3].map((s) => (
-                <div
-                  key={s}
-                  style={step === s && theme.inlineStyle ? { ...theme.inlineStyle, boxShadow: `0 0 20px ${tenant.themeColor}` } : undefined}
-                  className={`h-1.5 rounded-full transition-all duration-500 ease-out ${
-                    step === s ? `w-12 ${theme.accentBg} shadow-[0_0_20px_currentColor]` : 'w-2.5 bg-zinc-800'
-                  }`}
-                />
-              ))}
-            </div>
-          )}
+          {/* INDIKATOR STEP WIZARD */}
+          <div className="flex items-center justify-center space-x-2.5 mt-5">
+            {[1, 2, 3].map((s) => (
+              <div
+                key={s}
+                style={step === s && theme.inlineStyle ? { ...theme.inlineStyle, boxShadow: `0 0 20px ${tenant.themeColor}` } : undefined}
+                className={`h-1.5 rounded-full transition-all duration-500 ease-out ${
+                  step === s ? `w-12 ${theme.accentBg} shadow-[0_0_20px_currentColor]` : 'w-2.5 bg-zinc-800'
+                }`}
+              />
+            ))}
+          </div>
         </div>
 
         {/* FORM CONTENT */}
         <form 
-        onSubmit={handleSubmit} 
-        onKeyDown={(e) => {
-          // Mencegah submit form saat menekan Enter di Step 1 & Step 2
-          if (e.key === 'Enter' && step < 3) {
-            e.preventDefault()
-          }
-        }}
-        className="p-6 space-y-5"
-      >
-        {/* OPSI 1: STEP WIZARD LAYOUT */}
-        {isWizard && (
-          <>
-            {/* STEP 1: DATA DIRI & WAKTU */}
-            {step === 1 && (
-                <div className="space-y-4 animate-fadeIn">
-                  <div className="flex items-center justify-between">
-                    <h2 className="text-[11px] font-extrabold text-zinc-300 uppercase tracking-widest">Langkah 1 dari 3: Data Diri & Waktu</h2>
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] font-semibold text-zinc-300 uppercase tracking-wider mb-1.5">Nama Lengkap</label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="Masukkan nama kamu"
-                      className={`w-full px-4.5 py-3.5 bg-zinc-900/90 border border-zinc-800/90 rounded-2xl text-zinc-100 placeholder-zinc-500 text-sm outline-none transition-all duration-300 ${theme.accentRing}`}
-                      value={formData.customer_name || ''}
-                      onChange={(e) => setFormData({ ...formData, customer_name: e.target.value })}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] font-semibold text-zinc-300 uppercase tracking-wider mb-1.5">Nomor WhatsApp</label>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      required
-                      placeholder="Contoh: 081234567890"
-                      className={`w-full px-4.5 py-3.5 bg-zinc-900/90 border border-zinc-800/90 rounded-2xl text-zinc-100 placeholder-zinc-500 text-sm outline-none transition-all duration-300 ${theme.accentRing}`}
-                      value={formData.whatsapp_number || ''}
-                      onChange={(e) => setFormData({ ...formData, whatsapp_number: e.target.value })}
-                    />
-                    <p className="text-[11px] text-zinc-300 italic leading-tight mt-1.5 font-medium">
-                      Pastikan nomor WhatsApp aktif untuk menerima konfirmasi & pengingat jadwal.
-                    </p>
-                  </div>
-
-                  {tenant?.enable_guest_count && (
-                    <div>
-                      <label className="block text-[11px] font-semibold text-zinc-300 uppercase tracking-wider mb-1.5">
-                        Jumlah Orang / Pasien
-                      </label>
-                      <div className="grid grid-cols-5 gap-2">
-                        {Array.from({ length: Number(tenant?.maxPersonPerBooking || 5) }, (_, i) => i + 1).map((num: number) => {
-                          const isSelected = formData.person_count === num
-                          return (
-                            <button
-                              type="button"
-                              key={num}
-                              onClick={() => setFormData((prev) => ({ ...prev, person_count: num }))}
-                              className={`py-2.5 text-xs font-bold rounded-2xl border transition-all duration-300 ${
-                                isSelected
-                                  ? 'border-transparent shadow-[0_0_25px_rgba(var(--color-primary-rgb),0.5)] scale-[1.03]'
-                                  : 'bg-zinc-900/80 border-zinc-800/90 text-zinc-300 hover:border-zinc-700 hover:text-white'
-                              }`}
-                              style={
-                                isSelected
-                                  ? {
-                                      ...(theme.inlineStyle || {}),
-                                      color: '#000000',
-                                    }
-                                  : undefined
-                              }
-                            >
-                              {num}
-                            </button>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  {isNotesEnabled && (
-                    <div>
-                      <label className="block text-[11px] font-semibold text-zinc-300 uppercase tracking-wider mb-1.5">Catatan Khusus (Opsional)</label>
-                      <input
-                        type="text"
-                        placeholder="Misal: Keluhan / Model request"
-                        className={`w-full px-4 py-3 bg-zinc-900/90 border border-zinc-800/90 rounded-2xl text-zinc-100 placeholder-zinc-500 text-sm outline-none transition-all duration-300 ${theme.accentRing}`}
-                        value={formData.custom_notes || ''}
-                        onChange={(e) => setFormData({ ...formData, custom_notes: e.target.value })}
-                      />
-                    </div>
-                  )}
-
-                  {tenant?.enable_multi_staff && staffList?.length > 0 && (
-                    <div>
-                      <label className="block text-[11px] font-semibold text-zinc-300 uppercase tracking-wider mb-1.5">
-                        {tenant.staffLabel || 'Pilih Staff / Terapis'}
-                      </label>
-                      <div className="grid grid-cols-2 gap-2.5">
-                        {staffList.map((st) => {
-                          const isSelected = formData.selected_staff === st.name
-                          return (
-                            <button
-                              type="button"
-                              key={st.id}
-                              style={isSelected && theme.inlineBgLight && theme.inlineBorder ? { ...theme.inlineBgLight, ...theme.inlineBorder } : undefined}
-                              onClick={async () => {
-                                setFormData(prev => ({ ...prev, selected_staff: st.name || '', booking_time: '' }))
-                              }}
-                              className={`py-3 px-3.5 text-xs font-semibold rounded-2xl border transition-all duration-300 text-left ${
-                                isSelected 
-                                  ? `${theme.accentBgLight} ${theme.accentBorder} text-white shadow-[0_0_25px_rgba(var(--color-primary-rgb),0.3)] scale-[1.01]` 
-                                  : 'bg-zinc-900/80 border-zinc-800/90 text-zinc-300 hover:border-zinc-700 hover:bg-zinc-900'
-                              }`}
-                            >
-                              <p style={isSelected && theme.inlineText ? theme.inlineText : undefined} className={`text-sm font-bold ${isSelected ? theme.accentText : 'text-zinc-100'}`}>{st.name}</p>
-                              <p className="text-[11px] text-zinc-300 font-medium mt-0.5">{st.role}</p>
-                            </button>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="space-y-3 pt-1">
-                    <div>
-                      <label className="block text-[11px] font-semibold text-zinc-300 uppercase tracking-wider mb-1.5">Tanggal Kedatangan</label>
-                      <input
-                        type="date"
-                        required
-                        className={`w-full px-4 py-3 bg-zinc-900/90 border border-zinc-800/90 rounded-2xl text-zinc-100 text-xs outline-none transition-all duration-300 [color-scheme:dark] ${theme.accentRing}`}
-                        value={formData.booking_date || ''}
-                        onChange={(e) => setFormData({ ...formData, booking_date: e.target.value })}
-                      />
-                    </div>
-
-                    <div>
-                      <div className="flex justify-between items-center mb-1.5">
-                        <label className="block text-[11px] font-semibold text-zinc-300 uppercase tracking-wider">Pilih Jam Kedatangan</label>
-                        {loadingSlots && <span style={theme.inlineText ? theme.inlineText : undefined} className={`text-[10px] font-bold animate-pulse ${theme.accentText}`}>Memuat ketersediaan...</span>}
-                      </div>
-                      
-                      {!formData.booking_date ? (
-                        <p className="text-[11px] text-zinc-300 font-medium italic p-3.5 bg-zinc-900/50 border border-zinc-800/80 rounded-2xl text-center">
-                          Silakan pilih tanggal kedatangan terlebih dahulu.
-                        </p>
-                      ) : (
-                        <TimePicker 
-                          availableSlots={availableSlots}
-                          blockedTimes={blockedTimes}
-                          selectedTime={formData.booking_time}
-                          onSelectTime={(time: string) => setFormData(prev => ({ ...prev, booking_time: time }))}
-                          tenantData={tenant}
-                          theme={theme}
-                        />
-                      )}
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={handleNextStep}
-                    className="w-full py-4 px-4 rounded-2xl font-extrabold text-xs text-black transition-all duration-300 mt-3 tracking-wider uppercase transform active:scale-[0.99] shadow-[0_4px_30px_rgba(var(--color-primary-rgb),0.5)]"
-                    style={{
-                      ...(theme.inlineStyle || {}),
-                      color: '#000000',
-                    }}
-                  >
-                    Lanjut Pilih Layanan &rarr;
-                  </button>
-                </div>
-              )}
-
-            {/* STEP 2: LAYANAN & ADD-ON */}
-            {step === 2 && (
-                <div className="space-y-4 animate-fadeIn">
-                  <h2 className="text-[11px] font-extrabold text-zinc-300 uppercase tracking-widest">Langkah 2 dari 3: Pilih Layanan & Add-on</h2>
-                  
-                  <div className="space-y-2.5">
-                    <div className="flex justify-between items-center">
-                      <label className="block text-[11px] font-semibold text-zinc-300 uppercase tracking-wider">Pilih Layanan Utama</label>
-                      {!tenant.enable_multi_service ? (
-                        <span className="text-[10px] text-zinc-300 font-medium">*Pilih 1 layanan</span>
-                      ) : (
-                        <span style={theme.inlineText ? theme.inlineText : undefined} className={`text-[10px] ${theme.accentText} font-bold`}>*Bisa pilih lebih dari 1</span>
-                      )}
-                    </div>
-
-                    {fetchingServices ? (
-                      <p className="text-xs text-zinc-300 font-medium animate-pulse text-center py-6">Memuat layanan...</p>
-                    ) : mainServices.length === 0 ? (
-                      <p className="text-xs text-zinc-300 font-medium text-center py-6">Belum ada layanan tersedia.</p>
-                    ) : (
-                      <div className="grid grid-cols-1 gap-3">
-                        {mainServices.map((item) => {
-                          const active = item.name ? formData.selected_services.includes(item.name) : false
-                          return (
-                            <div
-                              key={item.id}
-                              style={active && theme.inlineBgLight && theme.inlineBorder ? { ...theme.inlineBgLight, ...theme.inlineBorder } : undefined}
-                              onClick={() => item.name && handleServiceSelect(item.name)}
-                              className={`cursor-pointer p-4 rounded-2xl border transition-all duration-300 flex flex-col group ${
-                                active 
-                                  ? `${theme.accentBgLight} ${theme.accentBorder} text-white shadow-[0_0_25px_rgba(var(--color-primary-rgb),0.25)] scale-[1.01]` 
-                                  : 'bg-zinc-900/80 border-zinc-800/90 text-zinc-300 hover:border-zinc-700 hover:bg-zinc-900'
-                              }`}
-                            >
-                              <div className="flex items-center justify-between w-full">
-                                <div className="flex items-center space-x-3.5">
-                                  {tenant.enable_multi_service && (
-                                    <div 
-                                      style={active && theme.inlineStyle ? { background: tenant.themeColor } : undefined}
-                                      className={`w-4.5 h-4.5 rounded-lg border flex items-center justify-center transition-all duration-300 ${
-                                        active ? `${theme.accentSolidBg} border-white shadow-[0_0_12px_currentColor]` : 'border-zinc-700 bg-zinc-900 group-hover:border-zinc-600'
-                                      }`}
-                                    >
-                                      {active && (
-                                        <svg className="w-3 h-3 text-zinc-950 stroke-[3]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                                        </svg>
-                                      )}
-                                    </div>
-                                  )}
-                                  <div>
-                                    <p style={active && theme.inlineText ? theme.inlineText : undefined} className={`text-xs font-bold transition-colors ${active ? theme.accentText : 'text-zinc-100 group-hover:text-white'}`}>{item.name}</p>
-                                    <p className="text-[11px] text-zinc-300 font-medium mt-0.5 leading-relaxed">{item.desc}</p>
-                                  </div>
-                                </div>
-                                <span className="text-xs font-extrabold text-white bg-zinc-900/90 px-3 py-1.5 rounded-xl border border-zinc-800 shadow-inner whitespace-nowrap ml-2">
-                                  Rp {parsePrice(item.price).toLocaleString('id-ID')}
-                                </span>
-                              </div>
-
-                              {(item.long_description || item.desc || item.image_url) && (
-                                <button
-                                  type="button"
-                                  style={theme.inlineText ? theme.inlineText : undefined}
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    setSelectedServiceDetail(item)
-                                  }}
-                                  className={`mt-2.5 self-start inline-flex items-center space-x-1 text-[10px] font-bold ${theme.accentText} hover:underline`}
-                                >
-                                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                  </svg>
-                                  <span>Lihat Detail Paket</span>
-                                </button>
-                              )}
-                            </div>
-                          )
-                        })}
-                      </div>
-                    )}
-                  </div>
-
-                  {renderAddonsSection()}
-
-                  <div className="flex space-x-3 pt-2">
-                    <button
-                      type="button"
-                      onClick={handlePrevStep}
-                      className="w-1/3 py-3.5 rounded-2xl font-bold text-xs bg-zinc-900/90 text-zinc-200 border border-zinc-800 hover:bg-zinc-800 hover:text-white transition-all duration-300 shadow-sm"
-                    >
-                      &larr; Kembali
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleNextStep}
-                      className="w-2/3 py-3.5 rounded-2xl font-extrabold text-xs transition-all duration-300 shadow-xl"
-                      style={{
-                        ...theme.inlineStyle,
-                        color: '#000000',
-                      }}
-                    >
-                      Lanjut Ringkasan &rarr;
-                    </button>
-                  </div>
-                </div>
-              )}
-
-            {/* STEP 3: RINGKASAN & PEMBAYARAN */}
-            {step === 3 && (
-              <div className="space-y-4 animate-fadeIn">
-                {/* Ringkasan & Metode Pembayaran */}
-
-                <div className="flex space-x-3 pt-2">
-                  <button
-                    type="button"
-                    onClick={handlePrevStep}
-                    className="w-1/3 py-3.5 rounded-2xl font-bold text-xs bg-zinc-900/90 text-zinc-200 border border-zinc-800 hover:bg-zinc-800 hover:text-white transition-all duration-300 shadow-sm"
-                  >
-                    &larr; Kembali
-                  </button>
-
-                  <button
-                    type="submit"
-                    disabled={loading || (tenant?.requireConsent && !formData?.has_consent)}
-                    className={`w-2/3 font-extrabold py-3.5 rounded-2xl transition-all duration-300 shadow-xl text-xs flex items-center justify-center space-x-2 tracking-wider uppercase transform active:scale-[0.99] ${
-                      loading || (tenant?.requireConsent && !formData?.has_consent)
-                        ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed opacity-60'
-                        : ''
-                    }`}
-                    style={
-                      loading || (tenant?.requireConsent && !formData?.has_consent)
-                        ? undefined
-                        : {
-                            ...theme.inlineStyle,
-                            color: '#000000',
-                          }
-                    }
-                  >
-                    {loading ? 'Memproses...' : 'Kirim Konfirmasi via WhatsApp'}
-                  </button>
-                </div>
-              </div>
-            )}
-          </>
-        )}
-      </form>
-
-          {/* -------------------------------------------------------- */}
-          {/* OPSI 2: SINGLE PAGE LAYOUT (SEMUA DALAM 1 HALAMAN UTUH)  */}
-          {/* -------------------------------------------------------- */}
-          {isSinglePage && (
-            <div className="space-y-6 animate-fadeIn">
-              
-              {/* Bagian 1: Data Diri & Waktu */}
-              <div className="space-y-4">
-                <h2 className="text-[11px] font-extrabold text-zinc-300 uppercase tracking-widest border-b border-zinc-800 pb-2">
-                  1. Informasi Data Diri & Waktu
+          onSubmit={handleSubmit} 
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && step < 3) {
+              e.preventDefault()
+            }
+          }}
+          className="p-6 space-y-5"
+        >
+          {/* STEP 1: PILIH LAYANAN & TERAPIS */}
+          {step === 1 && (
+            <div className="space-y-4 animate-fadeIn">
+              <div className="flex items-center justify-between">
+                <h2 className="text-[11px] font-extrabold text-zinc-300 uppercase tracking-widest">
+                  Langkah 1 dari 3: Pilih Layanan & Terapis
                 </h2>
+              </div>
 
+              {/* PILIH STAFF / TERAPIS */}
+              {tenant?.enable_multi_staff && staffList?.length > 0 && (
                 <div>
-                  <label className="block text-[11px] font-semibold text-zinc-300 uppercase tracking-wider mb-1.5">Nama Lengkap</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Masukkan nama kamu"
-                    className={`w-full px-4.5 py-3.5 bg-zinc-900/90 border border-zinc-800/90 rounded-2xl text-zinc-100 placeholder-zinc-500 text-sm outline-none transition-all duration-300 ${theme.accentRing}`}
-                    value={formData.customer_name || ''}
-                    onChange={(e) => setFormData((prev) => ({ ...prev, customer_name: e.target.value }))}
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-semibold text-zinc-300 uppercase tracking-wider mb-1.5">Nomor WhatsApp</label>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    required
-                    placeholder="Contoh: 081234567890"
-                    className={`w-full px-4.5 py-3.5 bg-zinc-900/90 border border-zinc-800/90 rounded-2xl text-zinc-100 placeholder-zinc-500 text-sm outline-none transition-all duration-300 ${theme.accentRing}`}
-                    value={formData.whatsapp_number || ''}
-                    onChange={(e) => setFormData((prev) => ({ ...prev, whatsapp_number: e.target.value }))}
-                  />
-                  <p className="text-[11px] text-zinc-300 italic leading-tight mt-1.5 font-medium">
-                    Pastikan nomor WhatsApp aktif untuk menerima konfirmasi & pengingat jadwal.
-                  </p>
-                </div>
-
-                {tenant?.enable_guest_count && (
-                  <div>
-                    <label className="block text-[11px] font-semibold text-zinc-300 uppercase tracking-wider mb-1.5">
-                      Jumlah Orang / Pasien
-                    </label>
-                    <div className="grid grid-cols-5 gap-2">
-                      {Array.from({ length: Number(tenant?.maxPersonPerBooking || 5) }, (_, i) => i + 1).map((num: number) => {
-                        const isSelected = formData.person_count === num
-                        return (
-                          <button
-                            type="button"
-                            key={num}
-                            onClick={() => setFormData((prev) => ({ ...prev, person_count: num }))}
-                            className={`py-2.5 text-xs font-bold rounded-2xl border transition-all duration-300 ${
-                              isSelected
-                                ? 'border-transparent shadow-[0_0_25px_rgba(var(--color-primary-rgb),0.5)] scale-[1.03]'
-                                : 'bg-zinc-900/80 border-zinc-800/90 text-zinc-300 hover:border-zinc-700 hover:text-white'
-                            }`}
-                            style={
-                              isSelected
-                                ? {
-                                    ...(theme.inlineStyle || {}),
-                                    color: '#000000',
-                                  }
-                                : undefined
-                            }
-                          >
-                            {num}
-                          </button>
-                        )
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                {isNotesEnabled && (
-                  <div>
-                    <label className="block text-[11px] font-semibold text-zinc-300 uppercase tracking-wider mb-1.5">Catatan Khusus (Opsional)</label>
-                    <input
-                      type="text"
-                      placeholder="Misal: Keluhan / Model request"
-                      className={`w-full px-4 py-3 bg-zinc-900/90 border border-zinc-800/90 rounded-2xl text-zinc-100 placeholder-zinc-500 text-sm outline-none transition-all duration-300 ${theme.accentRing}`}
-                      value={formData.custom_notes || ''}
-                      onChange={(e) => setFormData((prev) => ({ ...prev, custom_notes: e.target.value }))}
-                    />
-                  </div>
-                )}
-
-                {tenant?.enable_multi_staff && staffList && staffList.length > 0 && (
-                  <div>
-                    <label className="block text-[11px] font-semibold text-zinc-300 uppercase tracking-wider mb-1.5">
-                      {tenant.staffLabel || 'Pilih Staff / Terapis'}
-                    </label>
-                    <div className="grid grid-cols-2 gap-2.5">
-                      {staffList.map((st) => {
-                        const isSelected = formData.selected_staff === st.name
-                        return (
-                          <button
-                            type="button"
-                            key={st.id}
-                            style={isSelected && theme.inlineBgLight && theme.inlineBorder ? { ...theme.inlineBgLight, ...theme.inlineBorder } : undefined}
-                            onClick={() => setFormData((prev) => ({ ...prev, selected_staff: st.name || '', booking_time: '' }))}
-                            className={`py-3 px-3.5 text-xs font-semibold rounded-2xl border transition-all duration-300 text-left ${
-                              isSelected 
-                                ? `${theme.accentBgLight}${theme.accentBorder} text-white shadow-[0_0_25px_rgba(var(--color-primary-rgb),0.3)] scale-[1.01]` 
-                                : 'bg-zinc-900/80 border-zinc-800/90 text-zinc-300 hover:border-zinc-700 hover:bg-zinc-900'
-                            }`}
-                          >
-                            <p style={isSelected && theme.inlineText ? theme.inlineText : undefined} className={`text-sm font-bold ${isSelected ? theme.accentText : 'text-zinc-100'}`}>{st.name}</p>
-                            <p className="text-[11px] text-zinc-300 font-medium mt-0.5">{st.role}</p>
-                          </button>
-                        )
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                <div className="space-y-3 pt-1">
-                  <div>
-                    <label className="block text-[11px] font-semibold text-zinc-300 uppercase tracking-wider mb-1.5">Tanggal Kedatangan</label>
-                    <input
-                      type="date"
-                      required
-                      className={`w-full px-4 py-3 bg-zinc-900/90 border border-zinc-800/90 rounded-2xl text-zinc-100 text-xs outline-none transition-all duration-300 [color-scheme:dark] ${theme.accentRing}`}
-                      value={formData.booking_date || ''}
-                      onChange={(e) => setFormData((prev) => ({ ...prev, booking_date: e.target.value }))}
-                    />
-                  </div>
-
-                  <div>
-                    <div className="flex justify-between items-center mb-1.5">
-                      <label className="block text-[11px] font-semibold text-zinc-300 uppercase tracking-wider">Pilih Jam Kedatangan</label>
-                      {loadingSlots && <span style={theme.inlineText ? theme.inlineText : undefined} className={`text-[10px] font-bold animate-pulse ${theme.accentText}`}>Memuat ketersediaan...</span>}
-                    </div>
-                    
-                    {!formData.booking_date ? (
-                      <p className="text-[11px] text-zinc-300 font-medium italic p-3.5 bg-zinc-900/50 border border-zinc-800/80 rounded-2xl text-center">
-                        Silakan pilih tanggal kedatangan terlebih dahulu.
-                      </p>
-                    ) : (
-                      <TimePicker 
-                        availableSlots={availableSlots}
-                        blockedTimes={blockedTimes}
-                        selectedTime={formData.booking_time}
-                        onSelectTime={(time: string) => setFormData((prev) => ({ ...prev, booking_time: time }))}
-                        tenantData={tenant}
-                        theme={theme}
-                      />
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Bagian 2: Pilih Layanan & Add-on */}
-              <div className="space-y-4 pt-2">
-                <h2 className="text-[11px] font-extrabold text-zinc-300 uppercase tracking-widest border-b border-zinc-800 pb-2">
-                  2. Pilih Layanan & Add-on
-                </h2>
-
-                <div className="space-y-2.5">
-                  <div className="flex justify-between items-center">
-                    <label className="block text-[11px] font-semibold text-zinc-300 uppercase tracking-wider">Pilih Layanan Utama</label>
-                    {!tenant?.enable_multi_service ? (
-                      <span className="text-[10px] text-zinc-300 font-medium">*Pilih 1 layanan</span>
-                    ) : (
-                      <span style={theme.inlineText ? theme.inlineText : undefined} className={`text-[10px] ${theme.accentText} font-bold`}>*Bisa pilih lebih dari 1</span>
-                    )}
-                  </div>
-
-                  {fetchingServices ? (
-                    <p className="text-xs text-zinc-300 font-medium animate-pulse text-center py-6">Memuat layanan...</p>
-                  ) : mainServices.length === 0 ? (
-                    <p className="text-xs text-zinc-300 font-medium text-center py-6">Belum ada layanan tersedia.</p>
-                  ) : (
-                    <div className="grid grid-cols-1 gap-3">
-                      {mainServices.map((item) => {
-                        const active = item.name ? formData.selected_services.includes(item.name) : false
-                        return (
-                          <div
-                            key={item.id}
-                            style={active && theme.inlineBgLight && theme.inlineBorder ? { ...theme.inlineBgLight, ...theme.inlineBorder } : undefined}
-                            onClick={() => item.name && handleServiceSelect(item.name)}
-                            className={`cursor-pointer p-4 rounded-2xl border transition-all duration-300 flex flex-col group ${
-                              active 
-                                ? `${theme.accentBgLight}${theme.accentBorder} text-white shadow-[0_0_25px_rgba(var(--color-primary-rgb),0.25)] scale-[1.01]` 
-                                : 'bg-zinc-900/80 border-zinc-800/90 text-zinc-300 hover:border-zinc-700 hover:bg-zinc-900'
-                            }`}
-                          >
-                            <div className="flex items-center justify-between w-full">
-                              <div className="flex items-center space-x-3.5">
-                                {tenant?.enable_multi_service && (
-                                  <div 
-                                    style={active && theme.inlineStyle ? { background: tenant.themeColor } : undefined}
-                                    className={`w-4.5 h-4.5 rounded-lg border flex items-center justify-center transition-all duration-300 ${
-                                      active ? `${theme.accentSolidBg} border-white shadow-[0_0_12px_currentColor]` : 'border-zinc-700 bg-zinc-900 group-hover:border-zinc-600'
-                                    }`}
-                                  >
-                                    {active && (
-                                      <svg className="w-3 h-3 text-zinc-950 stroke-[3]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                                      </svg>
-                                    )}
-                                  </div>
-                                )}
-                                <div>
-                                  <p style={active && theme.inlineText ? theme.inlineText : undefined} className={`text-xs font-bold transition-colors ${active ? theme.accentText : 'text-zinc-100 group-hover:text-white'}`}>{item.name}</p>
-                                  <p className="text-[11px] text-zinc-300 font-medium mt-0.5 leading-relaxed">{item.desc}</p>
-                                </div>
-                              </div>
-                              <span className="text-xs font-extrabold text-white bg-zinc-900/90 px-3 py-1.5 rounded-xl border border-zinc-800 shadow-inner whitespace-nowrap ml-2">
-                                Rp {parsePrice(item.price).toLocaleString('id-ID')}
-                              </span>
-                            </div>
-
-                            {(item.long_description || item.desc || item.image_url) && (
-                              <button
-                                type="button"
-                                style={theme.inlineText ? theme.inlineText : undefined}
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  setSelectedServiceDetail(item)
-                                }}
-                                className={`mt-2.5 self-start inline-flex items-center space-x-1 text-[10px] font-bold ${theme.accentText} hover:underline`}
-                              >
-                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                </svg>
-                                <span>Lihat Detail Paket</span>
-                              </button>
-                            )}
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )}
-                </div>
-
-                {renderAddonsSection()}
-              </div>
-
-              {/* Bagian 3: Ringkasan & Pembayaran */}
-              <div className="space-y-4 pt-2">
-                <h2 className="text-[11px] font-extrabold text-zinc-300 uppercase tracking-widest border-b border-zinc-800 pb-2">
-                  3. Ringkasan & Pembayaran
-                </h2>
-
-                <div 
-                  style={theme.inlineBorder ? theme.inlineBorder : undefined}
-                  className={`p-4.5 bg-zinc-900/90 border ${theme.accentBorder} rounded-2xl space-y-3 text-xs shadow-2xl backdrop-blur-md`}
-                >
-                  <div className="flex justify-between text-zinc-300 font-medium">
-                    <span>Layanan {formData.person_count > 1 ? `(${formData.person_count} Orang)` : ''}</span>
-                    <span className="font-bold text-white">
-                      Rp {((mainServices
-                        .filter((s) => s.name && formData.selected_services.includes(s.name))
-                        .reduce((sum, item) => sum + parsePrice(item.price), 0)) * formData.person_count).toLocaleString('id-ID')}
-                    </span>
-                  </div>
-
-                  {formData.selectedTenantAddons.map((ta, idx) => (
-                    <div key={idx} className="flex justify-between text-zinc-300 text-xs font-medium">
-                      <span>{ta.label}</span>
-                      <span className="font-bold text-white">Rp {parsePrice(ta.price).toLocaleString('id-ID')}</span>
-                    </div>
-                  ))}
-
-                  <div className="border-t border-zinc-800 pt-3 flex justify-between font-black text-white text-sm">
-                    <span>Total Biaya Keseluruhan</span>
-                    <span style={theme.inlineText ? theme.inlineText : undefined} className={`font-black ${theme.accentText} drop-shadow-[0_0_12px_rgba(var(--color-primary-rgb),0.6)]`}>
-                      Rp {grandTotal.toLocaleString('id-ID')}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="block text-[10px] font-bold text-zinc-300 uppercase tracking-wider">Tipe Pembayaran</label>
+                  <label className="block text-[11px] font-semibold text-zinc-300 uppercase tracking-wider mb-1.5">
+                    {tenant.staffLabel || 'Pilih Staff / Terapis'}
+                  </label>
                   <div className="grid grid-cols-2 gap-2.5">
-                    {['DP', 'FULL'].map((t) => {
-                      const isSelectedType = formData.payment_type === t;
+                    {staffList.map((st) => {
+                      const isSelected = formData.selected_staff === st.name
                       return (
                         <button
                           type="button"
-                          key={t}
-                          onClick={() => setFormData((prev) => ({ ...prev, payment_type: t }))}
-                          className={`py-3 px-2.5 text-xs rounded-2xl border transition-all duration-300 text-center ${
-                            isSelectedType 
-                              ? 'border-transparent font-extrabold shadow-[0_0_25px_rgba(var(--color-primary-rgb),0.4)] scale-[1.02]' 
+                          key={st.id}
+                          style={isSelected && theme.inlineBgLight && theme.inlineBorder ? { ...theme.inlineBgLight, ...theme.inlineBorder } : undefined}
+                          onClick={async () => {
+                            const staffIdValue = String(st.id)
+                            setFormData(prev => ({ 
+                              ...prev, 
+                              selected_staff: st.name || '', 
+                              selected_staff_id: staffIdValue,
+                              booking_time: '' 
+                            }))
+                          }}
+                          className={`py-3 px-3.5 text-xs font-semibold rounded-2xl border transition-all duration-300 text-left ${
+                            isSelected 
+                              ? `${theme.accentBgLight}${theme.accentBorder} text-white shadow-[0_0_25px_rgba(var(--color-primary-rgb),0.3)] scale-[1.01]` 
+                              : 'bg-zinc-900/80 border-zinc-800/90 text-zinc-300 hover:border-zinc-700 hover:bg-zinc-900'
+                          }`}
+                        >
+                          <p style={isSelected && theme.inlineText ? theme.inlineText : undefined} className={`text-sm font-bold ${isSelected ? theme.accentText : 'text-zinc-100'}`}>
+                            {st.name}
+                          </p>
+                          <p className="text-[11px] text-zinc-300 font-medium mt-0.5">{st.role}</p>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* PILIH LAYANAN UTAMA */}
+              <div className="space-y-2.5">
+                <div className="flex justify-between items-center">
+                  <label className="block text-[11px] font-semibold text-zinc-300 uppercase tracking-wider">
+                    Pilih Layanan Utama
+                  </label>
+                  {!tenant.enable_multi_service ? (
+                    <span className="text-[10px] text-zinc-300 font-medium">*Pilih 1 layanan</span>
+                  ) : (
+                    <span style={theme.inlineText ? theme.inlineText : undefined} className={`text-[10px] ${theme.accentText} font-bold`}>
+                      *Bisa pilih lebih dari 1
+                    </span>
+                  )}
+                </div>
+
+                {fetchingServices ? (
+                  <p className="text-xs text-zinc-300 font-medium animate-pulse text-center py-6">Memuat layanan...</p>
+                ) : mainServices.length === 0 ? (
+                  <p className="text-xs text-zinc-300 font-medium text-center py-6">Belum ada layanan tersedia.</p>
+                ) : (
+                  <div className="grid grid-cols-1 gap-3">
+                    {mainServices.map((item) => {
+                      const active = item.name ? formData.selected_services.includes(item.name) : false
+                      return (
+                        <div
+                          key={item.id}
+                          style={active && theme.inlineBgLight && theme.inlineBorder ? { ...theme.inlineBgLight, ...theme.inlineBorder } : undefined}
+                          onClick={() => item.name && handleServiceSelect(item.name)}
+                          className={`cursor-pointer p-4 rounded-2xl border transition-all duration-300 flex flex-col group ${
+                            active 
+                              ? `${theme.accentBgLight}${theme.accentBorder} text-white shadow-[0_0_25px_rgba(var(--color-primary-rgb),0.25)] scale-[1.01]` 
+                              : 'bg-zinc-900/80 border-zinc-800/90 text-zinc-300 hover:border-zinc-700 hover:bg-zinc-900'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between w-full">
+                            <div className="flex items-center space-x-3.5 pr-2">
+                              <div 
+                                style={active && theme.inlineStyle ? { borderColor: tenant.themeColor, backgroundColor: tenant.themeColor } : undefined}
+                                className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 transition-all duration-300 ${
+                                  active ? 'border-purple-500 bg-purple-500' : 'border-zinc-600 bg-transparent group-hover:border-zinc-500'
+                                }`}
+                              >
+                                {active && <div className="w-1.5 h-1.5 rounded-full bg-black" />}
+                              </div>
+
+                              <div>
+                                <p style={active && theme.inlineText ? theme.inlineText : undefined} className={`text-xs font-bold transition-colors ${active ? theme.accentText : 'text-zinc-100 group-hover:text-white'}`}>
+                                  {item.name}
+                                </p>
+                                <p className="text-[11px] text-zinc-300 font-medium mt-0.5 leading-relaxed">
+                                  {item.desc}
+                                </p>
+                              </div>
+                            </div>
+
+                            <span className="text-xs font-extrabold text-white bg-zinc-900/90 px-3 py-1.5 rounded-xl border border-zinc-800 shadow-inner whitespace-nowrap shrink-0 ml-2">
+                              Rp {parsePrice(item.price).toLocaleString('id-ID')}
+                            </span>
+                          </div>
+
+                          {/* 🌟 DETAIL LAYANAN UTAMA */}
+                          {(item.long_description || item.desc || item.image_url) && (
+                            <button
+                              type="button"
+                              style={theme?.inlineText ? theme.inlineText : undefined}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setSelectedServiceDetail(item)
+                              }}
+                              className={`mt-2.5 self-start inline-flex items-center space-x-1 text-[10px] font-bold ${theme?.accentText || 'text-rose-400'} hover:underline`}
+                            >
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
+                              <span>Lihat Detail Layanan</span>
+                            </button>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* RENDER ADDONS */}
+              {typeof renderAddonsSection === 'function' && renderAddonsSection()}
+
+              {/* TOMBOL LANJUT STEP 2 */}
+              <button
+                type="button"
+                onClick={handleNextStep}
+                className="w-full py-4 px-4 rounded-2xl font-extrabold text-xs text-black transition-all duration-300 mt-3 tracking-wider uppercase transform active:scale-[0.99] shadow-[0_4px_30px_rgba(var(--color-primary-rgb),0.5)]"
+                style={{
+                  ...(theme.inlineStyle || {}),
+                  color: '#000000',
+                }}
+              >
+                Lanjut Pilih Tanggal & Jam &rarr;
+              </button>
+            </div>
+          )}
+
+          {/* STEP 2: TANGGAL & JAM KEDATANGAN */}
+          {step === 2 && (
+            <div className="space-y-4 animate-fadeIn">
+              <h2 className="text-[11px] font-extrabold text-zinc-300 uppercase tracking-widest">
+                Langkah 2 dari 3: Pilih Waktu Kedatangan
+              </h2>
+
+              <div className="space-y-3 pt-1">
+                <div>
+                  <label className="block text-[11px] font-semibold text-zinc-300 uppercase tracking-wider mb-1.5">Tanggal Kedatangan</label>
+                  <input
+                    type="date"
+                    required
+                    className={`w-full px-4 py-3 bg-zinc-900/90 border border-zinc-800/90 rounded-2xl text-zinc-100 text-xs outline-none transition-all duration-300 [color-scheme:dark] ${theme.accentRing}`}
+                    value={formData.booking_date || ''}
+                    onChange={(e) => setFormData({ ...formData, booking_date: e.target.value })}
+                  />
+                </div>
+
+                <div>
+                  <div className="flex justify-between items-center mb-1.5">
+                    <label className="block text-[11px] font-semibold text-zinc-300 uppercase tracking-wider">Pilih Jam Kedatangan</label>
+                    {loadingSlots && <span style={theme.inlineText ? theme.inlineText : undefined} className={`text-[10px] font-bold animate-pulse ${theme.accentText}`}>Memuat ketersediaan...</span>}
+                  </div>
+                  
+                  {!formData.booking_date ? (
+                    <p className="text-[11px] text-zinc-300 font-medium italic p-3.5 bg-zinc-900/50 border border-zinc-800/80 rounded-2xl text-center">
+                      Silakan pilih tanggal kedatangan terlebih dahulu.
+                    </p>
+                  ) : (
+                    <TimePicker 
+                      availableSlots={availableSlots}
+                      blockedTimes={blockedTimes}
+                      selectedTime={formData.booking_time}
+                      onSelectTime={(time: string) => setFormData(prev => ({ ...prev, booking_time: time }))}
+                      tenantData={tenant}
+                      theme={theme}
+                    />
+                  )}
+                </div>
+              </div>
+
+              <div className="flex space-x-3 pt-2">
+                <button
+                  type="button"
+                  onClick={handlePrevStep}
+                  className="w-1/3 py-3.5 rounded-2xl font-bold text-xs bg-zinc-900/90 text-zinc-200 border border-zinc-800 hover:bg-zinc-800 hover:text-white transition-all duration-300 shadow-sm"
+                >
+                  &larr; Kembali
+                </button>
+                <button
+                  type="button"
+                  onClick={handleNextStep}
+                  className="w-2/3 py-3.5 rounded-2xl font-extrabold text-xs transition-all duration-300 shadow-xl"
+                  style={{
+                    ...theme.inlineStyle,
+                    color: '#000000',
+                  }}
+                >
+                  Lanjut Isi Data Diri &rarr;
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* STEP 3: DATA DIRI & KONFIRMASI PEMBAYARAN */}
+          {step === 3 && (
+            <div className="space-y-4 animate-fadeIn">
+              <h2 className="text-[11px] font-extrabold text-zinc-300 uppercase tracking-widest">
+                Langkah 3 dari 3: Data Diri & Konfirmasi
+              </h2>
+
+              {/* INPUT NAMA LENGKAP */}
+              <div>
+                <label className="block text-[11px] font-semibold text-zinc-300 uppercase tracking-wider mb-1.5">
+                  Nama Lengkap
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Masukkan nama kamu"
+                  className={`w-full px-4.5 py-3.5 bg-zinc-900/90 border border-zinc-800/90 rounded-2xl text-zinc-100 placeholder-zinc-500 text-sm outline-none transition-all duration-300 ${theme.accentRing}`}
+                  value={formData.customer_name || ''}
+                  onChange={(e) => setFormData({ ...formData, customer_name: e.target.value })}
+                />
+              </div>
+
+              {/* INPUT NOMOR WHATSAPP */}
+              <div>
+                <label className="block text-[11px] font-semibold text-zinc-300 uppercase tracking-wider mb-1.5">
+                  Nomor WhatsApp
+                </label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  required
+                  placeholder="Contoh: 081234567890"
+                  className={`w-full px-4.5 py-3.5 bg-zinc-900/90 border border-zinc-800/90 rounded-2xl text-zinc-100 placeholder-zinc-500 text-sm outline-none transition-all duration-300 ${theme.accentRing}`}
+                  value={formData.whatsapp_number || ''}
+                  onChange={(e) => setFormData({ ...formData, whatsapp_number: e.target.value })}
+                />
+                <p className="text-[11px] text-zinc-300 italic leading-tight mt-1.5 font-medium">
+                  Pastikan nomor WhatsApp aktif untuk menerima konfirmasi & pengingat jadwal.
+                </p>
+              </div>
+
+              {/* JUMLAH ORANG / PASIEN */}
+              {tenant?.enable_guest_count && (
+                <div>
+                  <label className="block text-[11px] font-semibold text-zinc-300 uppercase tracking-wider mb-1.5">
+                    Jumlah Orang / Pasien
+                  </label>
+                  <div className="grid grid-cols-5 gap-2">
+                    {Array.from({ length: Number(tenant?.maxPersonPerBooking || 5) }, (_, i) => i + 1).map((num: number) => {
+                      const isSelected = formData.person_count === num
+                      return (
+                        <button
+                          type="button"
+                          key={num}
+                          onClick={() => setFormData((prev) => ({ ...prev, person_count: num }))}
+                          className={`py-2.5 text-xs font-bold rounded-2xl border transition-all duration-300 ${
+                            isSelected
+                              ? 'border-transparent shadow-[0_0_25px_rgba(var(--color-primary-rgb),0.5)] scale-[1.03]'
                               : 'bg-zinc-900/80 border-zinc-800/90 text-zinc-300 hover:border-zinc-700 hover:text-white'
                           }`}
                           style={
-                            isSelectedType
+                            isSelected
                               ? {
                                   ...(theme.inlineStyle || {}),
                                   color: '#000000',
@@ -1885,161 +1768,302 @@ function BookingFormContent({ initialTenant }: { initialTenant?: Tenant }) {
                               : undefined
                           }
                         >
-                          <div className="font-extrabold text-sm" style={{ color: isSelectedType ? '#000000' : undefined }}>
-                            {t === 'DP' 
-                              ? `DP (${tenant?.dpType === 'PERCENTAGE' ? `${tenant.dpValue}%` : 'Tetap'})` 
-                              : 'Full Payment'}
-                          </div>
-                          <div className="text-[11px] font-bold mt-0.5" style={{ color: isSelectedType ? '#000000' : undefined }}>
-                            Rp {(t === 'DP' ? dpAmount : grandTotal).toLocaleString('id-ID')}
-                          </div>
+                          {num}
                         </button>
-                      );
+                      )
                     })}
                   </div>
                 </div>
-
-                <div className="space-y-1.5">
-                  <label className="block text-[11px] font-bold text-zinc-300 uppercase tracking-wider">Metode Pembayaran</label>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                    {availablePaymentMethods.map((m) => {
-                      const isSelectedMethod = formData.payment_method === m.id;
-                      return (
-                        <button
-                          type="button"
-                          key={m.id}
-                          style={isSelectedMethod && theme.inlineBgLight && theme.inlineBorder ? { ...theme.inlineBgLight, ...theme.inlineBorder } : undefined}
-                          onClick={() => setFormData((prev) => ({ ...prev, payment_method: m.id }))}
-                          className={`p-3.5 text-left rounded-2xl border transition-all duration-300 flex flex-col justify-between ${
-                            isSelectedMethod 
-                              ? `${theme.accentBgLight} ${theme.accentText}${theme.accentBorder} shadow-[0_0_25px_rgba(var(--color-primary-rgb),0.25)] scale-[1.01]` 
-                              : 'bg-zinc-900/80 border-zinc-800/90 text-zinc-300 hover:border-zinc-700 hover:text-white'
-                          }`}
-                        >
-                          <span style={isSelectedMethod && theme.inlineText ? theme.inlineText : undefined} className="font-extrabold text-xs tracking-wide text-white">
-                            {m.title}
-                          </span>
-                          {m.detail && (
-                            <span className={`text-[11px] mt-1 font-medium ${isSelectedMethod ? 'opacity-90' : 'text-zinc-300'}`}>
-                              {m.detail}
-                            </span>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {formData.payment_method === 'QRIS' && renderQrisSection()}
-
-                {tenant?.requireConsent && (
-                  <div className="mt-4 pt-2 border-t border-zinc-800/80">
-                    <label className="flex items-start space-x-3 p-4 bg-zinc-900/90 border border-zinc-800/90 rounded-2xl cursor-pointer">
-                      <input 
-                        type="checkbox" 
-                        required
-                        style={theme.inlineStyle ? { accentColor: tenant.themeColor } : undefined}
-                        className={`w-4 h-4 rounded-md ${theme.checkbox} mt-0.5`}
-                        checked={formData.has_consent}
-                        onChange={(e) => setFormData((prev) => ({ ...prev, has_consent: e.target.checked }))}
-                      />
-                      <span className="text-xs text-zinc-200 leading-relaxed font-medium">
-                        {tenant.custom_terms_text || "Saya menyetujui ketentuan layanan dan konfirmasi data yang diberikan sudah benar."}
-                      </span>
-                    </label>
-                  </div>
-                )}
-
-                <button
-                  type="submit"
-                  disabled={loading || (tenant?.requireConsent && !formData?.has_consent)}
-                  className={`w-full font-extrabold py-4 rounded-2xl transition-all duration-300 shadow-xl text-xs flex items-center justify-center space-x-2 tracking-wider uppercase transform active:scale-[0.99] mt-4 ${
-                    tenant?.requireConsent && !formData?.has_consent
-                      ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
-                      : ''
-                  }`}
-                  style={
-                    tenant?.requireConsent && !formData?.has_consent
-                      ? undefined
-                      : {
-                          ...(theme.inlineStyle || {}),
-                          color: '#000000',
-                        }
-                  }
-                >
-                  {loading ? 'Memproses...' : 'Kirim Konfirmasi via WhatsApp'}
-                </button>
-              </div>
-
-            </div>
-          )}
-
-        </div>
-
-        {/* POPUP MODAL DETAIL LAYANAN (Ditaruh aman di dalam <main>) */}
-        {selectedServiceDetail && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
-            <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 max-w-md w-full space-y-4 shadow-2xl relative">
-              <button
-                type="button"
-                onClick={() => setSelectedServiceDetail(null)}
-                className="absolute top-4 right-4 text-zinc-400 hover:text-white p-1 rounded-full bg-zinc-800/80 transition-colors"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-              
-              <h3 className="text-lg font-bold text-white">
-                {'name' in selectedServiceDetail ? selectedServiceDetail.name : selectedServiceDetail.label}
-              </h3>
-
-              {selectedServiceDetail.image_url && (
-                <img
-                  src={selectedServiceDetail.image_url}
-                  alt="Detail Layanan"
-                  className="w-full h-48 object-cover rounded-2xl border border-zinc-800"
-                />
               )}
 
-              <p className="text-xs text-zinc-300 leading-relaxed">
-                {'long_description' in selectedServiceDetail && selectedServiceDetail.long_description 
-                  ? selectedServiceDetail.long_description 
-                  : ('desc' in selectedServiceDetail && selectedServiceDetail.desc) || 'Tidak ada deskripsi detail.'}
-              </p>
+              {/* CATATAN KHUSUS */}
+              {isNotesEnabled && (
+                <div>
+                  <label className="block text-[11px] font-semibold text-zinc-300 uppercase tracking-wider mb-1.5">
+                    Catatan Khusus (Opsional)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Misal: Keluhan / Model request"
+                    className={`w-full px-4 py-3 bg-zinc-900/90 border border-zinc-800/90 rounded-2xl text-zinc-100 placeholder-zinc-500 text-sm outline-none transition-all duration-300 ${theme.accentRing}`}
+                    value={formData.custom_notes || ''}
+                    onChange={(e) => setFormData({ ...formData, custom_notes: e.target.value })}
+                  />
+                </div>
+              )}
 
-              <div className="pt-2 flex justify-between items-center border-t border-zinc-800">
-                <span className="text-xs font-bold text-zinc-400">Harga</span>
-                <span className="text-sm font-black text-white">
-                  {'price' in selectedServiceDetail && selectedServiceDetail.price !== undefined
-                    ? `Rp ${parsePrice(selectedServiceDetail.price).toLocaleString('id-ID')}`
-                    : 'Free'}
-                </span>
+              {/* TIPE PEMBAYARAN */}
+              {tenant?.custom_payment_dp && (
+                <div className="space-y-1.5 pt-1">
+                  <label className="block text-[11px] font-semibold text-zinc-300 uppercase tracking-wider">
+                    Tipe Pembayaran
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setFormData((prev) => ({ ...prev, payment_type: 'DP' }))}
+                      style={formData.payment_type === 'DP' && theme?.inlineStyle ? theme.inlineStyle : undefined}
+                      className={`py-3 px-4 rounded-2xl border text-xs font-bold transition-all duration-300 ${
+                        formData.payment_type === 'DP'
+                          ? `${theme?.accentBg || 'bg-rose-500'} !text-black border-white/30 shadow-lg scale-[1.02]`
+                          : 'bg-zinc-900/80 border-zinc-800/90 text-zinc-400 hover:border-zinc-700 hover:text-white'
+                      }`}
+                    >
+                      Uang Muka (DP)
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setFormData((prev) => ({ ...prev, payment_type: 'FULL' }))}
+                      style={formData.payment_type === 'FULL' && theme?.inlineStyle ? theme.inlineStyle : undefined}
+                      className={`py-3 px-4 rounded-2xl border text-xs font-bold transition-all duration-300 ${
+                        formData.payment_type === 'FULL'
+                          ? `${theme?.accentBg || 'bg-rose-500'} !text-black border-white/30 shadow-lg scale-[1.02]`
+                          : 'bg-zinc-900/80 border-zinc-800/90 text-zinc-400 hover:border-zinc-700 hover:text-white'
+                      }`}
+                    >
+                      Bayar Penuh (Lunas)
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* PILIHAN OPSI PEMBAYARAN */}
+              <div className="space-y-1.5 pt-1">
+                <label className="block text-[11px] font-semibold text-zinc-300 uppercase tracking-wider">
+                  Pilih Opsi / Rekening Pembayaran
+                </label>
+
+                {availablePaymentMethods.length > 0 ? (
+                  <div className="space-y-2">
+                    {availablePaymentMethods.map((method) => {
+                      const isSelected = formData.payment_method === method.id
+                      return (
+                        <div
+                          key={method.id}
+                          onClick={() => setFormData((prev) => ({ ...prev, payment_method: method.id }))}
+                          style={isSelected && theme?.inlineStyle ? theme.inlineStyle : undefined}
+                          className={`p-3.5 rounded-2xl border cursor-pointer transition-all duration-300 flex items-center justify-between ${
+                            isSelected
+                              ? `${theme?.accentBg || 'bg-rose-500'} !text-black border-white/30 shadow-lg`
+                              : 'bg-zinc-900/80 border-zinc-800/90 hover:border-zinc-700'
+                          }`}
+                        >
+                          <div className="space-y-0.5">
+                            <p className={`text-xs font-bold ${isSelected ? '!text-black' : 'text-zinc-200'}`}>
+                              {method.title}
+                            </p>
+
+                            {method.detail && (
+                              <p className={`text-[11px] font-mono ${isSelected ? 'text-black/80 font-semibold' : 'text-zinc-400'}`}>
+                                {method.detail}
+                              </p>
+                            )}
+                          </div>
+
+                          {/* Indikator Radio */}
+                          <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${
+                            isSelected ? 'border-black bg-black' : 'border-zinc-600'
+                          }`}>
+                            {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  <div className="p-3 bg-zinc-900/50 border border-zinc-800 rounded-xl text-center text-xs text-zinc-400">
+                    Belum ada metode pembayaran yang dikonfigurasi.
+                  </div>
+                )}
+              </div>
+
+              {/* QRIS SECTION */}
+              {formData.payment_method === 'QRIS' && renderQrisSection()}
+
+              {/* RINGKASAN RESERVASI */}
+              <div className="bg-zinc-950/70 border border-zinc-800/90 rounded-2xl p-4 space-y-3 shadow-2xl mt-3">
+                <h3 className="text-[11px] font-extrabold text-zinc-200 uppercase tracking-wider border-b border-zinc-800/80 pb-2.5">
+                  Rincian Reservasi & Biaya
+                </h3>
+
+                <div className="space-y-2 text-xs">
+                  <div className="flex justify-between items-center text-zinc-400">
+                    <span>Jadwal Kedatangan:</span>
+                    <span className="text-zinc-100 font-semibold">
+                      {formData.booking_date || '-'} ({formData.booking_time || '-'})
+                    </span>
+                  </div>
+
+                  {formData.booking_date && formData.booking_time && (
+                    <div className="flex justify-between items-center text-cyan-300 bg-cyan-950/40 p-2 rounded-lg border border-cyan-500/20">
+                      <span>Estimasi Selesai:</span>
+                      <span className="font-bold">
+                        {getEndTime(formData.booking_time, totalDuration)} WIB ({totalDuration} menit)
+                      </span>
+                    </div>
+                  )}
+
+                  {formData.selected_staff && (
+                    <div className="flex justify-between items-center text-zinc-400">
+                      <span>Staff / Terapis:</span>
+                      <span className="text-zinc-100 font-semibold">{formData.selected_staff}</span>
+                    </div>
+                  )}
+
+                  <div className="flex justify-between items-start text-zinc-400">
+                    <span>Layanan Utama:</span>
+                    <span className="text-zinc-100 font-semibold text-right max-w-[60%]">
+                      {Array.isArray(formData.selected_services) && formData.selected_services.length > 0
+                        ? formData.selected_services.join(', ')
+                        : '-'}
+                    </span>
+                  </div>
+
+                  {formData.selectedTenantAddons && formData.selectedTenantAddons.length > 0 && (
+                    <div className="flex justify-between items-start text-zinc-400">
+                      <span>Add-ons:</span>
+                      <span className="text-purple-300 font-semibold text-right max-w-[60%]">
+                        {formData.selectedTenantAddons.map((a) => a.label).join(', ')}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="border-t border-zinc-800/80 pt-2.5 space-y-1.5 mt-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs font-bold text-zinc-300 uppercase tracking-wider">Total Biaya:</span>
+                    <span className="text-sm font-extrabold text-purple-400">
+                      Rp {typeof calculateTotal === 'function' ? calculateTotal().toLocaleString('id-ID') : '0'}
+                    </span>
+                  </div>
+
+                  {formData.payment_type === 'DP' && (
+                    <>
+                      <div className="flex justify-between items-center text-xs text-amber-400">
+                        <span>Wajib Bayar DP Sekarang:</span>
+                        <span className="font-bold">Rp {dpAmount.toLocaleString('id-ID')}</span>
+                      </div>
+                      <div className="flex justify-between items-center text-[11px] text-zinc-400">
+                        <span>Sisa Pelunasan di Lokasi:</span>
+                        <span>Rp {remainingAmount.toLocaleString('id-ID')}</span>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* CHECKBOX PERSETUJUAN */}
+              {(tenant?.custom_terms_text || tenant?.requireConsent) && (
+                <div className="flex items-start space-x-2.5 pt-2">
+                  <input
+                    type="checkbox"
+                    id="has_consent"
+                    checked={!!formData?.has_consent}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, has_consent: e.target.checked }))}
+                    className="w-4 h-4 mt-0.5 rounded border-zinc-700 bg-zinc-900 text-purple-600 focus:ring-purple-500 cursor-pointer shrink-0"
+                  />
+                  <label htmlFor="has_consent" className="text-[11px] text-zinc-300 cursor-pointer select-none leading-tight">
+                    {tenant?.custom_terms_text || 'Saya menyetujui syarat & ketentuan reservasi'}
+                  </label>
+                </div>
+              )}
+
+              {/* NAVIGASI & SUBMIT */}
+              <div className="flex space-x-3 pt-2">
+                <button
+                  type="button"
+                  onClick={handlePrevStep}
+                  className="w-1/3 py-3.5 rounded-2xl font-bold text-xs bg-zinc-900/90 text-zinc-200 border border-zinc-800 hover:bg-zinc-800 hover:text-white transition-all duration-300 shadow-sm"
+                >
+                  &larr; Kembali
+                </button>
+
+                {(() => {
+                  const isConsentMissing = Boolean(tenant?.custom_terms_text || tenant?.requireConsent) && !formData?.has_consent
+                  const isDisabled = Boolean(loading || !formData?.payment_method || isConsentMissing)
+
+                  return (
+                    <button
+                      type="submit"
+                      disabled={isDisabled}
+                      className={`w-2/3 font-extrabold py-3.5 rounded-2xl transition-all duration-300 shadow-xl text-xs flex items-center justify-center space-x-2 tracking-wider uppercase transform active:scale-[0.99] ${
+                        isDisabled
+                          ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed opacity-60'
+                          : ''
+                      }`}
+                      style={
+                        isDisabled
+                          ? undefined
+                          : {
+                              ...theme.inlineStyle,
+                              color: '#000000',
+                            }
+                      }
+                    >
+                      {loading ? 'Memproses...' : 'Kirim Konfirmasi via WhatsApp'}
+                    </button>
+                  )
+                })()}
               </div>
             </div>
-          </div>
-        )}
+          )}
+        </form>
+      </div>
 
-      </main>
-  )
-}
+      {/* 🌟 MODAL POPUP DETAIL LAYANAN & ADD-ON */}
+      {selectedServiceDetail && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn"
+          onClick={() => setSelectedServiceDetail(null)}
+        >
+          <div 
+            className="bg-zinc-900 border border-zinc-800 rounded-3xl max-w-sm w-full p-5 space-y-4 shadow-2xl relative"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => setSelectedServiceDetail(null)}
+              className="absolute top-4 right-4 w-8 h-8 rounded-full bg-zinc-800 text-zinc-400 hover:text-white flex items-center justify-center transition-colors font-bold text-xs"
+            >
+              ✕
+            </button>
 
-// ============================================================================
-// 6. EXPORT WRAPPER WITH SUSPENSE
-// ============================================================================
-export default function BookingForm({ initialTenant }: { initialTenant?: Tenant }) {
-  return (
-    <Suspense
-      fallback={
-        <main className="min-h-screen bg-[#09090b] text-white flex items-center justify-center font-sans">
-          <div className="flex flex-col items-center space-y-3">
-            <div className="w-8 h-8 border-2 bg-rose-500 border-t-transparent rounded-full animate-spin shadow-[0_0_20px_currentColor]" />
-            <p className="text-xs text-zinc-400 font-medium tracking-wide">Memuat Halaman Reservasi...</p>
+            {'image_url' in selectedServiceDetail && selectedServiceDetail.image_url && (
+              <div className="relative w-full h-40 rounded-2xl overflow-hidden border border-zinc-800">
+                <Image
+                  src={selectedServiceDetail.image_url}
+                  alt={selectedServiceDetail.name || 'Detail Layanan'}
+                  fill
+                  className="object-cover"
+                />
+              </div>
+            )}
+
+            <div>
+              <h3 className="text-base font-bold text-white">
+                {getServiceDisplayLabel(selectedServiceDetail)}
+              </h3>
+              <p className="text-xs font-extrabold text-rose-400 mt-1">
+                Rp {parsePrice(selectedServiceDetail.price).toLocaleString('id-ID')}
+                {'duration' in selectedServiceDetail && selectedServiceDetail.duration ? ` • ${selectedServiceDetail.duration} Menit` : ''}
+              </p>
+            </div>
+
+            <div className="text-xs text-zinc-300 space-y-2 max-h-48 overflow-y-auto leading-relaxed pr-1">
+              <p>{selectedServiceDetail.long_description || selectedServiceDetail.desc || selectedServiceDetail.description || 'Tidak ada deskripsi tambahan.'}</p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setSelectedServiceDetail(null)}
+              className="w-full py-3 rounded-2xl bg-zinc-800 hover:bg-zinc-700 text-white font-bold text-xs transition-colors"
+            >
+              Tutup
+            </button>
           </div>
-        </main>
-      }
-    >
-      <BookingFormContent initialTenant={initialTenant} />
-    </Suspense>
+        </div>
+      )}
+    </main>
   )
 }

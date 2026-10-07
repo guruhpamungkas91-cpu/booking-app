@@ -3,14 +3,15 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { Reservation } from '@/types' // Sesuaikan path alias ke file interface kamu
+import type { InvoiceBooking } from '@/types' // Menggunakan InvoiceBooking secara penuh
 
 export default function InvoicePage() {
   const params = useParams()
   const bookingIdParam = params?.id as string
   const rawId = bookingIdParam ? bookingIdParam.replace('BK-', '') : ''
 
-  const [booking, setBooking] = useState<Reservation | null>(null);
+  // GANTI TIPE STATE DI SINI:
+  const [booking, setBooking] = useState<InvoiceBooking | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -23,7 +24,7 @@ export default function InvoicePage() {
         .single()
 
       if (!error && data) {
-        setBooking(data)
+        setBooking(data as InvoiceBooking)
       }
       setLoading(false)
     }
@@ -54,7 +55,9 @@ export default function InvoicePage() {
             INVOICE DIGITAL
           </span>
           <h1 className="text-xl font-black text-white mt-3">#{bookingIdParam}</h1>
-          <p className="text-xs text-zinc-400 mt-1">Status: <span className="text-amber-400 uppercase font-semibold">{booking.status}</span></p>
+          <p className="text-xs text-zinc-400 mt-1">
+            Status: <span className="text-amber-400 uppercase font-semibold">{booking.status}</span>
+          </p>
         </div>
 
         <div className="space-y-3 text-xs">
@@ -68,11 +71,15 @@ export default function InvoicePage() {
           </div>
           <div className="flex justify-between py-1 border-b border-zinc-800/50">
             <span className="text-zinc-400">Jadwal Booking</span>
-            <span className="font-semibold text-zinc-200">{booking.booking_date} ({booking.booking_time} WIB)</span>
+            <span className="font-semibold text-zinc-200">
+              {booking.booking_date} ({booking.booking_time} WIB)
+            </span>
           </div>
           <div className="flex justify-between py-1 border-b border-zinc-800/50">
             <span className="text-zinc-400">Layanan</span>
-            <span className="font-semibold text-zinc-200 text-right max-w-[200px]">{booking.service_name}</span>
+            <span className="font-semibold text-zinc-200 text-right max-w-[200px]">
+              {booking.service_name}
+            </span>
           </div>
           {booking.staff_name && (
             <div className="flex justify-between py-1 border-b border-zinc-800/50">
@@ -81,15 +88,17 @@ export default function InvoicePage() {
             </div>
           )}
           <div className="flex justify-between py-1 border-b border-zinc-800/50">
-          <span className="text-zinc-400">Metode Bayar</span>
-          <span className="font-semibold text-zinc-200">
-            {booking.payment_method} {booking.payment_type ? `(${booking.payment_type})` : ''}
-          </span>
-        </div>
+            <span className="text-zinc-400">Metode Bayar</span>
+            <span className="font-semibold text-zinc-200">
+              {booking.payment_method} {booking.payment_type ? `(${booking.payment_type})` : ''}
+            </span>
+          </div>
         </div>
 
         <div className="p-4 bg-zinc-950 rounded-2xl border border-zinc-800 text-center">
-          <p className="text-[10px] text-zinc-500 uppercase tracking-wider">Simpan atau tunjukkan invoice ini saat datang ke barbershop</p>
+          <p className="text-[10px] text-zinc-500 uppercase tracking-wider">
+            Simpan atau tunjukkan invoice ini saat datang ke barbershop
+          </p>
         </div>
       </div>
     </main>
