@@ -109,7 +109,7 @@ export default function InvoicePage() {
 
         <div className="p-4 bg-zinc-950 rounded-2xl border border-zinc-800 text-center">
           <p className="text-[10px] text-zinc-500 uppercase tracking-wider">
-            Simpan atau tunjukkan invoice ini saat datang ke barbershop
+            Simpan atau tunjukkan invoice ini saat datang lokasi
           </p>
         </div>
       </div>
