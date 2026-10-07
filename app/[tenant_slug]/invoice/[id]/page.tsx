@@ -14,27 +14,34 @@ export default function InvoicePage() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    if (!rawId) return
+  if (!rawId) return
 
-    const fetchBooking = async () => {
-      // Mengubah ke angka jika ID di database berupa integer
-      const numericId = parseInt(rawId, 10)
-      const targetId = !isNaN(numericId) ? numericId : rawId
-
-      const { data, error } = await supabase
-        .from('Reservations')
-        .select('*')
-        .eq('id', targetId)
-        .single()
-
-      if (!error && data) {
-        setBooking(data as InvoiceBooking)
-      }
+  const fetchBooking = async () => {
+    // Ubah rawId ('129') jadi integer (129)
+    const numericId = parseInt(rawId, 10)
+    if (isNaN(numericId)) {
       setLoading(false)
+      return
     }
 
-    fetchBooking()
-  }, [rawId])
+    const { data, error } = await supabase
+      .from('Reservations')
+      .select('*')
+      .eq('id', numericId)
+      .single()
+
+    if (error) {
+      console.error('Error Supabase:', error.message)
+    }
+
+    if (!error && data) {
+      setBooking(data as InvoiceBooking)
+    }
+    setLoading(false)
+  }
+
+  fetchBooking()
+}, [rawId])
 
   if (loading) {
     return (
