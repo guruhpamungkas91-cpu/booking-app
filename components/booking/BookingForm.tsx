@@ -430,6 +430,7 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
 
       setLoadingSlots(true)
       try {
+        // 1. Susun parameter Staff
         const isSpecificStaff =
           formData.selected_staff &&
           formData.selected_staff !== 'all' &&
@@ -439,6 +440,7 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
           ? `&staff=${encodeURIComponent(formData.selected_staff)}`
           : ''
 
+        // 2. Susun Layanan & Addons
         const selectedServiceList: string[] = (formData.selected_services || []).map(
           (item) => String(item)
         )
@@ -463,6 +465,7 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
           ...selectedAddonList,
         ]
 
+        // 3. Hitung Total Durasi
         let totalDuration = 0
         if (allSelectedItems.length > 0 && services && services.length > 0) {
           allSelectedItems.forEach((itemIdOrName) => {
@@ -485,31 +488,31 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
             ? `&addons=${encodeURIComponent(JSON.stringify(selectedAddonList))}`
             : ''
 
-        const res = await fetch(`/api/availability?date=${formData.booking_date}&tenant_slug=${tenant.tenant_slug}${staffParam}${durationParam}`)
-        const data = await res.json()
+        // 4. Panggil API (Hanya 1x Fetch dengan Query Lengkap)
+        const apiUrl = `/api/availability?date=${formData.booking_date}&tenant_slug=${tenant.tenant_slug}${staffParam}${durationParam}${servicesParam}${addonsParam}`
+        const res = await fetch(apiUrl)
 
-        if (data.success) {
-          setAvailableSlots(data.slots || [])
-          setBlockedTimes(data.blockedTimes || [])
-          setBlockedDetails(data.blockedDetails || {}) // SIMPAN BLOCKED DETAILS
+        if (!res.ok) {
+          throw new Error(`API Error: Status ${res.status}`)
         }
 
-        if (res.ok) {
-          const data: AvailabilityApiResponse = await res.json()
+        // BACA JSON CUKUP 1 KALI DENGAN PENETAPAN TIPE
+        const data: AvailabilityApiResponse = await res.json()
 
+        if (data.success) {
+          // Format slot agar kompatibel dengan TimePicker (Format String & Object)
           const formattedSlots: TimeSlot[] = (data.slots || []).map((slotStr: string) => ({
             time: slotStr.substring(0, 5),
             time_slot: slotStr.substring(0, 5),
             is_available: true,
             disabled: false,
           }))
+
+          // Simpan ke State tanpa tumpang tindih
           setAvailableSlots(formattedSlots)
-
-          const blocked: string[] = (data.blockedTimes || []).map((t) =>
-            String(t).substring(0, 5)
-          )
-          setBlockedTimes(blocked)
-
+          setBlockedTimes((data.blockedTimes || []).map((t) => String(t).substring(0, 5)))
+          setBlockedDetails(data.blockedDetails || {})
+          
           const activeBookings: BookedReservation[] = (data.bookedReservations || []).filter(
             (b: BookedReservation) =>
               b.status !== 'cancelled' &&
@@ -533,16 +536,18 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
             })
           }
         } else {
-          setBlockedTimes([])
-          setBookedReservations([])
           setAvailableSlots([])
+          setBlockedTimes([])
+          setBlockedDetails({})
+          setBookedReservations([])
         }
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : 'Fetch availability error'
         console.error('Fetch availability error:', errorMsg, err)
-        setBlockedTimes([])
-        setBookedReservations([])
         setAvailableSlots([])
+        setBlockedTimes([])
+        setBlockedDetails({})
+        setBookedReservations([])
       } finally {
         setLoadingSlots(false)
       }
