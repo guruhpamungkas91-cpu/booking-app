@@ -220,6 +220,7 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
 
   const [, setBlockedSlots] = useState<{ block_date: string; block_time: string }[]>([])
   const [blockedTimes, setBlockedTimes] = useState<string[]>([])
+  const [blockedDetails, setBlockedDetails] = useState<Record<string, string>>({})
   const [bookedReservations, setBookedReservations] = useState<BookedReservation[]>([])
   const [loadingSlots, setLoadingSlots] = useState<boolean>(false)
   const [availableSlots, setAvailableSlots] = useState<TimeSlot[]>([])
@@ -470,9 +471,14 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
             ? `&addons=${encodeURIComponent(JSON.stringify(selectedAddonList))}`
             : ''
 
-        const res = await fetch(
-          `/api/availability?date=${formData.booking_date}&tenant_slug=${tenant.tenant_slug}${staffParam}${durationParam}${servicesParam}${addonsParam}`
-        )
+        const res = await fetch(`/api/availability?date=${formData.booking_date}&tenant_slug=${tenant.tenant_slug}${staffParam}${durationParam}`)
+        const data = await res.json()
+
+        if (data.success) {
+          setAvailableSlots(data.slots || [])
+          setBlockedTimes(data.blockedTimes || [])
+          setBlockedDetails(data.blockedDetails || {}) // SIMPAN BLOCKED DETAILS
+        }
 
         if (res.ok) {
           const data: AvailabilityApiResponse = await res.json()
@@ -1680,11 +1686,12 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
                       Silakan pilih tanggal kedatangan terlebih dahulu.
                     </p>
                   ) : (
-                    <TimePicker 
+                    <TimePicker
                       availableSlots={availableSlots}
                       blockedTimes={blockedTimes}
+                      blockedDetails={blockedDetails} // PASS PROP INI
                       selectedTime={formData.booking_time}
-                      onSelectTime={(time: string) => setFormData(prev => ({ ...prev, booking_time: time }))}
+                      onSelectTime={(time) => setFormData(prev => ({ ...prev, booking_time: time }))}
                       tenantData={tenant}
                       theme={theme}
                     />

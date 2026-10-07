@@ -59,8 +59,8 @@ function normalizeStaffName(name: string): string {
   if (!name) return ''
   return name
     .toLowerCase()
-    .replace(/^dr\.\s*/i, '')
-    .replace(/\s+/g, ' ')
+    .replace(/^dr\.\s*/i, '') // Hapus dr.
+    .replace(/\s+/g, '')     // Hapus spasi agar 'putriziani' === 'putri ziani'
     .trim()
 }
 
@@ -206,8 +206,9 @@ export async function GET(request: Request) {
     )
 
     // 5. EVALUASI PENABRAKAN DURASI & JAM ISTIRAHAT UNTUK SETIAP SLOT
-    const lunchStartMin = tenantData.lunch_start_time ? timeToMinutes(tenantData.lunch_start_time) : timeToMinutes('12:00:00')
-    const lunchEndMin = tenantData.lunch_end_time ? timeToMinutes(tenantData.lunch_end_time) : timeToMinutes('13:00:00')
+    // Hanya gunakan fallback jam istirahat jika lunch_start_time benar-benar diset atau null
+    const lunchStartMin = tenantData.lunch_start_time ? timeToMinutes(tenantData.lunch_start_time) : null
+    const lunchEndMin = tenantData.lunch_end_time ? timeToMinutes(tenantData.lunch_end_time) : null
     const closeTimeMin = timeToMinutes(closeTime)
     const effectiveDuration = durationParam > 0 ? durationParam : intervalMinutes
 
@@ -222,11 +223,11 @@ export async function GET(request: Request) {
         return
       }
 
-      // B. Menabrak Jam Istirahat (Sesuai Durasi Layanan)
-      if (lunchStartMin !== null && lunchEndMin !== null) {
+      // B. Menabrak Jam Istirahat (Penting: Hanya jika tenant menyet jam istirahat)
+      if (lunchStartMin !== null && lunchEndMin !== null && lunchStartMin < lunchEndMin) {
         if (slotStartMin < lunchEndMin && slotEndMin > lunchStartMin) {
           blockedTimesSet.add(slotStr)
-          blockedReasonsMap.set(slotStr, 'Istirahat')
+          blockedReasonsMap.set(slotStr, 'Jam Istirahat')
           return
         }
       }
@@ -241,13 +242,14 @@ export async function GET(request: Request) {
         })
         if (isBlockedByAdmin) {
           blockedTimesSet.add(slotStr)
-          blockedReasonsMap.set(slotStr, 'Di-block')
+          blockedReasonsMap.set(slotStr, 'Penuh')
           return
         }
       }
 
-      // D. Menabrak Jadwal Reservasi Lain (Filter Per Staf Spesifik)
+      // D. Menabrak Jadwal Reservasi Staf Spesifik
       if (activeBookings.length > 0) {
+        // Jika tidak pilih staf spesifik / pilih 'all' / 'any'
         if (!staffQuery || staffQuery === 'all' || staffQuery === 'any' || staffQuery === 'undefined') {
           const busyStaff = activeBookings.filter((b) => {
             if (!b.booking_time) return false
@@ -261,7 +263,9 @@ export async function GET(request: Request) {
             blockedReasonsMap.set(slotStr, 'Penuh')
           }
         } else {
+          // Jika memilih staf spesifik (misal dr. Putri Ziani)
           const cleanParam = normalizeStaffName(staffQuery)
+          
           const isStaffBusy = activeBookings.some((b) => {
             if (!b.booking_time) return false
             
@@ -270,6 +274,7 @@ export async function GET(request: Request) {
               (b.staff_id && String(b.staff_id) === String(staffQuery)) ||
               (cleanResName && cleanParam && (cleanResName.includes(cleanParam) || cleanParam.includes(cleanResName)))
 
+            // Jika reservasi ini BUKAN milik staf yang sedang dipilih, JANGAN BLOKIR!
             if (!isMatch) return false
 
             const bStart = timeToMinutes(b.booking_time)
