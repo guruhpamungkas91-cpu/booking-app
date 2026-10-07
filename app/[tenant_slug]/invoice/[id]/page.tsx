@@ -64,28 +64,29 @@ export default function InvoicePage() {
   }
 
   // Helper warna & ikon berdasarkan status
-  const getStatusBadge = (status: string) => {
-    const s = status?.toLowerCase()
-    if (s === 'confirmed' || s === 'success' || s === 'lunas') {
-      return (
-        <span className="inline-flex items-center gap-1 text-[11px] font-bold tracking-wider text-emerald-400 uppercase bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20">
-          <CheckCircle2 className="w-3.5 h-3.5" /> Confirmed
-        </span>
-      )
-    }
-    if (s === 'cancelled' || s === 'batal') {
-      return (
-        <span className="inline-flex items-center gap-1 text-[11px] font-bold tracking-wider text-rose-400 uppercase bg-rose-500/10 px-3 py-1 rounded-full border border-rose-500/20">
-          <XCircle className="w-3.5 h-3.5" /> Cancelled
-        </span>
-      )
-    }
+  const getStatusBadge = (status?: string) => {
+  const s = status?.toLowerCase() || ''
+  
+  if (s === 'confirmed' || s === 'success' || s === 'lunas') {
     return (
-      <span className="inline-flex items-center gap-1 text-[11px] font-bold tracking-wider text-amber-400 uppercase bg-amber-500/10 px-3 py-1 rounded-full border border-amber-500/20">
-        <Clock className="w-3.5 h-3.5" /> Pending
+      <span className="inline-flex items-center gap-1 text-[11px] font-bold tracking-wider text-emerald-400 uppercase bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20">
+        <CheckCircle2 className="w-3.5 h-3.5" /> Confirmed
       </span>
     )
   }
+  if (s === 'cancelled' || s === 'batal') {
+    return (
+      <span className="inline-flex items-center gap-1 text-[11px] font-bold tracking-wider text-rose-400 uppercase bg-rose-500/10 px-3 py-1 rounded-full border border-rose-500/20">
+        <XCircle className="w-3.5 h-3.5" /> Cancelled
+      </span>
+    )
+  }
+  return (
+    <span className="inline-flex items-center gap-1 text-[11px] font-bold tracking-wider text-amber-400 uppercase bg-amber-500/10 px-3 py-1 rounded-full border border-amber-500/20">
+      <Clock className="w-3.5 h-3.5" /> Pending
+    </span>
+  )
+}
 
   return (
     <main className="min-h-screen bg-[#09090b] text-zinc-100 flex flex-col items-center justify-center p-4 sm:p-6 font-sans relative overflow-hidden">
@@ -97,7 +98,7 @@ export default function InvoicePage() {
         {/* Header Invoice */}
         <div className="text-center border-b border-zinc-800/80 pb-6">
           <div className="flex justify-center mb-3">
-            {getStatusBadge(booking.status || '')}
+            {getStatusBadge(booking.status)}
           </div>
           <p className="text-[10px] tracking-widest text-zinc-500 uppercase font-semibold">Bukti Reservasi Digital</p>
           <h1 className="text-3xl font-black text-white tracking-tight mt-1">#{bookingIdParam}</h1>

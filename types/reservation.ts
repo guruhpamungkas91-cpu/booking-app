@@ -86,6 +86,9 @@ export interface BookingFormData {
   [key: string]: unknown
 }
 
+// Tambahkan tipe enum status di atas
+export type ReservationStatus = 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'COMPLETED' | string
+
 export interface InvoiceBooking {
   id?: string | number
   tenant_id?: string | number
