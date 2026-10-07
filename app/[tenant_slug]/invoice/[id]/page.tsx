@@ -25,7 +25,7 @@ export default function InvoicePage() {
     }
 
     const { data, error } = await supabase
-      .from('Reservations')
+      .from('reservations')
       .select('*')
       .eq('id', numericId)
       .single()
