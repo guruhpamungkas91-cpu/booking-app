@@ -127,28 +127,32 @@ function TimePicker({
   const shouldAutoDisable = tenantData?.enable_auto_disable_time_slots ?? tenantData?.enableAutoDisableTimeSlots ?? true
 
   const displayedSlots = (availableSlots || [])
-    .map((slot: TimeSlot) => {
-      const rawTime = slot.time || slot.time_slot || ''
+    .map((slot: TimeSlot | string) => {
+      // Handle jika slot berupa string ("09:00") atau berupa objek ({ time: "09:00" })
+      const rawTime = typeof slot === 'string' ? slot : (slot.time || slot.time_slot || '')
       const timeStr = typeof rawTime === 'string' ? rawTime.substring(0, 5) : ''
+
+      if (!timeStr) return null
 
       const isBlockedByApi = blockedTimes.some(
         (b) => typeof b === 'string' && b.substring(0, 5) === timeStr
       )
+      
+      const isObjectSlot = typeof slot === 'object' && slot !== null
       const isSlotDisabled =
-        slot.disabled === true || slot.is_available === false || isBlockedByApi
+        (isObjectSlot && (slot.disabled === true || slot.is_available === false)) || isBlockedByApi
 
-      // Ambil alasan resmi dari API, jika tidak ada baru gunakan fallback
-      const apiReason = blockedDetails?.[timeStr] || slot.reason || (isBlockedByApi ? 'Penuh' : '')
+      const apiReason = blockedDetails?.[timeStr] || (isObjectSlot ? slot.reason : '') || (isBlockedByApi ? 'Penuh' : '')
 
       return {
-        ...slot,
+        ...(isObjectSlot ? slot : {}),
         time: timeStr,
         isDisabled: shouldAutoDisable ? isSlotDisabled : false,
         isHidden: shouldHideBooked && isSlotDisabled,
         reason: apiReason,
       }
     })
-    .filter((slot) => !slot.isHidden && slot.time)
+    .filter((slot): slot is NonNullable<typeof slot> => slot !== null && !slot.isHidden && Boolean(slot.time))
 
   if (displayedSlots.length === 0) {
     return (
