@@ -10,17 +10,21 @@ export default function InvoicePage() {
   const bookingIdParam = params?.id as string
   const rawId = bookingIdParam ? bookingIdParam.replace('BK-', '') : ''
 
-  // GANTI TIPE STATE DI SINI:
   const [booking, setBooking] = useState<InvoiceBooking | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     if (!rawId) return
+
     const fetchBooking = async () => {
+      // Mengubah ke angka jika ID di database berupa integer
+      const numericId = parseInt(rawId, 10)
+      const targetId = !isNaN(numericId) ? numericId : rawId
+
       const { data, error } = await supabase
         .from('Reservations')
         .select('*')
-        .eq('id', rawId)
+        .eq('id', targetId)
         .single()
 
       if (!error && data) {
@@ -28,6 +32,7 @@ export default function InvoicePage() {
       }
       setLoading(false)
     }
+
     fetchBooking()
   }, [rawId])
 
