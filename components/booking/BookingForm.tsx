@@ -116,39 +116,49 @@ const getServiceDisplayLabel = (
 
 function TimePicker({
   availableSlots,
-  blockedTimes,
-  blockedDetails, // Tambahkan prop ini dari API jika ada
+  blockedTimes = [],
+  blockedDetails = {},
   selectedTime,
   onSelectTime,
   tenantData,
   theme
 }: TimePickerProps) {
+  // Ambil setting hide_booked_slots dengan aman
   const shouldHideBooked = Boolean(tenantData?.hide_booked_slots || tenantData?.hideBookedSlots)
   const shouldAutoDisable = tenantData?.enable_auto_disable_time_slots ?? tenantData?.enableAutoDisableTimeSlots ?? true
 
   const displayedSlots = (availableSlots || [])
     .map((slot: TimeSlot | string) => {
-      // Handle jika slot berupa string ("09:00") atau berupa objek ({ time: "09:00" })
+      // 1. Dapatkan string waktu (contoh: "09:00")
       const rawTime = typeof slot === 'string' ? slot : (slot.time || slot.time_slot || '')
-      const timeStr = typeof rawTime === 'string' ? rawTime.substring(0, 5) : ''
+      const timeStr = typeof rawTime === 'string' ? rawTime.trim().substring(0, 5) : ''
 
       if (!timeStr) return null
 
-      const isBlockedByApi = blockedTimes.some(
-        (b) => typeof b === 'string' && b.substring(0, 5) === timeStr
-      )
+      // 2. Cek apakah slot ada di daftar blockedTimes
+      const isBlockedByApi = Array.isArray(blockedTimes) && blockedTimes.some((b) => {
+        if (!b) return false
+        const bStr = typeof b === 'string' ? b.trim().substring(0, 5) : ''
+        return bStr === timeStr
+      })
       
       const isObjectSlot = typeof slot === 'object' && slot !== null
       const isSlotDisabled =
         (isObjectSlot && (slot.disabled === true || slot.is_available === false)) || isBlockedByApi
 
+      // 3. Ambil alasan kenapa slot di-block (Jam Istirahat / Penuh / Tutup)
       const apiReason = blockedDetails?.[timeStr] || (isObjectSlot ? slot.reason : '') || (isBlockedByApi ? 'Penuh' : '')
+
+      // 4. Tentukan apakah slot disembunyikan
+      // Jangan sembunyikan jika alasannya adalah 'Jam Istirahat' (agar user tahu clinic sedang break)
+      const isRestTime = apiReason === 'Jam Istirahat' || apiReason === 'Istirahat'
+      const isHidden = shouldHideBooked && isSlotDisabled && !isRestTime
 
       return {
         ...(isObjectSlot ? slot : {}),
         time: timeStr,
         isDisabled: shouldAutoDisable ? isSlotDisabled : false,
-        isHidden: shouldHideBooked && isSlotDisabled,
+        isHidden: isHidden,
         reason: apiReason,
       }
     })
@@ -189,7 +199,7 @@ function TimePicker({
             <span className="relative z-10">{slot.time}</span>
             {slot.isDisabled && (
               <span className="block text-[9px] text-rose-500 font-semibold tracking-wide mt-0.5">
-                {slot.reason === 'Jam Istirahat' ? 'Istirahat' : 'Penuh'}
+                {slot.reason === 'Jam Istirahat' || slot.reason === 'Istirahat' ? 'Istirahat' : 'Penuh'}
               </span>
             )}
           </button>
