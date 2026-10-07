@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
 // ----------------------------------------------------------------------
-// STRICT TYPESCRIPT INTERFACES (ZERO 'any')
+// STRICT TYPESCRIPT INTERFACES
 // ----------------------------------------------------------------------
 interface TenantRecord {
   id: string | number
@@ -39,7 +39,7 @@ interface StaffRecord {
 }
 
 // ----------------------------------------------------------------------
-// HELPER FUNCTIONS (STRICT TYPED & ROBUST)
+// HELPER FUNCTIONS
 // ----------------------------------------------------------------------
 function timeToMinutes(timeStr: unknown): number {
   if (!timeStr || typeof timeStr !== 'string') return 0
@@ -148,6 +148,7 @@ export async function GET(request: Request) {
     // GENERASI SLOT JAM DINAMIS
     const generatedSlots = generateDynamicSlots(openTime, closeTime, intervalMinutes)
     const blockedTimesSet = new Set<string>()
+    const blockedReasonsMap = new Map<string, string>()
 
     // 2. FETCH BLOCKED SLOTS DARI MANAJEMEN ADMIN
     let blockedQuery = supabase
@@ -204,9 +205,9 @@ export async function GET(request: Request) {
         b.status !== 'rejected'
     )
 
-    // 5. EVALUASI PENABRAKAN DURASI UNTUK SETIAP SLOT
-    const lunchStartMin = tenantData.lunch_start_time ? timeToMinutes(tenantData.lunch_start_time) : null
-    const lunchEndMin = tenantData.lunch_end_time ? timeToMinutes(tenantData.lunch_end_time) : null
+    // 5. EVALUASI PENABRAKAN DURASI & JAM ISTIRAHAT UNTUK SETIAP SLOT
+    const lunchStartMin = tenantData.lunch_start_time ? timeToMinutes(tenantData.lunch_start_time) : timeToMinutes('12:00:00')
+    const lunchEndMin = tenantData.lunch_end_time ? timeToMinutes(tenantData.lunch_end_time) : timeToMinutes('13:00:00')
     const closeTimeMin = timeToMinutes(closeTime)
     const effectiveDuration = durationParam > 0 ? durationParam : intervalMinutes
 
@@ -217,13 +218,15 @@ export async function GET(request: Request) {
       // A. Menabrak Jam Tutup
       if (slotEndMin > closeTimeMin) {
         blockedTimesSet.add(slotStr)
+        blockedReasonsMap.set(slotStr, 'Tutup')
         return
       }
 
-      // B. Menabrak Jam Istirahat
+      // B. Menabrak Jam Istirahat (Sesuai Durasi Layanan)
       if (lunchStartMin !== null && lunchEndMin !== null) {
         if (slotStartMin < lunchEndMin && slotEndMin > lunchStartMin) {
           blockedTimesSet.add(slotStr)
+          blockedReasonsMap.set(slotStr, 'Istirahat')
           return
         }
       }
@@ -238,13 +241,14 @@ export async function GET(request: Request) {
         })
         if (isBlockedByAdmin) {
           blockedTimesSet.add(slotStr)
+          blockedReasonsMap.set(slotStr, 'Di-block')
           return
         }
       }
 
-      // D. Menabrak Jadwal Reservasi Lain
+      // D. Menabrak Jadwal Reservasi Lain (Filter Per Staf Spesifik)
       if (activeBookings.length > 0) {
-        if (!staffQuery || staffQuery === 'all' || staffQuery === 'any') {
+        if (!staffQuery || staffQuery === 'all' || staffQuery === 'any' || staffQuery === 'undefined') {
           const busyStaff = activeBookings.filter((b) => {
             if (!b.booking_time) return false
             const bStart = timeToMinutes(b.booking_time)
@@ -254,15 +258,17 @@ export async function GET(request: Request) {
 
           if (busyStaff.length >= totalActiveStaffCount) {
             blockedTimesSet.add(slotStr)
+            blockedReasonsMap.set(slotStr, 'Penuh')
           }
         } else {
           const cleanParam = normalizeStaffName(staffQuery)
           const isStaffBusy = activeBookings.some((b) => {
             if (!b.booking_time) return false
+            
             const cleanResName = normalizeStaffName(b.staff_name || '')
             const isMatch =
-              (cleanResName && cleanResName === cleanParam) ||
-              (b.staff_id && String(b.staff_id) === String(staffQuery))
+              (b.staff_id && String(b.staff_id) === String(staffQuery)) ||
+              (cleanResName && cleanParam && (cleanResName.includes(cleanParam) || cleanParam.includes(cleanResName)))
 
             if (!isMatch) return false
 
@@ -273,17 +279,20 @@ export async function GET(request: Request) {
 
           if (isStaffBusy) {
             blockedTimesSet.add(slotStr)
+            blockedReasonsMap.set(slotStr, 'Penuh')
           }
         }
       }
     })
 
     const blockedTimes = Array.from(blockedTimesSet)
+    const blockedDetails = Object.fromEntries(blockedReasonsMap)
 
     return NextResponse.json({
       success: true,
       slots: generatedSlots,
       blockedTimes,
+      blockedDetails,
       bookedReservations: activeBookings,
       tenantSettings: {
         hide_booked_slots: tenantData.hide_booked_slots ?? false,

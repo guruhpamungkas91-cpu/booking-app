@@ -1,5 +1,3 @@
-// types/reservations.ts
-
 export interface TimeSlot {
   time: string
   time_slot?: string
@@ -12,7 +10,6 @@ export interface TimeSlot {
   isHidden?: boolean
 }
 
-// 1. TAMBAHAN: Interface Reservation agar import Reservation di komponen tidak merah
 export interface Reservation {
   id?: string | number
   tenant_id?: string | number
@@ -20,7 +17,7 @@ export interface Reservation {
   whatsapp_number?: string
   booking_date?: string
   booking_time?: string
-  time?: string // <-- TAMBAHKAN BARIS INI
+  time?: string
   staff?: string
   staff_name?: string
   staff_id?: string | number
@@ -31,7 +28,7 @@ export interface Reservation {
 
 export interface BookedReservation {
   booking_time: string
-  time?: string // <-- TAMBAHKAN BARIS INI
+  time?: string
   duration_minutes?: number
   staff?: string
   staff_id?: string | number
@@ -44,10 +41,12 @@ export interface TenantSettingsResponse {
   enable_auto_disable_time_slots?: boolean
 }
 
+// 1. TAMBAHAN: blockedDetails ditambahkan ke respon API
 export interface AvailabilityApiResponse {
   success: boolean
   slots: string[]
   blockedTimes: string[]
+  blockedDetails?: Record<string, string> // <-- TAMBAHKAN BARIS INI
   bookedReservations: BookedReservation[]
   tenantSettings?: TenantSettingsResponse
 }
@@ -86,7 +85,6 @@ export interface BookingFormData {
   [key: string]: unknown
 }
 
-// Tambahkan tipe enum status di atas
 export type ReservationStatus = 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'COMPLETED' | string
 
 export interface InvoiceBooking {

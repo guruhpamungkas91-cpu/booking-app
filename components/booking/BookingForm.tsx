@@ -48,13 +48,25 @@ interface ThemeConfig {
 }
 
 interface TimePickerProps {
-  availableSlots: ExtendedTimeSlot[]
+  availableSlots: TimeSlot[]
   blockedTimes: string[]
+  blockedDetails?: Record<string, string>
   selectedTime: string
   onSelectTime: (time: string) => void
-  tenantData: Tenant
-  theme?: ThemeConfig
-}
+  // Update tipe tenantData agar TypeScript mengenali properti di dalamnya
+  tenantData?: {
+    hide_booked_slots?: boolean | null
+    hideBookedSlots?: boolean | null
+    enable_auto_disable_time_slots?: boolean | null
+    enableAutoDisableTimeSlots?: boolean | null
+    [key: string]: unknown // opsional: agar fleksibel jika ada properti lain
+  } | null
+  theme?: {
+    accentBg?: string
+    inlineStyle?: React.CSSProperties
+    [key: string]: unknown
+  }
+}  
 
 // ============================================================================
 // 3. UTILITY / HELPER FUNCTIONS
@@ -105,6 +117,7 @@ const getServiceDisplayLabel = (
 function TimePicker({
   availableSlots,
   blockedTimes,
+  blockedDetails, // Tambahkan prop ini dari API jika ada
   selectedTime,
   onSelectTime,
   tenantData,
@@ -114,25 +127,28 @@ function TimePicker({
   const shouldAutoDisable = tenantData?.enable_auto_disable_time_slots ?? tenantData?.enableAutoDisableTimeSlots ?? true
 
   const displayedSlots = (availableSlots || [])
-  .map((slot: TimeSlot) => {
-    const rawTime = slot.time || slot.time_slot || ''
-    const timeStr = typeof rawTime === 'string' ? rawTime.substring(0, 5) : ''
+    .map((slot: TimeSlot) => {
+      const rawTime = slot.time || slot.time_slot || ''
+      const timeStr = typeof rawTime === 'string' ? rawTime.substring(0, 5) : ''
 
-    const isBlockedByApi = blockedTimes.some(
-      (b) => typeof b === 'string' && b.substring(0, 5) === timeStr
-    )
-    const isSlotDisabled =
-      slot.disabled === true || slot.is_available === false || isBlockedByApi
+      const isBlockedByApi = blockedTimes.some(
+        (b) => typeof b === 'string' && b.substring(0, 5) === timeStr
+      )
+      const isSlotDisabled =
+        slot.disabled === true || slot.is_available === false || isBlockedByApi
 
-    return {
-      ...slot,
-      time: timeStr,
-      isDisabled: shouldAutoDisable ? isSlotDisabled : false,
-      isHidden: shouldHideBooked && isSlotDisabled,
-      reason: isBlockedByApi ? 'Jam Istirahat' : slot.reason || 'Penuh',
-    }
-  })
-  .filter((slot) => !slot.isHidden && slot.time)
+      // Ambil alasan resmi dari API, jika tidak ada baru gunakan fallback
+      const apiReason = blockedDetails?.[timeStr] || slot.reason || (isBlockedByApi ? 'Penuh' : '')
+
+      return {
+        ...slot,
+        time: timeStr,
+        isDisabled: shouldAutoDisable ? isSlotDisabled : false,
+        isHidden: shouldHideBooked && isSlotDisabled,
+        reason: apiReason,
+      }
+    })
+    .filter((slot) => !slot.isHidden && slot.time)
 
   if (displayedSlots.length === 0) {
     return (
