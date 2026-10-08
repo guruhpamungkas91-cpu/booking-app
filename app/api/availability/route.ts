@@ -1,22 +1,15 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
-// ----------------------------------------------------------------------
-// NEXT.JS ROUTE SEGMENT CONFIG (PREVENT STATIC CACHING)
-// ----------------------------------------------------------------------
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
-// Header khusus untuk mematikan cache di browser, Vercel Edge Cache, dan CDN
 const NO_CACHE_HEADERS = {
   'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
   'Pragma': 'no-cache',
   'Expires': '0',
 }
 
-// ----------------------------------------------------------------------
-// STRICT TYPESCRIPT INTERFACES
-// ----------------------------------------------------------------------
 interface TenantRecord {
   id: string | number
   tenant_slug?: string | null
@@ -51,9 +44,6 @@ interface StaffRecord {
   is_active?: boolean | null
 }
 
-// ----------------------------------------------------------------------
-// HELPER FUNCTIONS
-// ----------------------------------------------------------------------
 function timeToMinutes(timeStr: unknown): number {
   if (!timeStr || typeof timeStr !== 'string') return 0
   const clean = timeStr.trim().substring(0, 5)
@@ -72,9 +62,30 @@ function normalizeStaffName(name: string): string {
   if (!name) return ''
   return name
     .toLowerCase()
-    .replace(/^dr\.\s*/i, '') // Hapus gelar 'dr. '
-    .replace(/\s+/g, '')     // Hapus spasi agar 'putriziani' === 'putri ziani'
+    .replace(/^dr\.\s*/i, '')
+    .replace(/\s+/g, '')
     .trim()
+}
+
+// Fungsi konversi tanggal untuk mendukung format YYYY-MM-DD maupun DD/MM/YYYY
+function getDateVariants(rawDate: string): string[] {
+  if (!rawDate) return []
+  const variants = new Set<string>([rawDate])
+
+  if (rawDate.includes('-')) {
+    const [yyyy, mm, dd] = rawDate.split('-')
+    if (yyyy && mm && dd) {
+      variants.add(`${dd}/${mm}/${yyyy}`)
+      variants.add(`${dd.padStart(2, '0')}/${mm.padStart(2, '0')}/${yyyy}`)
+    }
+  } else if (rawDate.includes('/')) {
+    const [dd, mm, yyyy] = rawDate.split('/')
+    if (dd && mm && yyyy) {
+      variants.add(`${yyyy}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}`)
+    }
+  }
+
+  return Array.from(variants)
 }
 
 function generateDynamicSlots(
@@ -87,9 +98,7 @@ function generateDynamicSlots(
   const endMin = timeToMinutes(closeTimeStr)
   const interval = intervalMinutes > 0 ? intervalMinutes : 30
 
-  if (startMin >= endMin || interval <= 0) {
-    return []
-  }
+  if (startMin >= endMin || interval <= 0) return []
 
   for (let current = startMin; current < endMin; current += interval) {
     slots.push(minutesToTime(current))
@@ -98,9 +107,6 @@ function generateDynamicSlots(
   return slots
 }
 
-// ----------------------------------------------------------------------
-// ROUTE HANDLER
-// ----------------------------------------------------------------------
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
@@ -110,7 +116,6 @@ export async function GET(request: Request) {
     const rawStaffId = searchParams.get('staff_id') || ''
     const durationParam = Number(searchParams.get('duration')) || 0
 
-    // Bersihkan nilai string "null" atau "undefined" dari parameter query
     const staffQuery = (rawStaff === 'undefined' || rawStaff === 'null') ? '' : rawStaff.trim()
     const staffIdQuery = (rawStaffId === 'undefined' || rawStaffId === 'null') ? '' : rawStaffId.trim()
 
@@ -163,16 +168,18 @@ export async function GET(request: Request) {
       30
     const tenantId = tenantData.id
 
-    // GENERASI SLOT JAM DINAMIS
     const generatedSlots = generateDynamicSlots(openTime, closeTime, intervalMinutes)
     const blockedTimesSet = new Set<string>()
     const blockedReasonsMap = new Map<string, string>()
 
-    // 2. FETCH BLOCKED SLOTS DARI MANAJEMEN ADMIN
+    // Ambil semua variasi format tanggal (YYYY-MM-DD & DD/MM/YYYY)
+    const dateVariants = getDateVariants(dateStr)
+
+    // 2. FETCH BLOCKED SLOTS
     let blockedQuery = supabase
       .from('blocked_slots')
       .select('start_time, end_time')
-      .eq('block_date', dateStr)
+      .in('block_date', dateVariants)
 
     if (tenantId) {
       blockedQuery = blockedQuery.or(`tenant_id.eq.${tenantId},tenant_slug.eq.${tenantSlug}`)
@@ -197,11 +204,11 @@ export async function GET(request: Request) {
       }
     }
 
-    // 4. FETCH RESERVASI TERDAFTAR
+    // 4. FETCH RESERVASI TERDAFTAR (Cari dengan semua opsi format tanggal)
     let resQuery = supabase
       .from('reservations')
       .select('booking_time, duration_minutes, staff_id, staff_name, status')
-      .eq('booking_date', dateStr)
+      .in('booking_date', dateVariants)
 
     if (tenantId) {
       resQuery = resQuery.or(`tenant_id.eq.${tenantId},tenant_slug.eq.${tenantSlug}`)
@@ -216,14 +223,17 @@ export async function GET(request: Request) {
       console.error('[API Availability] Error fetch reservations:', bookingErr)
     }
 
-    const activeBookings = (existingBookings || []).filter(
-      (b) =>
-        b.status !== 'cancelled' &&
-        b.status !== 'refunded' &&
-        b.status !== 'rejected'
-    )
+    // PERBAIKAN STATUS: Lowercase untuk membandingkan status ('completed', 'refunded', dll)
+    const activeBookings = (existingBookings || []).filter((b) => {
+      const statusLower = (b.status || '').toLowerCase().trim()
+      return (
+        statusLower !== 'cancelled' &&
+        statusLower !== 'refunded' &&
+        statusLower !== 'rejected'
+      )
+    })
 
-    // 5. EVALUASI PENABRAKAN DURASI & JAM ISTIRAHAT UNTUK SETIAP SLOT
+    // 5. EVALUASI PENABRAKAN SLOT
     const lunchStartMin = tenantData.lunch_start_time ? timeToMinutes(tenantData.lunch_start_time) : null
     const lunchEndMin = tenantData.lunch_end_time ? timeToMinutes(tenantData.lunch_end_time) : null
     const closeTimeMin = timeToMinutes(closeTime)
@@ -233,14 +243,14 @@ export async function GET(request: Request) {
       const slotStartMin = timeToMinutes(slotStr)
       const slotEndMin = slotStartMin + effectiveDuration
 
-      // A. Menabrak Jam Tutup Toko
+      // A. Menabrak Jam Tutup
       if (slotEndMin > closeTimeMin) {
         blockedTimesSet.add(slotStr)
         blockedReasonsMap.set(slotStr, 'Penuh')
         return
       }
 
-      // B. Menabrak Jam Istirahat Klinik
+      // B. Menabrak Jam Istirahat
       if (lunchStartMin !== null && lunchEndMin !== null && lunchStartMin < lunchEndMin) {
         if (slotStartMin < lunchEndMin && slotEndMin > lunchStartMin) {
           blockedTimesSet.add(slotStr)
@@ -264,7 +274,7 @@ export async function GET(request: Request) {
         }
       }
 
-      // D. Menabrak Jadwal Reservasi Staf Spesifik
+      // D. Menabrak Jadwal Reservasi
       if (activeBookings.length > 0) {
         const isNoStaffSelected =
           !staffQuery ||
@@ -272,7 +282,6 @@ export async function GET(request: Request) {
           staffQuery === 'any'
 
         if (isNoStaffSelected && !staffIdQuery) {
-          // Jika user tidak memilih staf spesifik, hitung berapa staf unik yang sibuk
           const busyStaffIdentifiers = new Set<string>()
 
           activeBookings.forEach((b) => {
@@ -295,7 +304,6 @@ export async function GET(request: Request) {
             blockedReasonsMap.set(slotStr, 'Penuh')
           }
         } else {
-          // Jika memilih staf spesifik
           const cleanParam = normalizeStaffName(staffQuery)
 
           const isStaffBusy = activeBookings.some((b) => {
@@ -303,7 +311,6 @@ export async function GET(request: Request) {
 
             const cleanResName = normalizeStaffName(b.staff_name || '')
 
-            // Cek kesamaan Staf berdasarkan ID atau Nama
             const isMatchById =
               Boolean(staffIdQuery) &&
               Boolean(b.staff_id) &&
@@ -349,9 +356,7 @@ export async function GET(request: Request) {
           enable_auto_disable_time_slots: tenantData.enable_auto_disable_time_slots ?? true,
         },
       },
-      {
-        headers: NO_CACHE_HEADERS,
-      }
+      { headers: NO_CACHE_HEADERS }
     )
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Internal Server Error'

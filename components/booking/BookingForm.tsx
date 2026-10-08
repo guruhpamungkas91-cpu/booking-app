@@ -476,7 +476,7 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
             : ''
 
         const apiUrl = `/api/availability?date=${formData.booking_date}&tenant_slug=${tenant.tenant_slug}${staffParam}${durationParam}${servicesParam}${addonsParam}`
-        const res = await fetch(apiUrl)
+        const res = await fetch(apiUrl, { cache: 'no-store' })
 
         if (!res.ok) {
           throw new Error(`API Error: Status ${res.status}`)
