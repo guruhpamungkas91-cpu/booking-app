@@ -204,11 +204,14 @@ export async function GET(request: Request) {
       }
     }
 
+    // Konversi variabel tanggal input (misal: dateStr) ke format ISO YYYY-MM-DD yang konsisten
+    const targetDateISO = new Date(dateStr).toISOString().split('T')[0]
+
     // 4. FETCH RESERVASI TERDAFTAR (Cari dengan semua opsi format tanggal)
     let resQuery = supabase
-      .from('reservations')
-      .select('booking_time, duration_minutes, staff_id, staff_name, status')
-      .in('booking_date', dateVariants)
+    .from('reservations')
+    .select('booking_time, duration_minutes, staff_id, staff_name, status')
+    .eq('booking_date', targetDateISO) // Pencocokan presisi 1:1
 
     if (tenantId) {
       resQuery = resQuery.or(`tenant_id.eq.${tenantId},tenant_slug.eq.${tenantSlug}`)
