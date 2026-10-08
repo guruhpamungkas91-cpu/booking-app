@@ -269,7 +269,10 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
   // --------------------------------------------------------------------------
   // 5.2 Side Effects
   // --------------------------------------------------------------------------
-  
+
+  // Definisi nilai staff yang diabaikan (ditaruh di luar/atas useEffect agar tidak dire-create)
+  const IGNORED_STAFF_VALUES = new Set(['all', 'any', 'semua', 'pilih staff', 'pilih terapis', ''])
+
   // Effect 1: Fetch Tenant & Initial Data
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -402,8 +405,6 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
     fetchTenantAndData()
   }, [routerSlug])
 
-  const IGNORED_STAFF_VALUES = new Set(['all', 'any', 'semua', ''])
-
   // Effect 2: Fetch Availability secara Dinamis
   useEffect(() => {
     const fetchAvailability = async (): Promise<void> => {
@@ -413,26 +414,23 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
 
       setLoadingSlots(true)
       try {
-        const rawStaffName = typeof formData.selected_staff === 'string' ? formData.selected_staff : ''
-        const rawStaffId = formData.selected_staff_id != null ? String(formData.selected_staff_id) : ''
+        const rawStaffName = typeof formData.selected_staff === 'string' ? formData.selected_staff.trim() : ''
+        const rawStaffId = formData.selected_staff_id != null ? String(formData.selected_staff_id).trim() : ''
 
-        const normalizedStaffName = rawStaffName.trim().toLowerCase()
-        const normalizedStaffId = rawStaffId.trim().toLowerCase()
+        const normalizedStaffName = rawStaffName.toLowerCase()
+        const normalizedStaffId = rawStaffId.toLowerCase()
 
-        // Pengecekan apakah user memilih staff spesifik
-        const isSpecificStaff =
-          Boolean(rawStaffId || rawStaffName) &&
-          !IGNORED_STAFF_VALUES.has(normalizedStaffId) &&
-          !IGNORED_STAFF_VALUES.has(normalizedStaffName)
+        // Pengecekan terpisah & independen
+        const hasValidStaffId = Boolean(rawStaffId) && !IGNORED_STAFF_VALUES.has(normalizedStaffId)
+        const hasValidStaffName = Boolean(rawStaffName) && !IGNORED_STAFF_VALUES.has(normalizedStaffName)
 
         let staffParam = ''
-        if (isSpecificStaff) {
-          // Prioritaskan staff_id karena presisi, gunakan staff_name hanya jika id kosong
-          if (rawStaffId) {
-            staffParam = `&staff_id=${encodeURIComponent(rawStaffId)}`
-          } else if (rawStaffName) {
-            staffParam = `&staff_name=${encodeURIComponent(rawStaffName)}`
-          }
+        if (hasValidStaffId) {
+          // Utamakan staff_id jika valid
+          staffParam = `&staff_id=${encodeURIComponent(rawStaffId)}`
+        } else if (hasValidStaffName) {
+          // Fallback ke staff_name jika staff_id tidak ada/kosong
+          staffParam = `&staff_name=${encodeURIComponent(rawStaffName)}`
         }
 
         const selectedServiceList: string[] = (formData.selected_services || []).map(
@@ -942,9 +940,9 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
 
     setFormData((prev) => ({
       ...prev,
-      selected_staff: staff.name ?? '',
-      selected_staff_id: staff.id, // Tidak akan merah lagi!
-      booking_time: '',
+      selected_staff_id: staff.id, // Menyimpan ID asli (misal: 5 atau "5")
+      selected_staff: staff.name ?? '', // Menyimpan Nama asli
+      booking_time: '', // Reset waktu saat ganti staff
     }))
   }
 
