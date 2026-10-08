@@ -427,9 +427,10 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
 
         let staffParam = ''
         if (hasValidStaffId) {
-          staffParam = `&staff_id=${encodeURIComponent(rawStaffId)}`
-        } else if (hasValidStaffName) {
-          staffParam = `&staff_name=${encodeURIComponent(rawStaffName)}`
+          staffParam += `&staff_id=${encodeURIComponent(rawStaffId)}`
+        }
+        if (hasValidStaffName) {
+          staffParam += `&staff_name=${encodeURIComponent(rawStaffName)}`
         }
 
         const selectedServiceList: string[] = (formData.selected_services || []).map(

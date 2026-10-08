@@ -92,7 +92,7 @@ export async function GET(request: Request) {
     const dateStr = searchParams.get('date')
     const tenantSlug = searchParams.get('tenant_slug')
     
-    // Ambil parameter staf dari query URL (Mendukung staff, staff_name, maupun staff_id)
+    // Ambil parameter staf dari query URL
     const rawStaff = searchParams.get('staff') || searchParams.get('staff_name') || ''
     const rawStaffId = searchParams.get('staff_id') || ''
     const durationParam = Number(searchParams.get('duration')) || 0
@@ -196,7 +196,7 @@ export async function GET(request: Request) {
       }
     }
 
-    // 4. FETCH RESERVASI TERDAFTAR (Gunakan ISO YYYY-MM-DD)
+    // 4. FETCH RESERVASI TERDAFTAR
     let resQuery = supabase
       .from('reservations')
       .select('booking_time, duration_minutes, staff_id, staff_name, status')
@@ -215,7 +215,7 @@ export async function GET(request: Request) {
       console.error('[API Availability] Error fetch reservations:', bookingErr)
     }
 
-    // Filter reservasi aktif (abaikan yang dibatalkan)
+    // Filter reservasi aktif
     const activeBookings = (existingBookings || []).filter((b) => {
       const statusLower = (b.status || '').toLowerCase().trim()
       return (
@@ -230,6 +230,8 @@ export async function GET(request: Request) {
     const lunchEndMin = tenantData.lunch_end_time ? timeToMinutes(tenantData.lunch_end_time) : null
     const closeTimeMin = timeToMinutes(closeTime)
     const effectiveDuration = durationParam > 0 ? durationParam : intervalMinutes
+
+    const IGNORED_STAFF_VALUES = new Set(['all', 'any', 'semua', 'pilih staff', 'pilih terapis', ''])
 
     generatedSlots.forEach((slotStr) => {
       const slotStartMin = timeToMinutes(slotStr)
@@ -269,8 +271,8 @@ export async function GET(request: Request) {
       // D. Menabrak Jadwal Reservasi
       if (activeBookings.length > 0) {
         const isNoStaffSelected =
-          (!staffQuery || staffQuery === 'all' || staffQuery === 'any') &&
-          !staffIdQuery
+          (!staffQuery || IGNORED_STAFF_VALUES.has(staffQuery.toLowerCase())) &&
+          (!staffIdQuery || IGNORED_STAFF_VALUES.has(staffIdQuery.toLowerCase()))
 
         if (isNoStaffSelected) {
           // Jika TIDAK pilih staf spesifik: kunci slot jika seluruh staf di jam tersebut sibuk
@@ -304,19 +306,19 @@ export async function GET(request: Request) {
 
             const cleanResName = normalizeStaffName(b.staff_name || '')
 
+            // 1. Cek kecocokan berdasarkan ID
             const isMatchById =
               Boolean(staffIdQuery) &&
               Boolean(b.staff_id) &&
               String(b.staff_id) === String(staffIdQuery)
 
+            // 2. Cek kecocokan berdasarkan Nama
             const isMatchByName =
               Boolean(cleanParam) &&
               Boolean(cleanResName) &&
-              cleanResName.length >= 2 &&
-              (cleanResName === cleanParam ||
-                cleanResName.includes(cleanParam) ||
-                cleanParam.includes(cleanResName))
+              cleanResName === cleanParam
 
+            // Jika salah satu cocok, berarti ini reservasi staf yang dicari
             const isSameStaff = isMatchById || isMatchByName
 
             if (!isSameStaff) return false
