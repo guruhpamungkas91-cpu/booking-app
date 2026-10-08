@@ -423,14 +423,23 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
 
       setLoadingSlots(true)
       try {
-        const isSpecificStaff =
-          formData.selected_staff &&
-          formData.selected_staff !== 'all' &&
-          formData.selected_staff !== 'any'
+        const selectedStaffName = typeof formData.selected_staff === 'string' ? formData.selected_staff : ''
+        const selectedStaffId = formData.selected_staff_id ? String(formData.selected_staff_id) : ''
 
-        const staffParam = isSpecificStaff
-          ? `&staff=${encodeURIComponent(formData.selected_staff)}`
-          : ''
+        const isSpecificStaff =
+          (selectedStaffName && selectedStaffName !== 'all' && selectedStaffName !== 'any') ||
+          Boolean(selectedStaffId)
+
+        let staffParam = ''
+        if (isSpecificStaff) {
+          if (selectedStaffId) {
+            staffParam += `&staff_id=${encodeURIComponent(selectedStaffId)}`
+          }
+          
+          if (selectedStaffName) {
+            staffParam += `&staff_name=${encodeURIComponent(selectedStaffName)}`
+          }
+        }
 
         const selectedServiceList: string[] = (formData.selected_services || []).map(
           (item) => String(item)
