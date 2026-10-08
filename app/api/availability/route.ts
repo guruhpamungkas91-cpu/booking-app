@@ -67,27 +67,6 @@ function normalizeStaffName(name: string): string {
     .trim()
 }
 
-// Fungsi konversi tanggal untuk mendukung format YYYY-MM-DD maupun DD/MM/YYYY
-function getDateVariants(rawDate: string): string[] {
-  if (!rawDate) return []
-  const variants = new Set<string>([rawDate])
-
-  if (rawDate.includes('-')) {
-    const [yyyy, mm, dd] = rawDate.split('-')
-    if (yyyy && mm && dd) {
-      variants.add(`${dd}/${mm}/${yyyy}`)
-      variants.add(`${dd.padStart(2, '0')}/${mm.padStart(2, '0')}/${yyyy}`)
-    }
-  } else if (rawDate.includes('/')) {
-    const [dd, mm, yyyy] = rawDate.split('/')
-    if (dd && mm && yyyy) {
-      variants.add(`${yyyy}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}`)
-    }
-  }
-
-  return Array.from(variants)
-}
-
 function generateDynamicSlots(
   openTimeStr: string,
   closeTimeStr: string,
@@ -112,7 +91,9 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url)
     const dateStr = searchParams.get('date')
     const tenantSlug = searchParams.get('tenant_slug')
-    const rawStaff = searchParams.get('staff') || ''
+    
+    // Ambil parameter staf dari query URL (Mendukung staff, staff_name, maupun staff_id)
+    const rawStaff = searchParams.get('staff') || searchParams.get('staff_name') || ''
     const rawStaffId = searchParams.get('staff_id') || ''
     const durationParam = Number(searchParams.get('duration')) || 0
 
@@ -124,6 +105,20 @@ export async function GET(request: Request) {
         { success: false, error: 'Parameter date dan tenant_slug wajib diisi.' },
         { status: 400, headers: NO_CACHE_HEADERS }
       )
+    }
+
+    // Normalisasi format tanggal input ke ISO YYYY-MM-DD standar
+    let targetDateISO = dateStr
+    if (dateStr.includes('/')) {
+      const [dd, mm, yyyy] = dateStr.split('/')
+      if (dd && mm && yyyy) {
+        targetDateISO = `${yyyy}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}`
+      }
+    } else if (dateStr.includes('-')) {
+      const parts = dateStr.split('-')
+      if (parts[0].length === 2 && parts[2].length === 4) {
+        targetDateISO = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`
+      }
     }
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
@@ -172,14 +167,11 @@ export async function GET(request: Request) {
     const blockedTimesSet = new Set<string>()
     const blockedReasonsMap = new Map<string, string>()
 
-    // Ambil semua variasi format tanggal (YYYY-MM-DD & DD/MM/YYYY)
-    const dateVariants = getDateVariants(dateStr)
-
     // 2. FETCH BLOCKED SLOTS
     let blockedQuery = supabase
       .from('blocked_slots')
       .select('start_time, end_time')
-      .in('block_date', dateVariants)
+      .eq('block_date', targetDateISO)
 
     if (tenantId) {
       blockedQuery = blockedQuery.or(`tenant_id.eq.${tenantId},tenant_slug.eq.${tenantSlug}`)
@@ -204,14 +196,11 @@ export async function GET(request: Request) {
       }
     }
 
-    // Konversi variabel tanggal input (misal: dateStr) ke format ISO YYYY-MM-DD yang konsisten
-    const targetDateISO = new Date(dateStr).toISOString().split('T')[0]
-
-    // 4. FETCH RESERVASI TERDAFTAR (Cari dengan semua opsi format tanggal)
+    // 4. FETCH RESERVASI TERDAFTAR (Gunakan ISO YYYY-MM-DD)
     let resQuery = supabase
-    .from('reservations')
-    .select('booking_time, duration_minutes, staff_id, staff_name, status')
-    .eq('booking_date', targetDateISO) // Pencocokan presisi 1:1
+      .from('reservations')
+      .select('booking_time, duration_minutes, staff_id, staff_name, status')
+      .eq('booking_date', targetDateISO)
 
     if (tenantId) {
       resQuery = resQuery.or(`tenant_id.eq.${tenantId},tenant_slug.eq.${tenantSlug}`)
@@ -226,7 +215,7 @@ export async function GET(request: Request) {
       console.error('[API Availability] Error fetch reservations:', bookingErr)
     }
 
-    // PERBAIKAN STATUS: Lowercase untuk membandingkan status ('completed', 'refunded', dll)
+    // Filter reservasi aktif (abaikan yang dibatalkan)
     const activeBookings = (existingBookings || []).filter((b) => {
       const statusLower = (b.status || '').toLowerCase().trim()
       return (
@@ -280,11 +269,11 @@ export async function GET(request: Request) {
       // D. Menabrak Jadwal Reservasi
       if (activeBookings.length > 0) {
         const isNoStaffSelected =
-          !staffQuery ||
-          staffQuery === 'all' ||
-          staffQuery === 'any'
+          (!staffQuery || staffQuery === 'all' || staffQuery === 'any') &&
+          !staffIdQuery
 
-        if (isNoStaffSelected && !staffIdQuery) {
+        if (isNoStaffSelected) {
+          // Jika TIDAK pilih staf spesifik: kunci slot jika seluruh staf di jam tersebut sibuk
           const busyStaffIdentifiers = new Set<string>()
 
           activeBookings.forEach((b) => {
@@ -307,6 +296,7 @@ export async function GET(request: Request) {
             blockedReasonsMap.set(slotStr, 'Penuh')
           }
         } else {
+          // Jika MEMILIH STAF SPESIFIK: Hanya kunci slot milik staf tersebut
           const cleanParam = normalizeStaffName(staffQuery)
 
           const isStaffBusy = activeBookings.some((b) => {
@@ -322,7 +312,7 @@ export async function GET(request: Request) {
             const isMatchByName =
               Boolean(cleanParam) &&
               Boolean(cleanResName) &&
-              cleanResName.length > 2 &&
+              cleanResName.length >= 2 &&
               (cleanResName === cleanParam ||
                 cleanResName.includes(cleanParam) ||
                 cleanParam.includes(cleanResName))
