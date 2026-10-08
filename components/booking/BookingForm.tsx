@@ -376,7 +376,7 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
           setServices([])
         }
 
-        // 2. Fetch Staff (Pada Effect 1)
+        // 2. Fetch Staff
         const { data: staffData } = await supabase
           .from('staff')
           .select('*')
@@ -385,7 +385,6 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
 
         if (staffData && staffData.length > 0) {
           setStaffList(staffData)
-          // JANGAN set default staff di sini agar user bisa memilih staff sendiri
         } else {
           setStaffList([])
         }
@@ -399,162 +398,159 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
     fetchTenantAndData()
   }, [routerSlug])
 
+
+  // Stringify array dependencies agar tidak mereset Effect jika isinya sama
+  const selectedServicesKey = JSON.stringify(formData.selected_services || [])
+  const selectedAddonIdsKey = JSON.stringify(formData.selectedAddonIds || [])
+  const selectedTenantAddonsKey = JSON.stringify(
+    (formData.selectedTenantAddons || []).map((a) => a.label || a.name || '')
+  )
+
   // Effect 2: Fetch Availability secara Dinamis
   useEffect(() => {
     const fetchAvailability = async (): Promise<void> => {
-  // 1. Taruh log di PALING ATAS untuk memantau nilai state saat ini
-  console.log('🔍 [DEBUG Availability] Status State:', {
-    tenant_slug: tenant?.tenant_slug,
-    booking_date: formData.booking_date,
-    selected_staff_id: formData.selected_staff_id,
-    selected_staff: formData.selected_staff
-  })
-
-  // 2. Jika salah satu kosong, log alasan batalnya
-  if (!tenant?.tenant_slug || !formData.booking_date) {
-    console.warn('⚠️ [DEBUG Availability] Batal fetch karena:', {
-      missing_tenant_slug: !tenant?.tenant_slug,
-      missing_booking_date: !formData.booking_date
-    })
-    return
-  }
-
-  setLoadingSlots(true)
-  try {
-    const rawStaffName = typeof formData.selected_staff === 'string' ? formData.selected_staff.trim() : ''
-    const rawStaffId = formData.selected_staff_id != null ? String(formData.selected_staff_id).trim() : ''
-
-    const normalizedStaffName = rawStaffName.toLowerCase()
-    const normalizedStaffId = rawStaffId.toLowerCase()
-
-    const hasValidStaffId = Boolean(rawStaffId) && !IGNORED_STAFF_VALUES.has(normalizedStaffId)
-    const hasValidStaffName = Boolean(rawStaffName) && !IGNORED_STAFF_VALUES.has(normalizedStaffName)
-
-    let staffParam = ''
-    if (hasValidStaffId) {
-      staffParam = `&staff_id=${encodeURIComponent(rawStaffId)}`
-    } else if (hasValidStaffName) {
-      staffParam = `&staff_name=${encodeURIComponent(rawStaffName)}`
-    }
-
-    const selectedServiceList: string[] = (formData.selected_services || []).map(
-      (item) => String(item)
-    )
-
-    let selectedAddonList: string[] = []
-    if (formData.selectedAddonIds && formData.selectedAddonIds.length > 0) {
-      selectedAddonList = formData.selectedAddonIds.map((id) => String(id))
-    } else if (
-      formData.selectedTenantAddons &&
-      formData.selectedTenantAddons.length > 0
-    ) {
-      selectedAddonList = formData.selectedTenantAddons
-        .map((addon) => addon.label || addon.name || '')
-        .filter((val: string) => val.trim().length > 0)
-    }
-
-    const allSelectedItems: string[] = [
-      ...selectedServiceList,
-      ...selectedAddonList,
-    ]
-
-    let totalDuration = 0
-    if (allSelectedItems.length > 0 && services && services.length > 0) {
-      allSelectedItems.forEach((itemIdOrName) => {
-        const foundItem = services.find(
-          (s: ServiceItem) => String(s.id) === itemIdOrName || s.name === itemIdOrName
-        )
-        if (foundItem && foundItem.duration) {
-          totalDuration += Number(foundItem.duration)
-        }
-      })
-    }
-
-    const durationParam = totalDuration > 0 ? `&duration=${totalDuration}` : ''
-    const servicesParam =
-      selectedServiceList.length > 0
-        ? `&services=${encodeURIComponent(JSON.stringify(selectedServiceList))}`
-        : ''
-    const addonsParam =
-      selectedAddonList.length > 0
-        ? `&addons=${encodeURIComponent(JSON.stringify(selectedAddonList))}`
-        : ''
-
-    const apiUrl = `/api/availability?date=${formData.booking_date}&tenant_slug=${tenant.tenant_slug}${staffParam}${durationParam}${servicesParam}${addonsParam}`
-    
-    // 3. Log URL Final Request
-    console.log('🚀 [DEBUG Availability] Executing Request URL:', apiUrl)
-
-    const res = await fetch(apiUrl, { cache: 'no-store' })
-
-    if (!res.ok) {
-      throw new Error(`API Error: Status ${res.status}`)
-    }
-
-    const data: AvailabilityApiResponse = await res.json()
-
-    if (data.success) {
-      const formattedSlots: TimeSlot[] = (data.slots || []).map((slotStr: string) => ({
-        time: slotStr.substring(0, 5),
-        time_slot: slotStr.substring(0, 5),
-        is_available: true,
-        disabled: false,
-      }))
-
-      setAvailableSlots(formattedSlots)
-      setBlockedTimes((data.blockedTimes || []).map((t) => String(t).substring(0, 5)))
-      setBlockedDetails(data.blockedDetails || {})
-
-      const activeBookings: BookedReservation[] = (data.bookedReservations || []).filter(
-        (b: BookedReservation) =>
-          b.status !== 'cancelled' &&
-          b.status !== 'refunded' &&
-          b.status !== 'rejected'
-      )
-      setBookedReservations(activeBookings)
-
-      if (data.tenantSettings) {
-        setTenant((prev) => {
-          if (!prev) return prev
-          return {
-            ...prev,
-            hide_booked_slots:
-              data.tenantSettings?.hide_booked_slots ?? prev.hide_booked_slots ?? false,
-            enable_auto_disable_time_slots:
-              data.tenantSettings?.enable_auto_disable_time_slots ??
-              prev.enable_auto_disable_time_slots ??
-              true,
-          }
-        })
+      // 1. Cek prasyarat utama
+      if (!tenant?.tenant_slug || !formData.booking_date) {
+        return
       }
-    } else {
-      setAvailableSlots([])
-      setBlockedTimes([])
-      setBlockedDetails({})
-      setBookedReservations([])
+
+      setLoadingSlots(true)
+      try {
+        const rawStaffName = typeof formData.selected_staff === 'string' ? formData.selected_staff.trim() : ''
+        const rawStaffId = formData.selected_staff_id != null ? String(formData.selected_staff_id).trim() : ''
+
+        const normalizedStaffName = rawStaffName.toLowerCase()
+        const normalizedStaffId = rawStaffId.toLowerCase()
+
+        const hasValidStaffId = Boolean(rawStaffId) && !IGNORED_STAFF_VALUES.has(normalizedStaffId)
+        const hasValidStaffName = Boolean(rawStaffName) && !IGNORED_STAFF_VALUES.has(normalizedStaffName)
+
+        let staffParam = ''
+        if (hasValidStaffId) {
+          staffParam = `&staff_id=${encodeURIComponent(rawStaffId)}`
+        } else if (hasValidStaffName) {
+          staffParam = `&staff_name=${encodeURIComponent(rawStaffName)}`
+        }
+
+        const selectedServiceList: string[] = (formData.selected_services || []).map(
+          (item) => String(item)
+        )
+
+        let selectedAddonList: string[] = []
+        if (formData.selectedAddonIds && formData.selectedAddonIds.length > 0) {
+          selectedAddonList = formData.selectedAddonIds.map((id) => String(id))
+        } else if (
+          formData.selectedTenantAddons &&
+          formData.selectedTenantAddons.length > 0
+        ) {
+          selectedAddonList = formData.selectedTenantAddons
+            .map((addon) => addon.label || addon.name || '')
+            .filter((val: string) => val.trim().length > 0)
+        }
+
+        const allSelectedItems: string[] = [
+          ...selectedServiceList,
+          ...selectedAddonList,
+        ]
+
+        let totalDuration = 0
+        if (allSelectedItems.length > 0 && services && services.length > 0) {
+          allSelectedItems.forEach((itemIdOrName) => {
+            const foundItem = services.find(
+              (s: ServiceItem) => String(s.id) === itemIdOrName || s.name === itemIdOrName
+            )
+            if (foundItem && foundItem.duration) {
+              totalDuration += Number(foundItem.duration)
+            }
+          })
+        }
+
+        const durationParam = totalDuration > 0 ? `&duration=${totalDuration}` : ''
+        const servicesParam =
+          selectedServiceList.length > 0
+            ? `&services=${encodeURIComponent(JSON.stringify(selectedServiceList))}`
+            : ''
+        const addonsParam =
+          selectedAddonList.length > 0
+            ? `&addons=${encodeURIComponent(JSON.stringify(selectedAddonList))}`
+            : ''
+
+        const apiUrl = `/api/availability?date=${formData.booking_date}&tenant_slug=${tenant.tenant_slug}${staffParam}${durationParam}${servicesParam}${addonsParam}`
+
+        const res = await fetch(apiUrl, { cache: 'no-store' })
+
+        if (!res.ok) {
+          throw new Error(`API Error: Status ${res.status}`)
+        }
+
+        const data: AvailabilityApiResponse = await res.json()
+
+        if (data.success) {
+          const formattedSlots: TimeSlot[] = (data.slots || []).map((slotStr: string) => ({
+            time: slotStr.substring(0, 5),
+            time_slot: slotStr.substring(0, 5),
+            is_available: true,
+            disabled: false,
+          }))
+
+          setAvailableSlots(formattedSlots)
+          setBlockedTimes((data.blockedTimes || []).map((t) => String(t).substring(0, 5)))
+          setBlockedDetails(data.blockedDetails || {})
+
+          const activeBookings: BookedReservation[] = (data.bookedReservations || []).filter(
+            (b: BookedReservation) =>
+              b.status !== 'cancelled' &&
+              b.status !== 'refunded' &&
+              b.status !== 'rejected'
+          )
+          setBookedReservations(activeBookings)
+
+          // Hanya update tenant settings jika nilainya berbeda (mencegah re-render loop)
+          if (data.tenantSettings) {
+            setTenant((prev) => {
+              if (!prev) return prev
+              const newHide = data.tenantSettings?.hide_booked_slots ?? prev.hide_booked_slots ?? false
+              const newAutoDisable = data.tenantSettings?.enable_auto_disable_time_slots ?? prev.enable_auto_disable_time_slots ?? true
+
+              if (prev.hide_booked_slots === newHide && prev.enable_auto_disable_time_slots === newAutoDisable) {
+                return prev // Kembalikan referensi lama agar tidak memicu re-render
+              }
+
+              return {
+                ...prev,
+                hide_booked_slots: newHide,
+                enable_auto_disable_time_slots: newAutoDisable,
+              }
+            })
+          }
+        } else {
+          setAvailableSlots([])
+          setBlockedTimes([])
+          setBlockedDetails({})
+          setBookedReservations([])
+        }
+      } catch (err: unknown) {
+        const errorMsg = err instanceof Error ? err.message : 'Fetch availability error'
+        console.error('Fetch availability error:', errorMsg, err)
+        setAvailableSlots([])
+        setBlockedTimes([])
+        setBlockedDetails({})
+        setBookedReservations([])
+      } finally {
+        setLoadingSlots(false)
+      }
     }
-  } catch (err: unknown) {
-    const errorMsg = err instanceof Error ? err.message : 'Fetch availability error'
-    console.error('Fetch availability error:', errorMsg, err)
-    setAvailableSlots([])
-    setBlockedTimes([])
-    setBlockedDetails({})
-    setBookedReservations([])
-  } finally {
-    setLoadingSlots(false)
-  }
-}
 
     fetchAvailability()
   }, [
     formData.booking_date,
     formData.selected_staff,
     formData.selected_staff_id,
-    formData.selected_services,
-    formData.selectedAddonIds,
-    formData.selectedTenantAddons,
     tenant?.tenant_slug,
-    services,
+    selectedServicesKey,
+    selectedAddonIdsKey,
+    selectedTenantAddonsKey,
+    services?.length, // Cukup dipantau jumlah length-nya saja
   ])
 
   // Effect 3: Auto-Reset Jam Kedatangan Saat Pilihan Tanggal/Staff/Layanan Berubah
