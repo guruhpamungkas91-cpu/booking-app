@@ -1102,29 +1102,29 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
     const formattedServicesText = formData.selected_services.join(', ')
 
     const insertPayload: Record<string, unknown> = {
-      customer_name: formData.customer_name,
-      whatsapp_number: formData.whatsapp_number,
-      booking_date: formData.booking_date,
-      booking_time: formData.booking_time,
-      selected_services: formData.selected_services,
-      service_name: formattedServicesText,
-      selected_addons: formData.selectedAddonIds,
-      selected_addon_ids: formData.selectedAddonIds,
-      
-      staff_name: formData.selected_staff || null,
-      staff_id: formData.selected_staff_id || null,
-      client_code: tenant.clientCode,
-      tenant_slug: tenant.tenantSlug,
-      tenant_id: tenant.id || null,
+    customer_name: formData.customer_name,
+    whatsapp_number: formData.whatsapp_number,
+    booking_date: formData.booking_date,
+    booking_time: formData.booking_time,
+    selected_services: formData.selected_services,
+    service_name: formattedServicesText,
+    selected_addons: formData.selectedAddonIds,
+    selected_addon_ids: formData.selectedAddonIds,
+    
+    staff_name: formData.selected_staff || null,
+    staff_id: formData.selected_staff_id || null,
+    client_code: tenant?.client_code || null, // ✅ DIPERBAIKI
+    tenant_slug: tenant?.tenant_slug || null, // ✅ DIPERBAIKI
+    tenant_id: tenant?.id || null,
 
-      total_price: grandTotal,
-      person_count: formData.person_count,
-      payment_type: formData.payment_type,
-      payment_method: formData.payment_method,
-      status: 'pending',
-      has_eye_allergy_consent: formData.has_consent,
-      eye_shape_notes: formData.custom_notes
-    }
+    total_price: grandTotal,
+    person_count: formData.person_count,
+    payment_type: formData.payment_type,
+    payment_method: formData.payment_method,
+    status: 'pending',
+    has_eye_allergy_consent: formData.has_consent,
+    eye_shape_notes: formData.custom_notes
+  }
 
     try {
       const response = await fetch('/api/reservations', {
