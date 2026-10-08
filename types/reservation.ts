@@ -67,7 +67,7 @@ export interface BookingFormData {
   booking_date: string
   booking_time: string
   selected_staff?: string
-  selected_staff_id?: string
+  selected_staff_id?: string | number // <-- Ubah ke string | number agar kompatibel dengan StaffItem.id
   selected_services: string[]
   selectedAddonIds?: (string | number)[]
   selectedTenantAddons?: Array<{

@@ -402,30 +402,36 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
     fetchTenantAndData()
   }, [routerSlug])
 
+  const IGNORED_STAFF_VALUES = new Set(['all', 'any', 'semua', ''])
+
   // Effect 2: Fetch Availability secara Dinamis
   useEffect(() => {
-    const fetchAvailability = async () => {
+    const fetchAvailability = async (): Promise<void> => {
       if (!tenant?.tenant_slug || !formData.booking_date) {
         return
       }
 
       setLoadingSlots(true)
       try {
-        const selectedStaffName = typeof formData.selected_staff === 'string' ? formData.selected_staff : ''
-        const selectedStaffId = formData.selected_staff_id ? String(formData.selected_staff_id) : ''
+        const rawStaffName = typeof formData.selected_staff === 'string' ? formData.selected_staff : ''
+        const rawStaffId = formData.selected_staff_id != null ? String(formData.selected_staff_id) : ''
 
+        const normalizedStaffName = rawStaffName.trim().toLowerCase()
+        const normalizedStaffId = rawStaffId.trim().toLowerCase()
+
+        // Pengecekan apakah user memilih staff spesifik
         const isSpecificStaff =
-          (selectedStaffName && selectedStaffName !== 'all' && selectedStaffName !== 'any') ||
-          Boolean(selectedStaffId)
+          Boolean(rawStaffId || rawStaffName) &&
+          !IGNORED_STAFF_VALUES.has(normalizedStaffId) &&
+          !IGNORED_STAFF_VALUES.has(normalizedStaffName)
 
         let staffParam = ''
         if (isSpecificStaff) {
-          if (selectedStaffId) {
-            staffParam += `&staff_id=${encodeURIComponent(selectedStaffId)}`
-          }
-          
-          if (selectedStaffName) {
-            staffParam += `&staff_name=${encodeURIComponent(selectedStaffName)}`
+          // Prioritaskan staff_id karena presisi, gunakan staff_name hanya jika id kosong
+          if (rawStaffId) {
+            staffParam = `&staff_id=${encodeURIComponent(rawStaffId)}`
+          } else if (rawStaffName) {
+            staffParam = `&staff_name=${encodeURIComponent(rawStaffName)}`
           }
         }
 
@@ -492,7 +498,7 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
           setAvailableSlots(formattedSlots)
           setBlockedTimes((data.blockedTimes || []).map((t) => String(t).substring(0, 5)))
           setBlockedDetails(data.blockedDetails || {})
-          
+
           const activeBookings: BookedReservation[] = (data.bookedReservations || []).filter(
             (b: BookedReservation) =>
               b.status !== 'cancelled' &&
@@ -521,7 +527,7 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
           setBlockedDetails({})
           setBookedReservations([])
         }
-      } catch (err) {
+      } catch (err: unknown) {
         const errorMsg = err instanceof Error ? err.message : 'Fetch availability error'
         console.error('Fetch availability error:', errorMsg, err)
         setAvailableSlots([])
@@ -931,14 +937,13 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
     }
   }
 
-  const handleSelectStaff = (staff: { id?: string | number; name?: string }): void => {
-  // Guard clause: hentikan proses jika id staff tidak ada / undefined
-    if (!staff.id) return
+  const handleSelectStaff = (staff: StaffItem): void => {
+    if (staff.id === undefined || staff.id === null) return
 
     setFormData((prev) => ({
       ...prev,
       selected_staff: staff.name ?? '',
-      selected_staff_id: String(staff.id),
+      selected_staff_id: staff.id, // Tidak akan merah lagi!
       booking_time: '',
     }))
   }
@@ -1487,8 +1492,9 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
                   <div className="grid grid-cols-2 gap-2.5">
                     {staffList.map((st) => {
                       const isSelected =
-                        String(formData.selected_staff_id) === String(st.id) ||
-                        formData.selected_staff === st.name
+                      formData.selected_staff_id !== undefined &&
+                      formData.selected_staff_id !== null &&
+                      String(formData.selected_staff_id) === String(st.id)
 
                       return (
                         <button
