@@ -9,6 +9,8 @@ import React, { useState, useEffect, useCallback, useMemo, type CSSProperties } 
 import Image from 'next/image'
 import { useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+
+// Import tipe data umum
 import type { 
   BankAccount, 
   EWalletAccount, 
@@ -21,6 +23,9 @@ import type {
   BookedReservation,
   AvailabilityApiResponse
 } from '@/types'
+
+// Import BookingFormData dari types/reservation (atau dari @/types jika sudah di-re-export)
+import type { BookingFormData } from '@/types/reservation'
 
 // ============================================================================
 // 2. TYPE DEFINITIONS & INTERFACES (LOCAL EXTENSIONS)
@@ -52,23 +57,6 @@ interface TimePickerProps {
   tenantData?: Tenant | null
   theme?: ThemeConfig
 }  
-
-interface BookingFormData {
-  customer_name: string
-  whatsapp_number: string
-  booking_date: string
-  booking_time: string
-  selected_services: string[]
-  selectedAddonIds: (number | string)[]
-  selectedTenantAddons: { label: string; name?: string; price: number }[]
-  selected_staff: string
-  selected_staff_id: string
-  payment_method: string
-  person_count: number
-  payment_type: 'FULL' | 'DP'
-  has_consent: boolean
-  custom_notes: string
-}
 
 // ============================================================================
 // 3. UTILITY / HELPER FUNCTIONS
@@ -259,21 +247,21 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
   const [availableSlots, setAvailableSlots] = useState<TimeSlot[]>([])
 
   const [formData, setFormData] = useState<BookingFormData>({
-    customer_name: '',
-    whatsapp_number: '',
-    booking_date: '',
-    booking_time: '',
-    selected_services: [],
-    selectedAddonIds: [],
-    selectedTenantAddons: [],
-    selected_staff: '',
-    selected_staff_id: '',
-    payment_method: 'Cash / Bayar di Tempat',
-    person_count: 1,
-    payment_type: 'FULL',
-    has_consent: false,
-    custom_notes: ''
-  })
+  customer_name: '',
+  whatsapp_number: '',
+  booking_date: '',
+  booking_time: '',
+  selected_services: [],
+  selectedAddonIds: [],
+  selectedTenantAddons: [],
+  selected_staff: '',
+  selected_staff_id: '',
+  payment_method: 'Cash / Bayar di Tempat',
+  person_count: 1,
+  payment_type: 'FULL',
+  has_consent: false,
+  custom_notes: ''
+})
   
   const [addonQuantities] = useState<Record<string | number, number>>({})
   const [loading, setLoading] = useState<boolean>(false)
@@ -663,9 +651,14 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
       extraFee = formData.selectedTenantAddons.reduce((sum, addon) => {
         return sum + parsePrice(addon.price)
       }, 0)
-    } else if (formData.selectedAddonIds && formData.selectedAddonIds.length > 0 && addonServices.length > 0) {
+      } else if ((formData.selectedAddonIds?.length ?? 0) > 0 && addonServices.length > 0) {
+      const selectedIds = formData.selectedAddonIds ?? []
+
       extraFee = addonServices
-        .filter((addon) => addon.id !== undefined && formData.selectedAddonIds.includes(addon.id))
+        .filter((addon) => 
+          addon.id !== undefined && 
+          selectedIds.some((selectedId: string | number) => String(selectedId) === String(addon.id))
+        )
         .reduce((sum, addon) => {
           const addonKey = addon.id ?? ''
           const qty = addonQuantities[addonKey] || 1
@@ -925,28 +918,41 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
   // --------------------------------------------------------------------------
   // 5.5 Event Handlers & Form Logic
   // --------------------------------------------------------------------------
-  const handleServiceSelect = (serviceName: string) => {
+  const handleServiceSelect = (serviceName: string): void => {
+    const currentServices = formData.selected_services || []
     if (!tenant.enable_multi_service) {
       setFormData((prev) => ({ ...prev, selected_services: [serviceName] }))
     } else {
-      const exists = formData.selected_services.includes(serviceName)
+      const exists = currentServices.includes(serviceName)
       const updated = exists
-        ? formData.selected_services.filter((s) => s !== serviceName)
-        : [...formData.selected_services, serviceName]
+        ? currentServices.filter((s) => s !== serviceName)
+        : [...currentServices, serviceName]
       setFormData((prev) => ({ ...prev, selected_services: updated }))
     }
   }
 
-  const isSlotBlocked = (date: string, time: string) => {
+  const handleSelectStaff = (staff: { id?: string | number; name?: string }): void => {
+  // Guard clause: hentikan proses jika id staff tidak ada / undefined
+    if (!staff.id) return
+
+    setFormData((prev) => ({
+      ...prev,
+      selected_staff: staff.name ?? '',
+      selected_staff_id: String(staff.id),
+      booking_time: '',
+    }))
+  }
+
+  const isSlotBlocked = (date: string, time: string): boolean => {
     if (!date || !time) return false
     return blockedTimes.includes(time)
   }
 
-  const handlePrevStep = () => {
+  const handlePrevStep = (): void => {
     setStep((prev) => Math.max(prev - 1, 1))
   }
 
-  const handleNextStep = () => {
+  const handleNextStep = (): void => {
     if (step === 1) {
       if (!formData.selected_services || formData.selected_services.length === 0) {
         alert('Mohon pilih minimal 1 layanan utama!')
@@ -969,20 +975,43 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
 
       if (formData.selected_staff && tenant?.prevent_double_booking) {
         const activeBookings = (bookedReservations || []).filter(
-          (b: BookedReservation) => (b.time || b.booking_time) === formData.booking_time && b.status !== 'cancelled' && b.status !== 'refunded'
+          (b: BookedReservation) =>
+            (b.time || b.booking_time) === formData.booking_time &&
+            b.status !== 'cancelled' &&
+            b.status !== 'refunded'
         )
-        const currentStaffObj = (staffList || []).find(
-          s => s.name === formData.selected_staff || (s.id && String(s.id) === formData.selected_staff)
-        )
-        
+
+        const currentStaffObj = (staffList || []).find((s) => {
+          const staffIdStr = s.id ? String(s.id) : ''
+          const selectedStaffStr = typeof formData.selected_staff === 'string' ? formData.selected_staff : ''
+          const selectedStaffIdStr = formData.selected_staff_id ? String(formData.selected_staff_id) : ''
+
+          return (
+            s.name === selectedStaffStr ||
+            (staffIdStr !== '' && staffIdStr === selectedStaffStr) ||
+            (staffIdStr !== '' && staffIdStr === selectedStaffIdStr)
+          )
+        })
+
         if (currentStaffObj) {
           const staffMaxSlots = currentStaffObj.max_slots ?? 1
-          const staffBookingsCount = activeBookings.filter(
-            b => b.staff === formData.selected_staff || b.staff_name === formData.selected_staff
-          ).length
+          const selectedStaffName = typeof formData.selected_staff === 'string' ? formData.selected_staff : ''
+          const selectedStaffId = formData.selected_staff_id ? String(formData.selected_staff_id) : ''
+
+          const staffBookingsCount = activeBookings.filter((b) => {
+            const bStaffId = b.staff_id ? String(b.staff_id) : ''
+            const bStaffName = b.staff || b.staff_name || ''
+
+            return (
+              (selectedStaffName !== '' && bStaffName === selectedStaffName) ||
+              (selectedStaffId !== '' && bStaffId === selectedStaffId)
+            )
+          }).length
 
           if (staffBookingsCount >= staffMaxSlots) {
-            alert(`Maaf, ${currentStaffObj.name} sudah mencapai batas maksimal reservasi pada jam ${formData.booking_time}. Silakan pilih jam atau staff lain.`)
+            alert(
+              `Maaf, ${currentStaffObj.name} sudah mencapai batas maksimal reservasi pada jam ${formData.booking_time}. Silakan pilih jam atau staff lain.`
+            )
             return
           }
         }
@@ -993,7 +1022,7 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
     }
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault()
 
     if (tenant.require_consent && !formData.has_consent) {
@@ -1013,7 +1042,9 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
       alert('Mohon tentukan tanggal dan jam kedatangan!')
       return
     }
-    if (formData.selected_services.length === 0) {
+
+    const selectedServices = formData.selected_services || []
+    if (selectedServices.length === 0) {
       alert('Mohon pilih minimal 1 layanan!')
       return
     }
@@ -1025,19 +1056,21 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
 
     setLoading(true)
 
-    const formattedServicesText = formData.selected_services.join(', ')
+    const formattedServicesText = selectedServices.join(', ')
+    const selectedAddonIds = formData.selectedAddonIds || []
+    const selectedTenantAddons = formData.selectedTenantAddons || []
 
     const insertPayload: Record<string, unknown> = {
       customer_name: formData.customer_name,
       whatsapp_number: formData.whatsapp_number,
       booking_date: formData.booking_date,
       booking_time: formData.booking_time,
-      selected_services: formData.selected_services,
+      selected_services: selectedServices,
       service_name: formattedServicesText,
-      selected_addons: formData.selectedAddonIds,
-      selected_addon_ids: formData.selectedAddonIds,
-      
-      staff_name: formData.selected_staff || null,
+      selected_addons: selectedAddonIds,
+      selected_addon_ids: selectedAddonIds,
+
+      staff_name: typeof formData.selected_staff === 'string' ? formData.selected_staff : null,
       staff_id: formData.selected_staff_id || null,
 
       client_code: tenant.client_code || tenant.tenant_slug || null,
@@ -1050,22 +1083,22 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
       payment_method: formData.payment_method,
       status: 'pending',
       has_eye_allergy_consent: formData.has_consent,
-      eye_shape_notes: formData.custom_notes
+      eye_shape_notes: formData.custom_notes,
     }
 
     try {
       const response = await fetch('/api/reservations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(insertPayload)
+        body: JSON.stringify(insertPayload),
       })
 
       const result = await response.json()
 
       if (!response.ok) {
         if (
-          response.status === 409 || 
-          result.error?.toLowerCase().includes('terisi') || 
+          response.status === 409 ||
+          result.error?.toLowerCase().includes('terisi') ||
           result.error?.toLowerCase().includes('bentrok')
         ) {
           alert('⚠️ Maaf, slot waktu ini baru saja dipesan oleh pelanggan lain. Halaman akan diperbarui.')
@@ -1073,7 +1106,7 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
         } else {
           alert(result.error || 'Gagal membuat reservasi!')
         }
-        
+
         setLoading(false)
         return
       }
@@ -1095,30 +1128,48 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
         `• Layanan: ${formattedServicesText}\n` +
         `• Jumlah Orang: ${formData.person_count} Orang\n`
 
-      const selectedAddonsForWa = addonServices.filter((addon) => addon.id !== undefined && formData.selectedAddonIds.includes(addon.id))
+      const selectedAddonsForWa = addonServices.filter((addon) => {
+        if (addon.id === undefined) return false
+        return selectedAddonIds.some((id) => String(id) === String(addon.id))
+      })
+
       if (selectedAddonsForWa.length > 0) {
-        const addonNamesStr = selectedAddonsForWa.map((a) => {
-          const addonKey = a.id ?? ''
-          const qty = addonQuantities[addonKey] || 1
-          return qty > 1 ? `${a.addon_label} (${qty} orang)` : a.addon_label
-        }).join(', ')
+        const addonNamesStr = selectedAddonsForWa
+          .map((a) => {
+            const addonKey = a.id ?? ''
+            const qty = addonQuantities[addonKey] || 1
+            return qty > 1 ? `${a.addon_label} (${qty} orang)` : a.addon_label
+          })
+          .join(', ')
         messageText += `• Add-on: ${addonNamesStr}\n`
       }
 
-      if (formData.selectedTenantAddons.length > 0) {
-        const tenantAddonStrs = formData.selectedTenantAddons.map((ta) => ta.label).join(', ')
-        messageText += `• Layanan Tambahan: ${tenantAddonStrs}\n`
+      if (selectedTenantAddons.length > 0) {
+        const tenantAddonStrs = selectedTenantAddons
+          .map((ta) => ta.label || ta.name || '')
+          .filter((label) => label !== '')
+          .join(', ')
+        if (tenantAddonStrs !== '') {
+          messageText += `• Layanan Tambahan: ${tenantAddonStrs}\n`
+        }
       }
 
       if (formData.selected_staff) {
-        messageText += `• ${tenant.staff_label || 'Staff'}: ${formData.selected_staff}\n`
+        const staffDisplayName =
+          typeof formData.selected_staff === 'string'
+            ? formData.selected_staff
+            : (formData.selected_staff as { name?: string }).name || ''
+        if (staffDisplayName !== '') {
+          messageText += `• ${tenant.staff_label || 'Staff'}: ${staffDisplayName}\n`
+        }
       }
 
       if (formData.custom_notes) {
         messageText += `• Catatan Khusus: ${formData.custom_notes}\n`
       }
 
-      messageText += `\n💳 *RINCIAN PEMBAYARAN*\n` +
+      messageText +=
+        `\n💳 *RINCIAN PEMBAYARAN*\n` +
         `• Metode Bayar: ${formData.payment_method}\n` +
         `• Total Biaya: Rp ${grandTotal.toLocaleString('id-ID')}\n` +
         `• Nominal Dibayar (${formData.payment_type}): Rp ${payableAmount.toLocaleString('id-ID')}\n`
@@ -1135,7 +1186,7 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
 
       const waUrl = `https://wa.me/${formattedPhone}?text=${encodeURIComponent(messageText)}`
       window.open(waUrl, '_blank')
-    } catch (err) {
+    } catch (err: unknown) {
       console.error('Submit reservation error:', err)
       alert('Terjadi kesalahan koneksi ke server.')
     } finally {
@@ -1435,31 +1486,37 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
                   </label>
                   <div className="grid grid-cols-2 gap-2.5">
                     {staffList.map((st) => {
-                      const isSelected = formData.selected_staff === st.name
+                      const isSelected =
+                        String(formData.selected_staff_id) === String(st.id) ||
+                        formData.selected_staff === st.name
+
                       return (
                         <button
                           type="button"
                           key={st.id}
-                          style={isSelected && theme.inlineBgLight && theme.inlineBorder ? { ...theme.inlineBgLight, ...theme.inlineBorder } : undefined}
-                          onClick={() => {
-                            const staffIdValue = String(st.id)
-                            setFormData(prev => ({ 
-                              ...prev, 
-                              selected_staff: st.name || '', 
-                              selected_staff_id: staffIdValue,
-                              booking_time: '' 
-                            }))
-                          }}
+                          style={
+                            isSelected && theme.inlineBgLight && theme.inlineBorder
+                              ? { ...theme.inlineBgLight, ...theme.inlineBorder }
+                              : undefined
+                          }
+                          onClick={() => handleSelectStaff({ id: st.id, name: st.name })}
                           className={`py-3 px-3.5 text-xs font-semibold rounded-2xl border transition-all duration-300 text-left ${
-                            isSelected 
-                              ? `${theme.accentBgLight}${theme.accentBorder} text-white shadow-[0_0_25px_rgba(var(--color-primary-rgb),0.3)] scale-[1.01]` 
+                            isSelected
+                              ? `${theme.accentBgLight}${theme.accentBorder} text-white shadow-[0_0_25px_rgba(var(--color-primary-rgb),0.3)] scale-[1.01]`
                               : 'bg-zinc-900/80 border-zinc-800/90 text-zinc-300 hover:border-zinc-700 hover:bg-zinc-900'
                           }`}
                         >
-                          <p style={isSelected && theme.inlineText ? theme.inlineText : undefined} className={`text-sm font-bold ${isSelected ? theme.accentText : 'text-zinc-100'}`}>
+                          <p
+                            style={isSelected && theme.inlineText ? theme.inlineText : undefined}
+                            className={`text-sm font-bold ${
+                              isSelected ? theme.accentText : 'text-zinc-100'
+                            }`}
+                          >
                             {st.name}
                           </p>
-                          <p className="text-[11px] text-zinc-300 font-medium mt-0.5">{st.role}</p>
+                          <p className="text-[11px] text-zinc-300 font-medium mt-0.5">
+                            {st.role}
+                          </p>
                         </button>
                       )
                     })}
