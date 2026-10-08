@@ -2,6 +2,19 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
 // ----------------------------------------------------------------------
+// NEXT.JS ROUTE SEGMENT CONFIG (PREVENT STATIC CACHING)
+// ----------------------------------------------------------------------
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
+// Header khusus untuk mematikan cache di browser, Vercel Edge Cache, dan CDN
+const NO_CACHE_HEADERS = {
+  'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+  'Pragma': 'no-cache',
+  'Expires': '0',
+}
+
+// ----------------------------------------------------------------------
 // STRICT TYPESCRIPT INTERFACES
 // ----------------------------------------------------------------------
 interface TenantRecord {
@@ -97,14 +110,14 @@ export async function GET(request: Request) {
     const rawStaffId = searchParams.get('staff_id') || ''
     const durationParam = Number(searchParams.get('duration')) || 0
 
-    // Bersihkan nilai string "null" atau "undefined" dari parameter
+    // Bersihkan nilai string "null" atau "undefined" dari parameter query
     const staffQuery = (rawStaff === 'undefined' || rawStaff === 'null') ? '' : rawStaff.trim()
     const staffIdQuery = (rawStaffId === 'undefined' || rawStaffId === 'null') ? '' : rawStaffId.trim()
 
     if (!dateStr || !tenantSlug) {
       return NextResponse.json(
         { success: false, error: 'Parameter date dan tenant_slug wajib diisi.' },
-        { status: 400 }
+        { status: 400, headers: NO_CACHE_HEADERS }
       )
     }
 
@@ -138,7 +151,7 @@ export async function GET(request: Request) {
     if (!tenantData) {
       return NextResponse.json(
         { success: false, error: 'Tenant tidak ditemukan di database.' },
-        { status: 404 }
+        { status: 404, headers: NO_CACHE_HEADERS }
       )
     }
 
@@ -268,7 +281,6 @@ export async function GET(request: Request) {
             const bEnd = bStart + (Number(b.duration_minutes) || intervalMinutes)
 
             if (slotStartMin < bEnd && slotEndMin > bStart) {
-              // Gunakan staff_id atau staff_name sebagai identifier unik
               const identifier = b.staff_id
                 ? `id_${b.staff_id}`
                 : b.staff_name
@@ -283,7 +295,7 @@ export async function GET(request: Request) {
             blockedReasonsMap.set(slotStr, 'Penuh')
           }
         } else {
-          // Jika memilih staf spesifik (misal dr. Putri Ziani)
+          // Jika memilih staf spesifik
           const cleanParam = normalizeStaffName(staffQuery)
 
           const isStaffBusy = activeBookings.some((b) => {
@@ -300,17 +312,15 @@ export async function GET(request: Request) {
             const isMatchByName =
               Boolean(cleanParam) &&
               Boolean(cleanResName) &&
-              cleanResName.length > 2 && // Perlindungan agar string kosong/terlalu pendek tidak ikut terdekteksi
+              cleanResName.length > 2 &&
               (cleanResName === cleanParam ||
                 cleanResName.includes(cleanParam) ||
                 cleanParam.includes(cleanResName))
 
             const isSameStaff = isMatchById || isMatchByName
 
-            // JIKA RESERVASI INI BUKAN MILIK STAF YANG DIPILIH, ABAIKAN!
             if (!isSameStaff) return false
 
-            // Jika reservasi milik staf yang dipilih, cek tumpang tindih waktu
             const bStart = timeToMinutes(b.booking_time)
             const bEnd = bStart + (Number(b.duration_minutes) || intervalMinutes)
             return slotStartMin < bEnd && slotEndMin > bStart
@@ -327,20 +337,28 @@ export async function GET(request: Request) {
     const blockedTimes = Array.from(blockedTimesSet)
     const blockedDetails = Object.fromEntries(blockedReasonsMap)
 
-    return NextResponse.json({
-      success: true,
-      slots: generatedSlots,
-      blockedTimes,
-      blockedDetails,
-      bookedReservations: activeBookings,
-      tenantSettings: {
-        hide_booked_slots: tenantData.hide_booked_slots ?? false,
-        enable_auto_disable_time_slots: tenantData.enable_auto_disable_time_slots ?? true,
+    return NextResponse.json(
+      {
+        success: true,
+        slots: generatedSlots,
+        blockedTimes,
+        blockedDetails,
+        bookedReservations: activeBookings,
+        tenantSettings: {
+          hide_booked_slots: tenantData.hide_booked_slots ?? false,
+          enable_auto_disable_time_slots: tenantData.enable_auto_disable_time_slots ?? true,
+        },
       },
-    })
+      {
+        headers: NO_CACHE_HEADERS,
+      }
+    )
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Internal Server Error'
     console.error('[API Availability] Error:', err)
-    return NextResponse.json({ success: false, error: msg }, { status: 500 })
+    return NextResponse.json(
+      { success: false, error: msg },
+      { status: 500, headers: NO_CACHE_HEADERS }
+    )
   }
 }

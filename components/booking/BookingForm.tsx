@@ -5,7 +5,7 @@ export const dynamic = 'force-dynamic'
 // ============================================================================
 // 1. IMPORTS & DEPENDENCIES
 // ============================================================================
-import React, { useState, useEffect, type CSSProperties } from 'react'
+import React, { useState, useEffect, useCallback, useMemo, type CSSProperties } from 'react'
 import Image from 'next/image'
 import { useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
@@ -26,19 +26,15 @@ import type {
 // 2. TYPE DEFINITIONS & INTERFACES (LOCAL EXTENSIONS)
 // ============================================================================
 
-interface ExtendedTimeSlot extends TimeSlot {
-  time_slot?: string
-}
-
 interface ThemeConfig {
-  accentBg?: string
-  accentSolidBg?: string
-  accentText?: string
-  accentBorder?: string
-  accentBgLight?: string
-  accentRing?: string
-  iconBg?: string
-  checkbox?: string
+  accentBg: string
+  accentSolidBg: string
+  accentText: string
+  accentBorder: string
+  accentBgLight: string
+  accentRing: string
+  iconBg: string
+  checkbox: string
   inlineStyle?: CSSProperties
   inlineText?: CSSProperties
   inlineBorder?: CSSProperties
@@ -53,25 +49,31 @@ interface TimePickerProps {
   blockedDetails?: Record<string, string>
   selectedTime: string
   onSelectTime: (time: string) => void
-  // Update tipe tenantData agar TypeScript mengenali properti di dalamnya
-  tenantData?: {
-    hide_booked_slots?: boolean | null
-    hideBookedSlots?: boolean | null
-    enable_auto_disable_time_slots?: boolean | null
-    enableAutoDisableTimeSlots?: boolean | null
-    [key: string]: unknown // opsional: agar fleksibel jika ada properti lain
-  } | null
-  theme?: {
-    accentBg?: string
-    inlineStyle?: React.CSSProperties
-    [key: string]: unknown
-  }
+  tenantData?: Tenant | null
+  theme?: ThemeConfig
 }  
+
+interface BookingFormData {
+  customer_name: string
+  whatsapp_number: string
+  booking_date: string
+  booking_time: string
+  selected_services: string[]
+  selectedAddonIds: (number | string)[]
+  selectedTenantAddons: { label: string; name?: string; price: number }[]
+  selected_staff: string
+  selected_staff_id: string
+  payment_method: string
+  person_count: number
+  payment_type: 'FULL' | 'DP'
+  has_consent: boolean
+  custom_notes: string
+}
 
 // ============================================================================
 // 3. UTILITY / HELPER FUNCTIONS
 // ============================================================================
-const formatWaNumber = (phone: string) => {
+const formatWaNumber = (phone: string): string => {
   let cleaned = phone.replace(/\D/g, '')
   if (cleaned.startsWith('0')) {
     cleaned = '62' + cleaned.slice(1)
@@ -93,21 +95,44 @@ const isValidWhatsAppNumber = (phone: string): boolean => {
   const isAllSame = /^(\d)\1+$/.test(cleaned)
   const isSequential = /^(08)?(123456|111111|222222|333333|444444|555555|666666|777777|888888|999999|012345|123456|234567|345678|456789)/.test(cleaned)
 
-  if (isAllSame || isSequential) {
-    return false
-  }
-
-  return true
+  return !(isAllSame || isSequential)
 }
 
-// 🟢 TARO HELPER DENGAN PENYESUAIAN TIPE DI SINI:
+const parsePrice = (priceVal?: string | number | null): number => {
+  if (typeof priceVal === 'number') return isNaN(priceVal) ? 0 : priceVal
+  if (!priceVal) return 0
+  const numeric = priceVal.toString().replace(/[^0-9]/g, '')
+  return numeric ? parseInt(numeric, 10) : 0
+}
+
 const getServiceDisplayLabel = (
   detail?: ServiceItem | TenantAddonItem | null
 ): string => {
   if (!detail) return '-'
   
-  const addonLabel = 'addon_label' in detail ? detail.addon_label : undefined
-  return detail.name ?? addonLabel ?? detail.label ?? '-'
+  if ('addon_label' in detail && detail.addon_label) {
+    return detail.addon_label
+  }
+  if ('name' in detail && detail.name) {
+    return detail.name
+  }
+  if ('label' in detail && detail.label) {
+    return detail.label
+  }
+  return '-'
+}
+
+const getEndTime = (startTime: string, durationMinutes: number): string => {
+  if (!startTime) return ''
+  const [hours, minutes] = startTime.split(':').map(Number)
+  if (isNaN(hours) || isNaN(minutes)) return ''
+
+  const date = new Date()
+  date.setHours(hours, minutes + durationMinutes, 0)
+
+  const endHours = String(date.getHours()).padStart(2, '0')
+  const endMinutes = String(date.getMinutes()).padStart(2, '0')
+  return `${endHours}:${endMinutes}`
 }
 
 // ============================================================================
@@ -123,46 +148,41 @@ function TimePicker({
   tenantData,
   theme
 }: TimePickerProps) {
-  // Ambil setting hide_booked_slots dengan aman
   const shouldHideBooked = Boolean(tenantData?.hide_booked_slots || tenantData?.hideBookedSlots)
   const shouldAutoDisable = tenantData?.enable_auto_disable_time_slots ?? tenantData?.enableAutoDisableTimeSlots ?? true
 
-  const displayedSlots = (availableSlots || [])
-    .map((slot: TimeSlot | string) => {
-      // 1. Dapatkan string waktu (contoh: "09:00")
-      const rawTime = typeof slot === 'string' ? slot : (slot.time || slot.time_slot || '')
-      const timeStr = typeof rawTime === 'string' ? rawTime.trim().substring(0, 5) : ''
+  const displayedSlots = useMemo(() => {
+    return (availableSlots || [])
+      .map((slot: TimeSlot) => {
+        const rawTime = slot.time || slot.time_slot || ''
+        const timeStr = typeof rawTime === 'string' ? rawTime.trim().substring(0, 5) : ''
 
-      if (!timeStr) return null
+        if (!timeStr) return null
 
-      // 2. Cek apakah slot ada di daftar blockedTimes
-      const isBlockedByApi = Array.isArray(blockedTimes) && blockedTimes.some((b) => {
-        if (!b) return false
-        const bStr = typeof b === 'string' ? b.trim().substring(0, 5) : ''
-        return bStr === timeStr
+        const isBlockedByApi = Array.isArray(blockedTimes) && blockedTimes.some((b) => {
+          if (!b) return false
+          const bStr = typeof b === 'string' ? b.trim().substring(0, 5) : ''
+          return bStr === timeStr
+        })
+        
+        const isSlotDisabled =
+          slot.disabled === true || slot.is_available === false || isBlockedByApi
+
+        const apiReason = blockedDetails?.[timeStr] || slot.reason || (isBlockedByApi ? 'Penuh' : '')
+
+        const isRestTime = apiReason === 'Jam Istirahat' || apiReason === 'Istirahat'
+        const isHidden = shouldHideBooked && isSlotDisabled && !isRestTime
+
+        return {
+          ...slot,
+          time: timeStr,
+          isDisabled: shouldAutoDisable ? isSlotDisabled : false,
+          isHidden: isHidden,
+          reason: apiReason,
+        }
       })
-      
-      const isObjectSlot = typeof slot === 'object' && slot !== null
-      const isSlotDisabled =
-        (isObjectSlot && (slot.disabled === true || slot.is_available === false)) || isBlockedByApi
-
-      // 3. Ambil alasan kenapa slot di-block (Jam Istirahat / Penuh / Tutup)
-      const apiReason = blockedDetails?.[timeStr] || (isObjectSlot ? slot.reason : '') || (isBlockedByApi ? 'Penuh' : '')
-
-      // 4. Tentukan apakah slot disembunyikan
-      // Jangan sembunyikan jika alasannya adalah 'Jam Istirahat' (agar user tahu clinic sedang break)
-      const isRestTime = apiReason === 'Jam Istirahat' || apiReason === 'Istirahat'
-      const isHidden = shouldHideBooked && isSlotDisabled && !isRestTime
-
-      return {
-        ...(isObjectSlot ? slot : {}),
-        time: timeStr,
-        isDisabled: shouldAutoDisable ? isSlotDisabled : false,
-        isHidden: isHidden,
-        reason: apiReason,
-      }
-    })
-    .filter((slot): slot is NonNullable<typeof slot> => slot !== null && !slot.isHidden && Boolean(slot.time))
+      .filter((slot): slot is NonNullable<typeof slot> => slot !== null && !slot.isHidden && Boolean(slot.time))
+  }, [availableSlots, blockedTimes, blockedDetails, shouldHideBooked, shouldAutoDisable])
 
   if (displayedSlots.length === 0) {
     return (
@@ -232,21 +252,20 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
 
   const [isAddonExpanded, setIsAddonExpanded] = useState<boolean>(false)
 
-  const [, setBlockedSlots] = useState<{ block_date: string; block_time: string }[]>([])
   const [blockedTimes, setBlockedTimes] = useState<string[]>([])
   const [blockedDetails, setBlockedDetails] = useState<Record<string, string>>({})
   const [bookedReservations, setBookedReservations] = useState<BookedReservation[]>([])
   const [loadingSlots, setLoadingSlots] = useState<boolean>(false)
   const [availableSlots, setAvailableSlots] = useState<TimeSlot[]>([])
 
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<BookingFormData>({
     customer_name: '',
     whatsapp_number: '',
     booking_date: '',
     booking_time: '',
-    selected_services: [] as string[],
-    selectedAddonIds: [] as (number | string)[],
-    selectedTenantAddons: [] as { label: string; price: number }[],
+    selected_services: [],
+    selectedAddonIds: [],
+    selectedTenantAddons: [],
     selected_staff: '',
     selected_staff_id: '',
     payment_method: 'Cash / Bayar di Tempat',
@@ -256,7 +275,7 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
     custom_notes: ''
   })
   
-  const [addonQuantities] = useState<{ [key: string | number]: number }>({})
+  const [addonQuantities] = useState<Record<string | number, number>>({})
   const [loading, setLoading] = useState<boolean>(false)
   
   // --------------------------------------------------------------------------
@@ -385,34 +404,8 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
         } else {
           setStaffList([])
         }
-
-        // 3. Fetch Blocked Slots Initial
-        const { data: blockedData } = await supabase
-          .from('blocked_slots')
-          .select('date, start_time')
-          .eq('tenant_id', uniqueTenantId)
-
-        const { data: confirmedReservations } = await supabase
-          .from('reservations')
-          .select('booking_date, booking_time, status')
-          .eq('tenant_id', uniqueTenantId)
-          .neq('status', 'cancelled')
-          .neq('status', 'refunded')
-
-        const combinedBlockedSlots = [
-          ...(blockedData?.map((item) => ({
-            block_date: item.date,
-            block_time: item.start_time ? item.start_time.substring(0, 5) : '',
-          })) || []),
-          ...(confirmedReservations?.map((item) => ({
-            block_date: item.booking_date,
-            block_time: item.booking_time ? item.booking_time.substring(0, 5) : '',
-          })) || []),
-        ]
-
-        setBlockedSlots(combinedBlockedSlots)
-      } catch {
-        console.error('Fetch tenant error:')
+      } catch (err) {
+        console.error('Fetch tenant error:', err)
       } finally {
         setFetchingServices(false)
       }
@@ -430,7 +423,6 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
 
       setLoadingSlots(true)
       try {
-        // 1. Susun parameter Staff
         const isSpecificStaff =
           formData.selected_staff &&
           formData.selected_staff !== 'all' &&
@@ -440,7 +432,6 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
           ? `&staff=${encodeURIComponent(formData.selected_staff)}`
           : ''
 
-        // 2. Susun Layanan & Addons
         const selectedServiceList: string[] = (formData.selected_services || []).map(
           (item) => String(item)
         )
@@ -453,10 +444,7 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
           formData.selectedTenantAddons.length > 0
         ) {
           selectedAddonList = formData.selectedTenantAddons
-            .map((addon: TenantAddonItem) => {
-              const item = addon as { id?: string | number; name?: string; label?: string }
-              return item.label || item.name || (item.id ? String(item.id) : '')
-            })
+            .map((addon) => addon.label || addon.name || '')
             .filter((val: string) => val.trim().length > 0)
         }
 
@@ -465,7 +453,6 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
           ...selectedAddonList,
         ]
 
-        // 3. Hitung Total Durasi
         let totalDuration = 0
         if (allSelectedItems.length > 0 && services && services.length > 0) {
           allSelectedItems.forEach((itemIdOrName) => {
@@ -488,7 +475,6 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
             ? `&addons=${encodeURIComponent(JSON.stringify(selectedAddonList))}`
             : ''
 
-        // 4. Panggil API (Hanya 1x Fetch dengan Query Lengkap)
         const apiUrl = `/api/availability?date=${formData.booking_date}&tenant_slug=${tenant.tenant_slug}${staffParam}${durationParam}${servicesParam}${addonsParam}`
         const res = await fetch(apiUrl)
 
@@ -496,11 +482,9 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
           throw new Error(`API Error: Status ${res.status}`)
         }
 
-        // BACA JSON CUKUP 1 KALI DENGAN PENETAPAN TIPE
         const data: AvailabilityApiResponse = await res.json()
 
         if (data.success) {
-          // Format slot agar kompatibel dengan TimePicker (Format String & Object)
           const formattedSlots: TimeSlot[] = (data.slots || []).map((slotStr: string) => ({
             time: slotStr.substring(0, 5),
             time_slot: slotStr.substring(0, 5),
@@ -508,7 +492,6 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
             disabled: false,
           }))
 
-          // Simpan ke State tanpa tumpang tindih
           setAvailableSlots(formattedSlots)
           setBlockedTimes((data.blockedTimes || []).map((t) => String(t).substring(0, 5)))
           setBlockedDetails(data.blockedDetails || {})
@@ -581,48 +564,130 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
     formData.selectedTenantAddons
   ])
 
+  // --------------------------------------------------------------------------
+  // 5.3 Derived States & Calculations (Memoized for performance)
+  // --------------------------------------------------------------------------
+  const mainServices = useMemo(() => services.filter((s) => !s.is_addon), [services])
+
+  const addonServices: AddonService[] = useMemo(() => {
+    return services
+      .filter((s) => s.is_addon)
+      .map((s) => {
+        const parsedP = parsePrice(s.price)
+        return {
+          id: s.id,
+          tenant_slug: s.tenant_slug || '',
+          name: s.name || '',
+          price: parsedP,
+          addon_label: s.name || '',
+          addon_price: parsedP,
+          desc: s.desc || '',
+          long_description: s.long_description || '',
+          image_url: s.image_url || '',
+          duration: s.duration || 0,
+          is_active: s.is_active ?? true
+        }
+      })
+  }, [services])
+
+  const calculateTotalDuration = useCallback((): number => {
+    let totalMinutes = 0
+
+    const selectedServices = formData.selected_services || []
+    if (selectedServices.length > 0 && services.length > 0) {
+      selectedServices.forEach((serviceIdentifier) => {
+        const found = services.find(
+          (s) =>
+            !s.is_addon &&
+            (String(s.id) === String(serviceIdentifier) || s.name === serviceIdentifier)
+        )
+        if (found && found.duration) {
+          totalMinutes += Number(found.duration)
+        }
+      })
+    }
+
+    if (formData.selectedTenantAddons && formData.selectedTenantAddons.length > 0) {
+      formData.selectedTenantAddons.forEach((addonObj) => {
+        const foundAddon = services.find(
+          (s) =>
+            s.is_addon &&
+            (s.name === addonObj.label ||
+              s.name === addonObj.name ||
+              String(s.id) === String((addonObj as unknown as { id?: string | number }).id))
+        )
+        if (foundAddon && foundAddon.duration) {
+          totalMinutes += Number(foundAddon.duration)
+        }
+      })
+    } else if (formData.selectedAddonIds && formData.selectedAddonIds.length > 0) {
+      formData.selectedAddonIds.forEach((addonIdentifier) => {
+        const foundAddon = services.find(
+          (s) =>
+            s.is_addon &&
+            (String(s.id) === String(addonIdentifier) || s.name === addonIdentifier)
+        )
+        if (foundAddon && foundAddon.duration) {
+          totalMinutes += Number(foundAddon.duration)
+        }
+      })
+    }
+
+    return totalMinutes > 0 ? totalMinutes : 45
+  }, [formData.selected_services, formData.selectedTenantAddons, formData.selectedAddonIds, services])
+
+  const totalDuration = calculateTotalDuration()
+
+  const calculateTotal = useCallback((): number => {
+    const selectedServices = formData.selected_services || []
+
+    let serviceTotal = mainServices
+      .filter((s) => s.name && (selectedServices.includes(s.name) || (s.id && selectedServices.includes(String(s.id)))))
+      .reduce((sum, item) => sum + parsePrice(item.price), 0)
+
+    const personCount = Number(formData.person_count) || 1
+    serviceTotal = serviceTotal * personCount
+
+    let extraFee = 0
+
+    if (formData.selectedTenantAddons && formData.selectedTenantAddons.length > 0) {
+      extraFee = formData.selectedTenantAddons.reduce((sum, addon) => {
+        return sum + parsePrice(addon.price)
+      }, 0)
+    } else if (formData.selectedAddonIds && formData.selectedAddonIds.length > 0 && addonServices.length > 0) {
+      extraFee = addonServices
+        .filter((addon) => addon.id !== undefined && formData.selectedAddonIds.includes(addon.id))
+        .reduce((sum, addon) => {
+          const addonKey = addon.id ?? ''
+          const qty = addonQuantities[addonKey] || 1
+          const price = parsePrice(addon.addon_price ?? addon.price)
+          return sum + (price * qty)
+        }, 0)
+    }
+
+    return serviceTotal + extraFee
+  }, [formData.selected_services, formData.person_count, formData.selectedTenantAddons, formData.selectedAddonIds, mainServices, addonServices, addonQuantities])
+
+  const grandTotal = calculateTotal()
+
+  const calculateDP = useCallback((): number => {
+    const rawDpValue = tenant?.dp_value ?? 50
+    const dpVal = typeof rawDpValue === 'number' ? rawDpValue : Number(rawDpValue || 50)
+    const dpType = tenant?.dp_type || 'PERCENTAGE'
+
+    if (dpType === 'FIXED') {
+      return dpVal > grandTotal ? grandTotal : dpVal
+    }
+    return Math.round(grandTotal * (dpVal / 100))
+  }, [tenant?.dp_value, tenant?.dp_type, grandTotal])
+
+  const dpAmount = calculateDP()
+  const payableAmount = formData.payment_type === 'DP' ? dpAmount : grandTotal
+  const remainingAmount = grandTotal - payableAmount
+
   // Effect 4: Dynamic QRIS Generation
   useEffect(() => {
     let isMounted = true
-
-    const calcPrice = (priceVal?: string | number) => {
-      if (typeof priceVal === 'number') return isNaN(priceVal) ? 0 : priceVal
-      if (!priceVal) return 0
-      const numeric = priceVal.toString().replace(/[^0-9]/g, '')
-      return numeric ? parseInt(numeric, 10) : 0
-    }
-
-    const mainServs = services.filter((s) => !s.is_addon)
-    const sTotal = mainServs
-      .filter((s) => s.name && formData.selected_services.includes(s.name))
-      .reduce((sum, item) => sum + calcPrice(item.price), 0) * formData.person_count
-
-    const addServs = services.filter((s) => s.is_addon)
-    const extraFeeOld = addServs
-      .filter((addon) => addon.id !== undefined && formData.selectedAddonIds.includes(addon.id))
-      .reduce((sum, addon) => {
-        const addonKey = addon.id ?? ''
-        const qty = addonQuantities[addonKey] || 1
-        return sum + (calcPrice(addon.price) * qty)
-      }, 0)
-
-    const extraFeeNew = formData.selectedTenantAddons
-      .reduce((sum, addon) => sum + calcPrice(addon.price), 0)
-
-    const gTotal = sTotal + extraFeeOld + extraFeeNew
-
-    let pAmount = gTotal
-    if (tenant && formData.payment_type === 'DP') {
-      const rawDpValue = tenant.dp_value ?? 50
-      const dpVal = typeof rawDpValue === 'number' ? rawDpValue : Number(rawDpValue || 50)
-      const dpType = tenant.dp_type || 'PERCENTAGE'
-
-      if (dpType === 'FIXED') {
-        pAmount = dpVal > gTotal ? gTotal : dpVal
-      } else {
-        pAmount = Math.round(gTotal * (dpVal / 100))
-      }
-    }
 
     const generateDynamicQris = async () => {
       if (isMounted) setLoadingQris(true)
@@ -632,7 +697,7 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            amount: pAmount,
+            amount: payableAmount,
             tenantSlug: tenant?.tenant_slug || '',
             customerName: formData.customer_name || 'Pelanggan'
           })
@@ -653,205 +718,18 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
       }
     }
 
-    if (formData.payment_method === 'QRIS' && pAmount > 0 && tenant?.tenant_slug) {
+    if (formData.payment_method === 'QRIS' && payableAmount > 0 && tenant?.tenant_slug) {
       generateDynamicQris()
     }
 
     return () => {
       isMounted = false
     }
-  }, [formData.payment_method, formData.payment_type, formData.selected_services, formData.selectedAddonIds, formData.selectedTenantAddons, formData.person_count, addonQuantities, services, tenant, formData.customer_name])
+  }, [formData.payment_method, payableAmount, tenant?.tenant_slug, formData.customer_name])
 
-  // --------------------------------------------------------------------------
-  // 🛡️ GUARD CLAUSES
-  // --------------------------------------------------------------------------
-  
-  if (fetchingServices) {
-    return (
-      <div className="min-h-screen bg-[#09090b] text-white flex items-center justify-center p-4">
-        <div className="flex flex-col items-center space-y-3">
-          <div className="w-8 h-8 border-2 border-rose-500 border-t-transparent rounded-full animate-spin" />
-          <p className="text-xs text-zinc-400 font-medium tracking-wide">
-            Memuat data reservasi...
-          </p>
-        </div>
-      </div>
-    )
-  }
-
-  if (!tenant) {
-    return (
-      <div className="min-h-screen bg-[#09090b] text-white flex items-center justify-center p-4">
-        <div className="max-w-md w-full bg-zinc-900 border border-zinc-800 rounded-2xl p-6 text-center space-y-3 shadow-xl">
-          <h2 className="text-base font-semibold text-white">Tenant Tidak Ditemukan</h2>
-          <p className="text-xs text-zinc-400">
-            Halaman reservasi yang Anda tuju tidak tersedia atau tautan tidak valid.
-          </p>
-        </div>
-      </div>
-    )
-  }
-
-  if (tenant?.is_maintenance_mode) {
-    return (
-      <main className="min-h-screen bg-[#09090b] text-zinc-100 flex items-center justify-center p-4 font-sans">
-        <div className="max-w-md w-full bg-zinc-900/90 border border-amber-500/30 rounded-3xl p-8 text-center space-y-5 backdrop-blur-xl shadow-2xl">
-          <h1 className="text-xl font-black tracking-tight text-white uppercase">{tenant.name || 'Reservasi'}</h1>
-          <p className="text-xs font-bold text-amber-400 uppercase tracking-widest">⚠️ TOKO SEMENTARA DITUTUP</p>
-          <p className="text-xs text-zinc-300 leading-relaxed bg-zinc-950/50 p-4 rounded-2xl border border-zinc-800/50">
-            {tenant.maintenance_message || 'Mohon maaf, halaman pemesanan layanan saat ini sedang ditutup sementara.'}
-          </p>
-        </div>
-      </main>
-    )
-  }
-
-  // --------------------------------------------------------------------------
-  // 5.3 Derived States & Calculations
-  // --------------------------------------------------------------------------
-  const mainServices = services.filter((s) => !s.is_addon)
-
-  const addonServices: AddonService[] = services
-  .filter((s) => s.is_addon)
-  .map((s) => {
-    const parsedPrice = typeof s.price === 'number' ? s.price : Number(s.price || 0)
-    return {
-      id: s.id,
-      tenant_slug: s.tenant_slug || '',
-      name: s.name || '',
-      price: parsedPrice,
-      addon_label: s.name || '',
-      addon_price: parsedPrice,
-      desc: s.desc || '',
-      long_description: s.long_description || '',
-      image_url: s.image_url || '',
-      duration: s.duration || 0,
-      is_active: s.is_active ?? true
-    }
-  })
-
-  const isNotesEnabled = tenant.enable_notes ?? true
-
-  const parsePrice = (priceVal?: string | number) => {
-    if (typeof priceVal === 'number') return isNaN(priceVal) ? 0 : priceVal
-    if (!priceVal) return 0
-    const numeric = priceVal.toString().replace(/[^0-9]/g, '')
-    return numeric ? parseInt(numeric, 10) : 0
-  }
-
-  const getEndTime = (startTime: string, durationMinutes: number): string => {
-    if (!startTime) return ''
-    const [hours, minutes] = startTime.split(':').map(Number)
-    if (isNaN(hours) || isNaN(minutes)) return ''
-
-    const date = new Date()
-    date.setHours(hours, minutes + durationMinutes, 0)
-
-    const endHours = String(date.getHours()).padStart(2, '0')
-    const endMinutes = String(date.getMinutes()).padStart(2, '0')
-    return `${endHours}:${endMinutes}`
-  }
-
-  const calculateTotalDuration = (): number => {
-    let totalMinutes = 0
-
-    const selectedServices = formData.selected_services || []
-    if (selectedServices.length > 0 && services && services.length > 0) {
-      selectedServices.forEach((serviceIdentifier) => {
-        const found = services.find(
-          (s) =>
-            !s.is_addon &&
-            (String(s.id) === String(serviceIdentifier) || s.name === serviceIdentifier)
-        )
-        if (found && found.duration) {
-          totalMinutes += Number(found.duration)
-        }
-      })
-    }
-
-    if (formData.selectedTenantAddons && formData.selectedTenantAddons.length > 0) {
-      formData.selectedTenantAddons.forEach((addonObj) => {
-        const foundAddon = services?.find(
-          (s) =>
-            s.is_addon &&
-            (s.name === addonObj.label ||
-              s.name === (addonObj as unknown as { name?: string }).name ||
-              String(s.id) === String((addonObj as unknown as { id?: string | number }).id))
-        )
-        if (foundAddon && foundAddon.duration) {
-          totalMinutes += Number(foundAddon.duration)
-        }
-      })
-    } else if (formData.selectedAddonIds && formData.selectedAddonIds.length > 0) {
-      formData.selectedAddonIds.forEach((addonIdentifier) => {
-        const foundAddon = services?.find(
-          (s) =>
-            s.is_addon &&
-            (String(s.id) === String(addonIdentifier) || s.name === addonIdentifier)
-        )
-        if (foundAddon && foundAddon.duration) {
-          totalMinutes += Number(foundAddon.duration)
-        }
-      })
-    }
-
-    return totalMinutes > 0 ? totalMinutes : 45
-  }
-
-  const totalDuration = calculateTotalDuration()
-
-  const calculateTotal = () => {
-    const selectedServices = formData?.selected_services || []
-    const mainServicesList = mainServices || []
-
-    let serviceTotal = mainServicesList
-      .filter((s) => s.name && (selectedServices.includes(s.name) || (s.id && selectedServices.includes(String(s.id)))))
-      .reduce((sum, item) => sum + (typeof parsePrice === 'function' ? parsePrice(item.price) : Number(item.price) || 0), 0)
-
-    const personCount = Number(formData?.person_count) || 1
-    serviceTotal = serviceTotal * personCount
-
-    let extraFee = 0
-
-    if (formData?.selectedTenantAddons && formData.selectedTenantAddons.length > 0) {
-      extraFee = formData.selectedTenantAddons.reduce((sum, addon) => {
-        const price = typeof parsePrice === 'function' ? parsePrice(addon.price) : Number(addon.price) || 0
-        return sum + price
-      }, 0)
-    } else if (formData?.selectedAddonIds && formData.selectedAddonIds.length > 0 && addonServices) {
-      extraFee = addonServices
-        .filter((addon) => addon.id !== undefined && formData.selectedAddonIds.includes(addon.id))
-        .reduce((sum, addon) => {
-          const addonKey = addon.id ?? ''
-          const qty = addonQuantities[addonKey] || 1
-          const price = typeof parsePrice === 'function' ? parsePrice(addon.addon_price ?? addon.price) : Number(addon.price) || 0
-          return sum + (price * qty)
-        }, 0)
-    }
-
-    return serviceTotal + extraFee
-  }
-
-  const grandTotal = calculateTotal()
-
-  const calculateDP = () => {
-    const rawDpValue = tenant?.dp_value ?? 50
-    const dpVal = typeof rawDpValue === 'number' ? rawDpValue : Number(rawDpValue || 50)
-    const dpType = tenant?.dp_type || 'PERCENTAGE'
-
-    if (dpType === 'FIXED') {
-      return dpVal > grandTotal ? grandTotal : dpVal
-    }
-    return Math.round(grandTotal * (dpVal / 100))
-  }
-
-  const dpAmount = calculateDP()
-  const payableAmount = formData?.payment_type === 'DP' ? dpAmount : grandTotal
-  const remainingAmount = grandTotal - payableAmount
-
-  const getAvailablePaymentMethods = () => {
+  const getAvailablePaymentMethods = useCallback(() => {
     const methods: { id: string; title: string; detail?: string }[] = []
-    const isPayingDp = formData?.payment_type === 'DP'
+    const isPayingDp = formData.payment_type === 'DP'
 
     const qris = String(tenant?.qris_url || '')
     if (qris && qris.trim() !== '') {
@@ -887,14 +765,14 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
     }
 
     return methods
-  }
+  }, [formData.payment_type, tenant?.qris_url, tenant?.bank_accounts, tenant?.ewallet_accounts])
 
   const availablePaymentMethods = getAvailablePaymentMethods()
 
   // --------------------------------------------------------------------------
   // 5.4 Theme Configuration Helper
   // --------------------------------------------------------------------------
-  const getThemeClasses = (color?: string): ThemeConfig => {
+  const getThemeClasses = useCallback((color?: string): ThemeConfig => {
     const trimmedColor = (color || 'rose').trim()
 
     const createHexTheme = (hex: string): ThemeConfig => ({
@@ -986,10 +864,54 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
 
     const key = trimmedColor.toLowerCase()
     return presetThemes[key] || presetThemes['rose']
+  }, [])
+
+  const themeColorValue = String(tenant?.theme_color || 'rose')
+  const theme = useMemo(() => getThemeClasses(themeColorValue), [getThemeClasses, themeColorValue])
+
+  // --------------------------------------------------------------------------
+  // 🛡️ GUARD CLAUSES
+  // --------------------------------------------------------------------------
+  
+  if (fetchingServices) {
+    return (
+      <div className="min-h-screen bg-[#09090b] text-white flex items-center justify-center p-4">
+        <div className="flex flex-col items-center space-y-3">
+          <div className="w-8 h-8 border-2 border-rose-500 border-t-transparent rounded-full animate-spin" />
+          <p className="text-xs text-zinc-400 font-medium tracking-wide">
+            Memuat data reservasi...
+          </p>
+        </div>
+      </div>
+    )
   }
 
-  const themeColorValue = String(tenant.theme_color || 'rose')
-  const theme = getThemeClasses(themeColorValue)
+  if (!tenant) {
+    return (
+      <div className="min-h-screen bg-[#09090b] text-white flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-zinc-900 border border-zinc-800 rounded-2xl p-6 text-center space-y-3 shadow-xl">
+          <h2 className="text-base font-semibold text-white">Tenant Tidak Ditemukan</h2>
+          <p className="text-xs text-zinc-400">
+            Halaman reservasi yang Anda tuju tidak tersedia atau tautan tidak valid.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  if (tenant.is_maintenance_mode || tenant.is_system_maintenance) {
+    return (
+      <main className="min-h-screen bg-[#09090b] text-zinc-100 flex items-center justify-center p-4 font-sans">
+        <div className="max-w-md w-full bg-zinc-900/90 border border-amber-500/30 rounded-3xl p-8 text-center space-y-5 backdrop-blur-xl shadow-2xl">
+          <h1 className="text-xl font-black tracking-tight text-white uppercase">{tenant.name || 'Reservasi'}</h1>
+          <p className="text-xs font-bold text-amber-400 uppercase tracking-widest">⚠️ TOKO SEMENTARA DITUTUP</p>
+          <p className="text-xs text-zinc-300 leading-relaxed bg-zinc-950/50 p-4 rounded-2xl border border-zinc-800/50">
+            {tenant.maintenance_message || 'Mohon maaf, halaman pemesanan layanan saat ini sedang ditutup sementara.'}
+          </p>
+        </div>
+      </main>
+    )
+  }
 
   // --------------------------------------------------------------------------
   // 5.5 Event Handlers & Form Logic
@@ -1036,12 +958,12 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
         return
       }
 
-      if (formData.selected_staff && (tenant?.preventDoubleBooking || tenant?.prevent_double_booking)) {
+      if (formData.selected_staff && tenant?.prevent_double_booking) {
         const activeBookings = (bookedReservations || []).filter(
           (b: BookedReservation) => (b.time || b.booking_time) === formData.booking_time && b.status !== 'cancelled' && b.status !== 'refunded'
         )
         const currentStaffObj = (staffList || []).find(
-          s => s.name === formData.selected_staff || (s.id && s.id.toString() === formData.selected_staff)
+          s => s.name === formData.selected_staff || (s.id && String(s.id) === formData.selected_staff)
         )
         
         if (currentStaffObj) {
@@ -1065,12 +987,7 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (tenant.isMaintenance) {
-      alert('Maaf, halaman reservasi sedang ditutup sementara (Maintenance).')
-      return
-    }
-
-    if (tenant.requireConsent && !formData.has_consent) {
+    if (tenant.require_consent && !formData.has_consent) {
       alert('Mohon centang persetujuan terlebih dahulu sebelum mengirim reservasi.')
       return
     }
@@ -1102,31 +1019,30 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
     const formattedServicesText = formData.selected_services.join(', ')
 
     const insertPayload: Record<string, unknown> = {
-    customer_name: formData.customer_name,
-    whatsapp_number: formData.whatsapp_number,
-    booking_date: formData.booking_date,
-    booking_time: formData.booking_time,
-    selected_services: formData.selected_services,
-    service_name: formattedServicesText,
-    selected_addons: formData.selectedAddonIds,
-    selected_addon_ids: formData.selectedAddonIds,
-    
-    staff_name: formData.selected_staff || null,
-    staff_id: formData.selected_staff_id || null,
+      customer_name: formData.customer_name,
+      whatsapp_number: formData.whatsapp_number,
+      booking_date: formData.booking_date,
+      booking_time: formData.booking_time,
+      selected_services: formData.selected_services,
+      service_name: formattedServicesText,
+      selected_addons: formData.selectedAddonIds,
+      selected_addon_ids: formData.selectedAddonIds,
+      
+      staff_name: formData.selected_staff || null,
+      staff_id: formData.selected_staff_id || null,
 
-    // PERBAIKAN: Gunakan fallback jika tenant state belum siap/kosong
-    client_code: tenant?.client_code || tenant?.tenant_slug || null,
-    tenant_slug: tenant?.tenant_slug || tenant?.client_code || null,
-    tenant_id: tenant?.id || null,
+      client_code: tenant.client_code || tenant.tenant_slug || null,
+      tenant_slug: tenant.tenant_slug || tenant.client_code || null,
+      tenant_id: tenant.id || null,
 
-    total_price: grandTotal,
-    person_count: formData.person_count,
-    payment_type: formData.payment_type,
-    payment_method: formData.payment_method,
-    status: 'pending',
-    has_eye_allergy_consent: formData.has_consent,
-    eye_shape_notes: formData.custom_notes
-  }
+      total_price: grandTotal,
+      person_count: formData.person_count,
+      payment_type: formData.payment_type,
+      payment_method: formData.payment_method,
+      status: 'pending',
+      has_eye_allergy_consent: formData.has_consent,
+      eye_shape_notes: formData.custom_notes
+    }
 
     try {
       const response = await fetch('/api/reservations', {
@@ -1186,7 +1102,7 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
       }
 
       if (formData.selected_staff) {
-        messageText += `• ${tenant.staffLabel}: ${formData.selected_staff}\n`
+        messageText += `• ${tenant.staff_label || 'Staff'}: ${formData.selected_staff}\n`
       }
 
       if (formData.custom_notes) {
@@ -1205,35 +1121,13 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
       messageText += `\n🧾 *LINK INVOICE:* \n${invoiceUrl}\n`
       messageText += `\n----------------------------------\nBerikut saya lampirkan bukti transfernya. Terima kasih!`
 
-      if (tenant?.waGatewayUrl) {
-        try {
-          let formattedPhone = formData.whatsapp_number.replace(/[^0-9]/g, '')
-          if (formattedPhone.startsWith('0')) {
-            formattedPhone = '62' + formattedPhone.slice(1)
-          }
-
-          const formDataBody = new FormData()
-          formDataBody.append('target', formattedPhone)
-          formDataBody.append('message', messageText)
-
-          await fetch(tenant.waGatewayUrl, {
-            method: 'POST',
-            headers: {
-              'Authorization': tenant.waApiKey || ''
-            },
-            body: formDataBody
-          })
-        } catch {
-          console.error('Gagal memicu WA Gateway:')
-        }
-      }
-
-      const adminPhone = tenant.adminWa || ''
+      const adminPhone = tenant.admin_wa || ''
       const formattedPhone = formatWaNumber(adminPhone)
 
       const waUrl = `https://wa.me/${formattedPhone}?text=${encodeURIComponent(messageText)}`
       window.open(waUrl, '_blank')
-    } catch {
+    } catch (err) {
+      console.error('Submit reservation error:', err)
       alert('Terjadi kesalahan koneksi ke server.')
     } finally {
       setLoading(false)
@@ -1244,7 +1138,7 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
   // 5.6 Render Helper Methods
   // --------------------------------------------------------------------------
   const renderQrisSection = () => {
-    const qrisSrc = qrisData?.qrUrl || tenant?.qrisUrl
+    const qrisSrc = qrisData?.qrUrl || tenant?.qris_url
 
     return (
       <div 
@@ -1257,8 +1151,8 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
 
         {loadingQris ? (
           <div className="py-10 flex flex-col items-center justify-center space-y-2">
-            <div style={theme.inlineStyle ? { background: tenant?.themeColor } : undefined} className={`w-6 h-6 border-2 ${theme.accentSolidBg} border-t-transparent rounded-full animate-spin`}></div>
-            <span className="text-[11px] font-medium text-zinc-300">Memuat Kode QRIS dari Storage...</span>
+            <div style={theme.inlineStyle ? { background: tenant?.theme_color } : undefined} className={`w-6 h-6 border-2 ${theme.accentSolidBg} border-t-transparent rounded-full animate-spin`}></div>
+            <span className="text-[11px] font-medium text-zinc-300">Memuat Kode QRIS...</span>
           </div>
         ) : qrisSrc ? (
           <div className="p-2 bg-white rounded-2xl inline-block shadow-2xl border border-zinc-200 overflow-hidden w-full max-w-[260px]">
@@ -1288,17 +1182,8 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
     const selectedIds = formData.selectedAddonIds || []
     const hasAnyChecked = selectedAddons.length > 0
 
-    const getAddonName = (addon: { name?: string; label?: string; addon_label?: string }) => {
+    const getAddonName = (addon: TenantAddonItem) => {
       return addon?.name || addon?.label || addon?.addon_label || 'Addon'
-    }
-
-    const getAddonPrice = (price: number | string | null | undefined): number => {
-      if (price === null || price === undefined) return 0
-      if (typeof parsePrice === 'function') {
-        return parsePrice(price)
-      }
-      const numericValue = typeof price === 'number' ? price : Number(price)
-      return isNaN(numericValue) ? 0 : numericValue
     }
 
     return (
@@ -1317,7 +1202,7 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
           <div className="flex items-center space-x-3">
             <input
               type="checkbox"
-              style={theme?.inlineStyle ? { accentColor: tenant.themeColor } : undefined}
+              style={theme?.inlineStyle ? { accentColor: tenant.theme_color } : undefined}
               className={`w-4 h-4 rounded-md ${theme?.checkbox || ''} cursor-pointer`}
               checked={hasAnyChecked}
               onClick={(e) => e.stopPropagation()}
@@ -1362,7 +1247,7 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
           <div className="px-3.5 pb-3.5 pt-1 space-y-2.5 border-t border-zinc-800/60 animate-fadeIn">
             {tenant.addons.map((addon, index) => {
               const addonName = getAddonName(addon)
-              const addonPrice = getAddonPrice(addon.price)
+              const addonPrice = parsePrice(addon.price)
               const addonId = addon.id || index
 
               const isChecked = selectedAddons.some(
@@ -1405,7 +1290,7 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
                   <div className="flex items-center justify-between w-full">
                     <div className="flex items-center space-x-3">
                       <div 
-                        style={isChecked && theme?.inlineStyle ? { background: tenant.themeColor } : undefined}
+                        style={isChecked && theme?.inlineStyle ? { background: tenant.theme_color } : undefined}
                         className={`w-4 h-4 rounded-lg border flex items-center justify-center transition-all duration-300 ${
                           isChecked 
                             ? `${theme?.accentSolidBg || 'bg-purple-600'} border-white shadow-[0_0_12px_currentColor]` 
@@ -1443,9 +1328,7 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
                       style={theme?.inlineText ? theme.inlineText : undefined}
                       onClick={(e) => {
                         e.stopPropagation()
-                        if (typeof setSelectedServiceDetail === 'function') {
-                          setSelectedServiceDetail(addon)
-                        }
+                        setSelectedServiceDetail(addon)
                       }}
                       className={`mt-2.5 self-start inline-flex items-center space-x-1 text-[10px] font-bold ${theme?.accentText || 'text-purple-400'} hover:underline`}
                     >
@@ -1472,7 +1355,7 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
       
       {/* Background Ambient Glow */}
       <div 
-        style={theme.inlineStyle ? { background: tenant.themeColor } : undefined}
+        style={theme.inlineStyle ? { background: tenant.theme_color } : undefined}
         className={`absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] rounded-full blur-[140px] pointer-events-none opacity-25 ${theme.accentSolidBg}`} 
       />
 
@@ -1482,7 +1365,7 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
           theme.inlineBorder 
             ? { 
                 ...theme.inlineBorder, 
-                boxShadow: `0 0 50px rgba(0,0,0,0.8), 0 0 30px ${tenant.themeColor || '#e11d48'}22, inset 0 0 20px ${tenant.themeColor || '#e11d48'}11` 
+                boxShadow: `0 0 50px rgba(0,0,0,0.8), 0 0 30px ${tenant.theme_color || '#e11d48'}22, inset 0 0 20px ${tenant.theme_color || '#e11d48'}11` 
               } 
             : undefined
         }
@@ -1492,7 +1375,7 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
         {/* HEADER SECTION */}
         <div className="relative p-6 text-center bg-gradient-to-b from-zinc-900/80 via-zinc-950/90 to-zinc-950 border-b border-zinc-800/80">
           <div 
-            style={theme.inlineBgLight && theme.inlineText && theme.inlineBorder ? { ...theme.inlineBgLight, ...theme.inlineText, ...theme.inlineBorder, boxShadow: `0 0 35px ${tenant.themeColor}44` } : undefined}
+            style={theme.inlineBgLight && theme.inlineText && theme.inlineBorder ? { ...theme.inlineBgLight, ...theme.inlineText, ...theme.inlineBorder, boxShadow: `0 0 35px ${tenant.theme_color}44` } : undefined}
             className={`inline-flex items-center justify-center w-14 h-14 rounded-2xl mb-3.5 border ${theme.iconBg} backdrop-blur-xl shadow-2xl transform transition-transform hover:scale-105 duration-300`}
           >
             <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1507,7 +1390,7 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
             {[1, 2, 3].map((s) => (
               <div
                 key={s}
-                style={step === s && theme.inlineStyle ? { ...theme.inlineStyle, boxShadow: `0 0 20px ${tenant.themeColor}` } : undefined}
+                style={step === s && theme.inlineStyle ? { ...theme.inlineStyle, boxShadow: `0 0 20px ${tenant.theme_color}` } : undefined}
                 className={`h-1.5 rounded-full transition-all duration-500 ease-out ${
                   step === s ? `w-12 ${theme.accentBg} shadow-[0_0_20px_currentColor]` : 'w-2.5 bg-zinc-800'
                 }`}
@@ -1536,10 +1419,10 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
               </div>
 
               {/* PILIH STAFF / TERAPIS */}
-              {tenant?.enable_multi_staff && staffList?.length > 0 && (
+              {tenant.enable_multi_staff && staffList.length > 0 && (
                 <div>
                   <label className="block text-[11px] font-semibold text-zinc-300 uppercase tracking-wider mb-1.5">
-                    {tenant.staffLabel || 'Pilih Staff / Terapis'}
+                    {tenant.staff_label || 'Pilih Staff / Terapis'}
                   </label>
                   <div className="grid grid-cols-2 gap-2.5">
                     {staffList.map((st) => {
@@ -1549,7 +1432,7 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
                           type="button"
                           key={st.id}
                           style={isSelected && theme.inlineBgLight && theme.inlineBorder ? { ...theme.inlineBgLight, ...theme.inlineBorder } : undefined}
-                          onClick={async () => {
+                          onClick={() => {
                             const staffIdValue = String(st.id)
                             setFormData(prev => ({ 
                               ...prev, 
@@ -1612,7 +1495,7 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
                           <div className="flex items-center justify-between w-full">
                             <div className="flex items-center space-x-3.5 pr-2">
                               <div 
-                                style={active && theme.inlineStyle ? { borderColor: tenant.themeColor, backgroundColor: tenant.themeColor } : undefined}
+                                style={active && theme.inlineStyle ? { borderColor: tenant.theme_color, backgroundColor: tenant.theme_color } : undefined}
                                 className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 transition-all duration-300 ${
                                   active ? 'border-purple-500 bg-purple-500' : 'border-zinc-600 bg-transparent group-hover:border-zinc-500'
                                 }`}
@@ -1635,7 +1518,6 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
                             </span>
                           </div>
 
-                          {/* 🌟 DETAIL LAYANAN UTAMA */}
                           {(item.long_description || item.desc || item.image_url) && (
                             <button
                               type="button"
@@ -1660,7 +1542,7 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
               </div>
 
               {/* RENDER ADDONS */}
-              {typeof renderAddonsSection === 'function' && renderAddonsSection()}
+              {renderAddonsSection()}
 
               {/* TOMBOL LANJUT STEP 2 */}
               <button
@@ -1710,7 +1592,7 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
                     <TimePicker
                       availableSlots={availableSlots}
                       blockedTimes={blockedTimes}
-                      blockedDetails={blockedDetails} // PASS PROP INI
+                      blockedDetails={blockedDetails}
                       selectedTime={formData.booking_time}
                       onSelectTime={(time) => setFormData(prev => ({ ...prev, booking_time: time }))}
                       tenantData={tenant}
@@ -1785,13 +1667,13 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
               </div>
 
               {/* JUMLAH ORANG / PASIEN */}
-              {tenant?.enable_guest_count && (
+              {tenant.enable_guest_count && (
                 <div>
                   <label className="block text-[11px] font-semibold text-zinc-300 uppercase tracking-wider mb-1.5">
                     Jumlah Orang / Pasien
                   </label>
                   <div className="grid grid-cols-5 gap-2">
-                    {Array.from({ length: Number(tenant?.maxPersonPerBooking || 5) }, (_, i) => i + 1).map((num: number) => {
+                    {Array.from({ length: Number(tenant.maxPersonPerBooking || 5) }, (_, i) => i + 1).map((num: number) => {
                       const isSelected = formData.person_count === num
                       return (
                         <button
@@ -1821,7 +1703,7 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
               )}
 
               {/* CATATAN KHUSUS */}
-              {isNotesEnabled && (
+              {(tenant.enable_notes ?? true) && (
                 <div>
                   <label className="block text-[11px] font-semibold text-zinc-300 uppercase tracking-wider mb-1.5">
                     Catatan Khusus (Opsional)
@@ -1837,7 +1719,7 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
               )}
 
               {/* TIPE PEMBAYARAN */}
-              {tenant?.custom_payment_dp && (
+              {tenant.custom_payment_dp && (
                 <div className="space-y-1.5 pt-1">
                   <label className="block text-[11px] font-semibold text-zinc-300 uppercase tracking-wider">
                     Tipe Pembayaran
@@ -1905,7 +1787,6 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
                             )}
                           </div>
 
-                          {/* Indikator Radio */}
                           <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${
                             isSelected ? 'border-black bg-black' : 'border-zinc-600'
                           }`}>
@@ -1978,7 +1859,7 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
                   <div className="flex justify-between items-center">
                     <span className="text-xs font-bold text-zinc-300 uppercase tracking-wider">Total Biaya:</span>
                     <span className="text-sm font-extrabold text-purple-400">
-                      Rp {typeof calculateTotal === 'function' ? calculateTotal().toLocaleString('id-ID') : '0'}
+                      Rp {grandTotal.toLocaleString('id-ID')}
                     </span>
                   </div>
 
@@ -1998,17 +1879,17 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
               </div>
 
               {/* CHECKBOX PERSETUJUAN */}
-              {(tenant?.custom_terms_text || tenant?.requireConsent) && (
+              {(tenant.custom_terms_text || tenant.require_consent) && (
                 <div className="flex items-start space-x-2.5 pt-2">
                   <input
                     type="checkbox"
                     id="has_consent"
-                    checked={!!formData?.has_consent}
+                    checked={formData.has_consent}
                     onChange={(e) => setFormData((prev) => ({ ...prev, has_consent: e.target.checked }))}
                     className="w-4 h-4 mt-0.5 rounded border-zinc-700 bg-zinc-900 text-purple-600 focus:ring-purple-500 cursor-pointer shrink-0"
                   />
                   <label htmlFor="has_consent" className="text-[11px] text-zinc-300 cursor-pointer select-none leading-tight">
-                    {tenant?.custom_terms_text || 'Saya menyetujui syarat & ketentuan reservasi'}
+                    {tenant.custom_terms_text || 'Saya menyetujui syarat & ketentuan reservasi'}
                   </label>
                 </div>
               )}
@@ -2024,8 +1905,8 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
                 </button>
 
                 {(() => {
-                  const isConsentMissing = Boolean(tenant?.custom_terms_text || tenant?.requireConsent) && !formData?.has_consent
-                  const isDisabled = Boolean(loading || !formData?.payment_method || isConsentMissing)
+                  const isConsentMissing = Boolean(tenant.custom_terms_text || tenant.require_consent) && !formData.has_consent
+                  const isDisabled = Boolean(loading || !formData.payment_method || isConsentMissing)
 
                   return (
                     <button
@@ -2095,7 +1976,15 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
             </div>
 
             <div className="text-xs text-zinc-300 space-y-2 max-h-48 overflow-y-auto leading-relaxed pr-1">
-              <p>{selectedServiceDetail.long_description || selectedServiceDetail.desc || selectedServiceDetail.description || 'Tidak ada deskripsi tambahan.'}</p>
+              <p>
+                {'long_description' in selectedServiceDetail && selectedServiceDetail.long_description
+                  ? selectedServiceDetail.long_description
+                  : 'desc' in selectedServiceDetail && selectedServiceDetail.desc
+                  ? selectedServiceDetail.desc
+                  : 'description' in selectedServiceDetail && selectedServiceDetail.description
+                  ? selectedServiceDetail.description
+                  : 'Tidak ada deskripsi tambahan.'}
+              </p>
             </div>
 
             <button

@@ -14,6 +14,7 @@ export interface TenantAddonItem {
   id?: string | number
   name?: string
   label?: string
+  addon_label?: string
   price: number
   desc?: string
   description?: string
