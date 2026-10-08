@@ -1113,8 +1113,10 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
     
     staff_name: formData.selected_staff || null,
     staff_id: formData.selected_staff_id || null,
-    client_code: tenant?.client_code || null, // ✅ DIPERBAIKI
-    tenant_slug: tenant?.tenant_slug || null, // ✅ DIPERBAIKI
+
+    // PERBAIKAN: Gunakan fallback jika tenant state belum siap/kosong
+    client_code: tenant?.client_code || tenant?.tenant_slug || null,
+    tenant_slug: tenant?.tenant_slug || tenant?.client_code || null,
     tenant_id: tenant?.id || null,
 
     total_price: grandTotal,
