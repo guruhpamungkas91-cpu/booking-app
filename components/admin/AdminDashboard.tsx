@@ -117,6 +117,39 @@ export default function AdminDashboard({ tenantSlug: propsTenantSlug }: AdminDas
 
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
+  const [selectedMonth, setSelectedMonth] = useState<string>('ALL')
+  const [selectedYear, setSelectedYear] = useState<string>(new Date().getFullYear().toString())
+  
+  const handleMonthYearChange = (month: string, year: string) => {
+    setSelectedMonth(month)
+    setSelectedYear(year)
+
+    if (month === 'ALL') {
+      setStartDate('')
+      setEndDate('')
+      return
+    }
+
+    const y = parseInt(year, 10)
+    const m = parseInt(month, 10)
+
+    // Format YYYY-MM-01
+    const formattedStart = `${y}-${String(m).padStart(2, '0')}-01`
+    
+    // Format YYYY-MM-(Hari Terakhir Bulan Ini)
+    const lastDay = new Date(y, m, 0).getDate()
+    const formattedEnd = `${y}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
+
+    setStartDate(formattedStart)
+    setEndDate(formattedEnd)
+  }
+
+  const handleDateChange = (type: 'start' | 'end', value: string) => {
+    if (type === 'start') setStartDate(value)
+    if (type === 'end') setEndDate(value)
+    setSelectedMonth('ALL') // Autoreset dropdown bulan jika user memilih tanggal manual
+  }
+  
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [serviceFilter, setServiceFilter] = useState('all')

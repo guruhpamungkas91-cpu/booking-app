@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import type { InvoiceBooking } from '@/types'
-import { CheckCircle2, Clock, XCircle, Calendar, User, Phone, Scissors, CreditCard, Download, ArrowLeft } from 'lucide-react'
+import { CheckCircle2, Clock, XCircle, Calendar, User, Phone, Scissors, CreditCard, Download } from 'lucide-react'
 
 export default function InvoicePage() {
   const params = useParams()
