@@ -3317,55 +3317,67 @@ export default function AdminDashboard({ tenantSlug: propsTenantSlug }: AdminDas
                   <p className="text-[11px] text-zinc-500">Tidak ada slot booking pelanggan pada periode ini.</p>
                 </div>
               ) : (
-                  customerReservations.map((item: BlockedSlot, idx: number) => {
+                customerReservations.map((item: BlockedSlot, idx: number) => {
                   const bookingDate = item.block_date || item.booking_date || '-'
                   const bookingTime = item.block_time || item.start_time || item.booking_time || '-'
                   const customerName = item.customer_name || (item.reason ? item.reason.replace(/Otomatis:\s*Booking\s*Confirmed\s*\((.*?)\)/i, '$1') : 'Pelanggan')
-                  const staffName = item.staff_name || '-'
-                  const serviceName = item.service_name || '-'
+                  const staffName = item.staff_name && item.staff_name !== '-' ? item.staff_name : null
+                  const serviceName = item.service_name && item.service_name !== '-' ? item.service_name : null
 
                   return (
                     <div
                       key={item.id || idx}
-                      className={`p-4 rounded-2xl border transition-all duration-300 flex flex-col gap-2.5 relative group overflow-hidden ${
+                      className={`p-4 rounded-2xl border transition-all duration-300 flex flex-col gap-2 relative group overflow-hidden ${
                         isDark
-                          ? 'bg-zinc-900/80 border-zinc-800/90 hover:border-indigo-500/50 hover:bg-zinc-900 hover:shadow-lg hover:shadow-indigo-500/10'
-                          : 'bg-slate-50 border-slate-200 hover:border-indigo-400 hover:bg-white hover:shadow-md'
+                          ? 'bg-zinc-900/80 border-zinc-800 hover:border-indigo-500/50 hover:bg-zinc-900 shadow-md'
+                          : 'bg-slate-100/80 border-slate-200 hover:border-indigo-400 hover:bg-white shadow-sm'
                       }`}
                     >
                       {/* Visual Accent Line */}
-                      <div className="absolute top-0 left-0 bottom-0 w-1 bg-gradient-to-b from-indigo-500 to-purple-500 opacity-80 group-hover:opacity-100 transition-opacity" />
+                      <div className="absolute top-0 left-0 bottom-0 w-1 bg-gradient-to-b from-indigo-500 to-purple-500 opacity-80" />
 
                       <div className="flex items-center justify-between pl-1">
                         {/* BADGES WAKTU */}
                         <div className="flex items-center gap-2">
-                          <span className="px-2.5 py-1 rounded-xl bg-indigo-500/15 border border-indigo-500/30 text-indigo-400 font-extrabold text-[11px] tracking-wide flex items-center gap-1">
+                          <span className={`px-2.5 py-1 rounded-xl font-extrabold text-[11px] tracking-wide flex items-center gap-1 border ${
+                            isDark ? 'bg-indigo-500/15 border-indigo-500/30 text-indigo-300' : 'bg-indigo-50 border-indigo-200 text-indigo-700'
+                          }`}>
                             📅 {bookingDate}
                           </span>
-                          <span className="px-2.5 py-1 rounded-xl bg-purple-500/15 border border-purple-500/30 text-purple-300 font-extrabold text-[11px] tracking-wide flex items-center gap-1">
+                          <span className={`px-2.5 py-1 rounded-xl font-extrabold text-[11px] tracking-wide flex items-center gap-1 border ${
+                            isDark ? 'bg-purple-500/15 border-purple-500/30 text-purple-300' : 'bg-purple-50 border-purple-200 text-purple-700'
+                          }`}>
                             ⏰ {bookingTime} WIB
                           </span>
                         </div>
 
-                        <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[10px] font-bold">
+                        <span className={`px-2.5 py-0.5 rounded-full border text-[10px] font-bold ${
+                          isDark ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : 'bg-emerald-50 border-emerald-300 text-emerald-700'
+                        }`}>
                           Confirmed
                         </span>
                       </div>
 
                       {/* DETAIL PELANGGAN & SERVIS */}
-                      <div className="pl-1 pt-0.5 space-y-1">
-                        <p className="text-xs font-bold text-white flex items-center gap-1.5">
-                          <span className="text-indigo-400">👤</span> {customerName}
+                      <div className="pl-1 pt-1 space-y-1">
+                        <p className={`text-xs font-bold flex items-center gap-1.5 ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                          <span className="text-indigo-500">👤</span> {customerName}
                         </p>
                         
-                        <div className="flex items-center justify-between text-[11px] text-zinc-400 pt-0.5">
-                          <span className="truncate max-w-[200px]">
-                            ✂️ <span className="text-zinc-300">{serviceName}</span>
-                          </span>
-                          <span>
-                            👨‍⚕️ <span className="text-zinc-300 font-semibold">{staffName}</span>
-                          </span>
-                        </div>
+                        {(serviceName || staffName) && (
+                          <div className={`flex items-center justify-between text-[11px] pt-0.5 ${isDark ? 'text-zinc-400' : 'text-slate-600'}`}>
+                            {serviceName ? (
+                              <span className="truncate max-w-[200px]">
+                                ✨ <span className="font-medium">{serviceName}</span>
+                              </span>
+                            ) : <div />}
+                            {staffName && (
+                              <span>
+                                👨‍⚕️ <span className="font-semibold">{staffName}</span>
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
                   )
