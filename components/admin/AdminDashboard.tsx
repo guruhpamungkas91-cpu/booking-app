@@ -149,7 +149,7 @@ export default function AdminDashboard({ tenantSlug: propsTenantSlug }: AdminDas
     if (type === 'end') setEndDate(value)
     setSelectedMonth('ALL') // Autoreset dropdown bulan jika user memilih tanggal manual
   }
-  
+
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [serviceFilter, setServiceFilter] = useState('all')
@@ -2532,7 +2532,11 @@ export default function AdminDashboard({ tenantSlug: propsTenantSlug }: AdminDas
                       const val = e.target.value
                       setReportDate(reportPeriod === 'monthly' ? `${val}-01` : val)
                     }}
-                    className={`w-full px-3.5 sm:px-4 py-2 sm:py-2.5 border rounded-2xl text-xs focus:outline-none shadow-inner ${isDark ? 'bg-zinc-950/80 border-zinc-800 text-zinc-200' : 'bg-white border-slate-300 text-slate-800'} ${currentTheme.focusBorder}`}
+                    className={`w-full px-3.5 sm:px-4 py-2 sm:py-2.5 border rounded-2xl text-xs focus:outline-none shadow-inner transition-all cursor-pointer ${
+                      isDark 
+                        ? 'bg-zinc-950/80 border-zinc-800 text-zinc-200 [color-scheme:dark]' 
+                        : 'bg-white border-slate-300 text-slate-800 [color-scheme:light]'
+                    } ${currentTheme.focusBorder}`}
                   />
                   {reportPeriod === 'weekly' && reportData.weekInfo && (
                     <p className={`text-[10px] sm:text-[11px] font-bold mt-2 flex items-center gap-1 ${currentTheme.accentText}`}>
