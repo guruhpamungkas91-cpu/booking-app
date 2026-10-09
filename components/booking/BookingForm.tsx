@@ -127,95 +127,95 @@ const getEndTime = (startTime: string, durationMinutes: number): string => {
 // 4. SUB-COMPONENTS
 // ============================================================================
 
-function TimePicker({
-  availableSlots,
-  blockedTimes = [],
-  blockedDetails = {},
-  selectedTime,
-  onSelectTime,
-  tenantData,
-  theme
-}: TimePickerProps) {
-  const shouldHideBooked = Boolean(tenantData?.hide_booked_slots || tenantData?.hideBookedSlots)
-  const shouldAutoDisable = tenantData?.enable_auto_disable_time_slots ?? tenantData?.enableAutoDisableTimeSlots ?? true
+  function TimePicker({
+    availableSlots,
+    blockedTimes = [],
+    blockedDetails = {},
+    selectedTime,
+    onSelectTime,
+    tenantData,
+    theme
+  }: TimePickerProps) {
+    const shouldHideBooked = Boolean(tenantData?.hide_booked_slots || tenantData?.hideBookedSlots)
+    const shouldAutoDisable = tenantData?.enable_auto_disable_time_slots ?? tenantData?.enableAutoDisableTimeSlots ?? true
 
-  const displayedSlots = useMemo(() => {
-    return (availableSlots || [])
-      .map((slot: TimeSlot) => {
-        const rawTime = slot.time || slot.time_slot || ''
-        const timeStr = typeof rawTime === 'string' ? rawTime.trim().substring(0, 5) : ''
+    const displayedSlots = useMemo(() => {
+      return (availableSlots || [])
+        .map((slot: TimeSlot) => {
+          const rawTime = slot.time || slot.time_slot || ''
+          const timeStr = typeof rawTime === 'string' ? rawTime.trim().substring(0, 5) : ''
 
-        if (!timeStr) return null
+          if (!timeStr) return null
 
-        const isBlockedByApi = Array.isArray(blockedTimes) && blockedTimes.some((b) => {
-          if (!b) return false
-          const bStr = typeof b === 'string' ? b.trim().substring(0, 5) : ''
-          return bStr === timeStr
+          const isBlockedByApi = Array.isArray(blockedTimes) && blockedTimes.some((b) => {
+            if (!b) return false
+            const bStr = typeof b === 'string' ? b.trim().substring(0, 5) : ''
+            return bStr === timeStr
+          })
+          
+          const isSlotDisabled =
+            slot.disabled === true || slot.is_available === false || isBlockedByApi
+
+          const apiReason = blockedDetails?.[timeStr] || slot.reason || (isBlockedByApi ? 'Penuh' : '')
+
+          const isRestTime = apiReason === 'Jam Istirahat' || apiReason === 'Istirahat'
+          const isHidden = shouldHideBooked && isSlotDisabled && !isRestTime
+
+          return {
+            ...slot,
+            time: timeStr,
+            isDisabled: shouldAutoDisable ? isSlotDisabled : false,
+            isHidden: isHidden,
+            reason: apiReason,
+          }
         })
-        
-        const isSlotDisabled =
-          slot.disabled === true || slot.is_available === false || isBlockedByApi
+        .filter((slot): slot is NonNullable<typeof slot> => slot !== null && !slot.isHidden && Boolean(slot.time))
+    }, [availableSlots, blockedTimes, blockedDetails, shouldHideBooked, shouldAutoDisable])
 
-        const apiReason = blockedDetails?.[timeStr] || slot.reason || (isBlockedByApi ? 'Penuh' : '')
+    if (displayedSlots.length === 0) {
+      return (
+        <div className="text-center py-4 text-zinc-500 text-xs italic">
+          Tidak ada jadwal / slot waktu yang tersedia pada tanggal ini.
+        </div>
+      )
+    }
 
-        const isRestTime = apiReason === 'Jam Istirahat' || apiReason === 'Istirahat'
-        const isHidden = shouldHideBooked && isSlotDisabled && !isRestTime
-
-        return {
-          ...slot,
-          time: timeStr,
-          isDisabled: shouldAutoDisable ? isSlotDisabled : false,
-          isHidden: isHidden,
-          reason: apiReason,
-        }
-      })
-      .filter((slot): slot is NonNullable<typeof slot> => slot !== null && !slot.isHidden && Boolean(slot.time))
-  }, [availableSlots, blockedTimes, blockedDetails, shouldHideBooked, shouldAutoDisable])
-
-  if (displayedSlots.length === 0) {
     return (
-      <div className="text-center py-4 text-zinc-500 text-xs italic">
-        Tidak ada jadwal / slot waktu yang tersedia pada tanggal ini.
+      <div className="grid grid-cols-3 gap-2.5 mt-2.5">
+        {displayedSlots.map((slot) => {
+          const isSelected = selectedTime === slot.time
+
+          return (
+            <button
+              key={slot.time}
+              type="button"
+              disabled={slot.isDisabled}
+              style={isSelected && theme?.inlineStyle ? theme.inlineStyle : undefined}
+              onClick={() => {
+                if (!slot.isDisabled) {
+                  onSelectTime(slot.time)
+                }
+              }}
+              className={`py-2.5 px-3 rounded-2xl text-xs font-bold transition-all duration-300 border relative overflow-hidden group ${
+                slot.isDisabled
+                  ? 'bg-zinc-950/60 text-zinc-600 border-zinc-800/50 cursor-not-allowed opacity-50'
+                  : isSelected
+                  ? `${theme?.accentBg || 'bg-rose-500'} !text-black border-white/25 scale-[1.04] z-10 shadow-[0_0_30px_rgba(var(--color-primary-rgb),0.6)] ring-2 ring-white/40`
+                  : 'bg-zinc-950/90 text-zinc-300 border-zinc-800/80 hover:border-zinc-700 hover:text-white hover:bg-zinc-900/80 hover:shadow-[0_0_20px_rgba(255,255,255,0.08)]'
+              }`}
+            >
+              <span className="relative z-10">{slot.time}</span>
+              {slot.isDisabled && (
+                <span className="block text-[9px] text-rose-500 font-semibold tracking-wide mt-0.5">
+                  {slot.reason === 'Jam Istirahat' || slot.reason === 'Istirahat' ? 'Istirahat' : 'Penuh'}
+                </span>
+              )}
+            </button>
+          )
+        })}
       </div>
     )
   }
-
-  return (
-    <div className="grid grid-cols-3 gap-2.5 mt-2.5">
-      {displayedSlots.map((slot) => {
-        const isSelected = selectedTime === slot.time
-
-        return (
-          <button
-            key={slot.time}
-            type="button"
-            disabled={slot.isDisabled}
-            style={isSelected && theme?.inlineStyle ? theme.inlineStyle : undefined}
-            onClick={() => {
-              if (!slot.isDisabled) {
-                onSelectTime(slot.time)
-              }
-            }}
-            className={`py-2.5 px-3 rounded-2xl text-xs font-bold transition-all duration-300 border relative overflow-hidden group ${
-              slot.isDisabled
-                ? 'bg-zinc-950/60 text-zinc-600 border-zinc-800/50 cursor-not-allowed opacity-50'
-                : isSelected
-                ? `${theme?.accentBg || 'bg-rose-500'} !text-black border-white/25 scale-[1.04] z-10 shadow-[0_0_30px_rgba(var(--color-primary-rgb),0.6)] ring-2 ring-white/40`
-                : 'bg-zinc-950/90 text-zinc-300 border-zinc-800/80 hover:border-zinc-700 hover:text-white hover:bg-zinc-900/80 hover:shadow-[0_0_20px_rgba(255,255,255,0.08)]'
-            }`}
-          >
-            <span className="relative z-10">{slot.time}</span>
-            {slot.isDisabled && (
-              <span className="block text-[9px] text-rose-500 font-semibold tracking-wide mt-0.5">
-                {slot.reason === 'Jam Istirahat' || slot.reason === 'Istirahat' ? 'Istirahat' : 'Penuh'}
-              </span>
-            )}
-          </button>
-        )
-      })}
-    </div>
-  )
-}
 
 // ============================================================================
 // 5. MAIN BOOKING FORM COMPONENT

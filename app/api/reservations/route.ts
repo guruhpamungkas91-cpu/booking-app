@@ -191,6 +191,8 @@ export async function POST(request: Request) {
 
     // --- 6. AUTO-INSERT KE BLOCKED_SLOTS ---
     // Mengunci slot secara fisik di tabel blocked_slots agar sinkron
+    // HAPUS ATAU COMMENT BAGIAN INI DI app/api/reservations/route.ts:
+    /* 
     await supabase.from('blocked_slots').insert([
       {
         tenant_id: resolvedTenantId,
@@ -206,6 +208,7 @@ export async function POST(request: Request) {
         staff_name: assignedStaffName,
       },
     ])
+    */
 
     return NextResponse.json({ success: true, data: insertedData }, { status: 200 })
 
