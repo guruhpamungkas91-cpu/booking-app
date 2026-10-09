@@ -2568,13 +2568,14 @@ export default function AdminDashboard({ tenantSlug: propsTenantSlug }: AdminDas
       )}
 
       {/* ======================================================================== */}
-      {/* 17.7 FILTER & SEARCH BAR SECTION                                       */}
+      {/* 17.7 FILTER & SEARCH BAR SECTION                                         */}
       {/* ======================================================================== */}
       <section className={`border p-4 sm:p-5 rounded-3xl shadow-xl transition-all ${currentTheme.cardBg}`}>
         <div className={`grid grid-cols-1 sm:grid-cols-2 ${
-          !isSuperAdminToggleActive ? 'md:grid-cols-2 lg:grid-cols-3' : 'md:grid-cols-3 lg:grid-cols-7'
+          !isSuperAdminToggleActive ? 'md:grid-cols-2 lg:grid-cols-3' : 'md:grid-cols-3 lg:grid-cols-9'
         } gap-3 sm:gap-4 items-end w-full`}>
           
+          {/* PENCARIAN DATA */}
           <div className="w-full lg:col-span-1">
             <label className={`block text-xs font-bold mb-1.5 ${currentTheme.accentText}`}>Pencarian Data:</label>
             <div className="relative">
@@ -2603,30 +2604,79 @@ export default function AdminDashboard({ tenantSlug: propsTenantSlug }: AdminDas
             </div>
           </div>
 
+          {/* NEW: FILTER CEPAT BULAN */}
+          {isSuperAdminToggleActive && (
+            <div className="w-full">
+              <label className={`block text-xs font-bold mb-1.5 ${isDark ? 'text-zinc-300' : 'text-slate-700'}`}>Bulan:</label>
+              <select
+                value={selectedMonth}
+                onChange={(e) => handleMonthYearChange(e.target.value, selectedYear)}
+                className={`w-full px-3 py-2 sm:py-2.5 border rounded-2xl text-xs font-semibold focus:outline-none cursor-pointer shadow-inner ${
+                  isDark ? 'bg-zinc-950/80 border-zinc-800 text-zinc-200' : 'bg-white border-slate-300 text-slate-800'
+                } ${currentTheme?.focusBorder ?? ''}`}
+              >
+                <option value="ALL">Semua Bulan</option>
+                <option value="01">Januari</option>
+                <option value="02">Februari</option>
+                <option value="03">Maret</option>
+                <option value="04">April</option>
+                <option value="05">Mei</option>
+                <option value="06">Juni</option>
+                <option value="07">Juli</option>
+                <option value="08">Agustus</option>
+                <option value="09">September</option>
+                <option value="10">Oktober</option>
+                <option value="11">November</option>
+                <option value="12">Desember</option>
+              </select>
+            </div>
+          )}
+
+          {/* NEW: FILTER TAHUN */}
+          {isSuperAdminToggleActive && (
+            <div className="w-full">
+              <label className={`block text-xs font-bold mb-1.5 ${isDark ? 'text-zinc-300' : 'text-slate-700'}`}>Tahun:</label>
+              <select
+                value={selectedYear}
+                onChange={(e) => handleMonthYearChange(selectedMonth, e.target.value)}
+                className={`w-full px-3 py-2 sm:py-2.5 border rounded-2xl text-xs font-semibold focus:outline-none cursor-pointer shadow-inner ${
+                  isDark ? 'bg-zinc-950/80 border-zinc-800 text-zinc-200' : 'bg-white border-slate-300 text-slate-800'
+                } ${currentTheme?.focusBorder ?? ''}`}
+              >
+                <option value="2025">2025</option>
+                <option value="2026">2026</option>
+                <option value="2027">2027</option>
+              </select>
+            </div>
+          )}
+
+          {/* DARI TANGGAL */}
           {isSuperAdminToggleActive && (
             <div className="w-full">
               <label className={`block text-xs font-bold mb-1.5 ${isDark ? 'text-zinc-300' : 'text-slate-700'}`}>Dari Tanggal:</label>
               <input
                 type="date"
                 value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
+                onChange={(e) => handleDateChange('start', e.target.value)}
                 className={`w-full px-3 py-2 sm:py-2.5 border rounded-2xl text-xs focus:outline-none shadow-inner ${isDark ? 'bg-zinc-950/80 border-zinc-800 text-zinc-200' : 'bg-white border-slate-300 text-slate-800'} ${currentTheme.focusBorder}`}
               />
             </div>
           )}
 
+          {/* SAMPAI TANGGAL */}
           {isSuperAdminToggleActive && (
             <div className="w-full">
               <label className={`block text-xs font-bold mb-1.5 ${isDark ? 'text-zinc-300' : 'text-slate-700'}`}>Sampai Tanggal:</label>
               <input
                 type="date"
                 value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
+                onChange={(e) => handleDateChange('end', e.target.value)}
                 className={`w-full px-3 py-2 sm:py-2.5 border rounded-2xl text-xs focus:outline-none shadow-inner ${isDark ? 'bg-zinc-950/80 border-zinc-800 text-zinc-200' : 'bg-white border-slate-300 text-slate-800'} ${currentTheme.focusBorder}`}
               />
             </div>
           )}
 
+          {/* FILTER STATUS (SUDAH DISESUAIKAN: DITAMBAHKAN REFUNDED) */}
           <div className="w-full">
             <label className={`block text-xs font-bold mb-1.5 ${isDark ? 'text-zinc-300' : 'text-slate-700'}`}>Status:</label>
             <select
@@ -2639,10 +2689,11 @@ export default function AdminDashboard({ tenantSlug: propsTenantSlug }: AdminDas
               <option value="confirmed">🟢 Confirmed</option>
               <option value="completed">🔵 Completed</option>
               <option value="cancelled">🔴 Cancelled</option>
-              <option value="cancelled_need_refund">⚠️ Need Refund</option>
+              <option value="refunded">🟣 Refunded</option>
             </select>
           </div>
 
+          {/* LAYANAN */}
           {isSuperAdminToggleActive && (
             <div className="w-full">
               <label className={`block text-xs font-bold mb-1.5 ${isDark ? 'text-zinc-300' : 'text-slate-700'}`}>
@@ -2670,6 +2721,7 @@ export default function AdminDashboard({ tenantSlug: propsTenantSlug }: AdminDas
             </div>
           )}
 
+          {/* LIMIT DATA */}
           {isSuperAdminToggleActive && (
             <div className="w-full">
               <label className={`block text-xs font-bold mb-1.5 ${isDark ? 'text-zinc-300' : 'text-slate-700'}`}>
@@ -2694,6 +2746,7 @@ export default function AdminDashboard({ tenantSlug: propsTenantSlug }: AdminDas
             </div>
           )}
 
+          {/* METODE BAYAR */}
           <div className="w-full flex gap-2 items-end">
             <div className="w-full">
               <label className={`block text-xs font-bold mb-1.5 ${isDark ? 'text-zinc-300' : 'text-slate-700'}`}>
@@ -2721,9 +2774,12 @@ export default function AdminDashboard({ tenantSlug: propsTenantSlug }: AdminDas
             </div>
           </div>
 
-          {(startDate || endDate || statusFilter !== 'all' || serviceFilter !== 'all' || paymentFilter !== 'all' || searchTerm || limit !== 10) && (
+          {/* BUTTON RESET */}
+          {(startDate || endDate || selectedMonth !== 'ALL' || statusFilter !== 'all' || serviceFilter !== 'all' || paymentFilter !== 'all' || searchTerm || limit !== 10) && (
             <button
               onClick={() => {
+                setSelectedMonth('ALL')
+                setSelectedYear(new Date().getFullYear().toString())
                 setStartDate('')
                 setEndDate('')
                 setStatusFilter('all')
