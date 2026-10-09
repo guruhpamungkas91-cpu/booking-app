@@ -355,6 +355,8 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
           enable_multi_staff: tenantData?.enable_multi_staff ?? false,
           enable_multi_service: tenantData?.enable_multi_service ?? true,
           enable_notes: tenantData?.enable_notes ?? true,
+          enable_guest_count: tenantData?.enable_guest_count ?? tenantData?.enable_person_count ?? false,
+          maxPersonPerBooking: tenantData?.maxPersonPerBooking ?? tenantData?.max_person_per_booking ?? 5,
           addons: Array.isArray(tenantData?.addons) ? tenantData.addons : [],
         }
 
@@ -1742,20 +1744,20 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
               </div>
 
               {/* JUMLAH ORANG / PASIEN */}
-              {tenant.enable_guest_count && (
+              {(tenant.enable_guest_count ?? tenant.enableGuestCount ?? tenant.enable_person_count ?? false) && (
                 <div>
                   <label className="block text-[11px] font-semibold text-zinc-300 uppercase tracking-wider mb-1.5">
                     Jumlah Orang / Pasien
                   </label>
                   <div className="grid grid-cols-5 gap-2">
-                    {Array.from({ length: Number(tenant.maxPersonPerBooking || 5) }, (_, i) => i + 1).map((num: number) => {
+                    {Array.from({ length: Number(tenant.maxPersonPerBooking || tenant.max_person_per_booking || 5) }, (_, i) => i + 1).map((num: number) => {
                       const isSelected = formData.person_count === num
                       return (
                         <button
                           type="button"
                           key={num}
                           onClick={() => setFormData((prev) => ({ ...prev, person_count: num }))}
-                          className={`py-2.5 text-xs font-bold rounded-2xl border transition-all duration-300 ${
+                          className={`py-2.5 text-xs font-bold rounded-2xl border transition-all duration-300 cursor-pointer ${
                             isSelected
                               ? 'border-transparent shadow-[0_0_25px_rgba(var(--color-primary-rgb),0.5)] scale-[1.03]'
                               : 'bg-zinc-900/80 border-zinc-800/90 text-zinc-300 hover:border-zinc-700 hover:text-white'

@@ -75,6 +75,9 @@ export interface Tenant {
   layout_type?: string
   layoutType?: string
   enable_guest_count?: boolean
+  enableGuestCount?: boolean
+  maxPersonPerBooking?: number | string
+  max_person_per_booking?: number | string
   category?: string
   staff_label?: string
   staffLabel?: string
