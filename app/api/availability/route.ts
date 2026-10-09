@@ -260,17 +260,23 @@ export async function GET(request: Request) {
         const isBlockedByAdmin = adminBlocked.some((b) => {
           if (!b.start_time) return false
 
-          // Jika pilih staf spesifik, cek apakah blocked_slot ini milik staf tsb atau global (tanpa staff_id)
-          if (staffIdQuery || cleanParam) {
-            const bStaffId = b.staff_id ? String(b.staff_id).trim() : ''
-            const bStaffName = b.staff_name ? normalizeStaffName(String(b.staff_name)) : ''
+          const bReason = String(b.reason || '')
+          const bStaffId = b.staff_id ? String(b.staff_id).trim() : ''
+          const bStaffName = b.staff_name ? normalizeStaffName(String(b.staff_name)) : ''
 
+          // ⚠️ ABAIKAN RECORD OTOMATIS YANG TANPA STAFF_ID (KARENA ITU DATA RESERVASI MURNI)
+          if (!bStaffId && !bStaffName && bReason.toLowerCase().includes('otomatis')) {
+            return false
+          }
+
+          // Jika customer memilih staf spesifik
+          if (staffIdQuery || cleanParam) {
             const isSameStaffId = Boolean(staffIdQuery) && bStaffId === String(staffIdQuery).trim()
             const isSameStaffName = Boolean(cleanParam) && bStaffName === cleanParam
-            const isGlobalBlock = !bStaffId && !bStaffName // Block global untuk semua staff
+            const isGlobalManualBlock = !bStaffId && !bStaffName // Lock manual toko oleh admin
 
-            if (!isSameStaffId && !isSameStaffName && !isGlobalBlock) {
-              return false // Abaikan jika ini block milik staff lain!
+            if (!isSameStaffId && !isSameStaffName && !isGlobalManualBlock) {
+              return false // Abaikan jika ini milik staf lain
             }
           }
 
