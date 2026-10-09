@@ -95,6 +95,12 @@ export async function GET(request: Request) {
     // Ambil parameter staf dari query URL
     const rawStaff = searchParams.get('staff') || searchParams.get('staff_name') || ''
     const rawStaffId = searchParams.get('staff_id') || ''
+    console.log('👉 [DEBUG API AVAILABILITY] Param Received:', {
+      date: dateStr,
+      tenantSlug,
+      rawStaff,
+      rawStaffId
+    })
     const durationParam = Number(searchParams.get('duration')) || 0
 
     const staffQuery = (rawStaff === 'undefined' || rawStaff === 'null') ? '' : rawStaff.trim()
@@ -299,8 +305,8 @@ export async function GET(request: Request) {
           (!staffIdQuery || IGNORED_STAFF_VALUES.has(staffIdQuery.toLowerCase()))
 
         if (isNoStaffSelected) {
-          // Jika TIDAK pilih staf spesifik: kunci slot HANYA jika SELURUH staf di jam tersebut sibuk
-          const busyStaffIdentifiers = new Set<string>()
+          // Jika TIDAK pilih staf spesifik (Umum)
+          const busyStaffIdsSet = new Set<string>()
 
           activeBookings.forEach((b) => {
             if (!b.booking_time) return
@@ -308,21 +314,25 @@ export async function GET(request: Request) {
             const bEnd = bStart + (Number(b.duration_minutes) || intervalMinutes)
 
             if (slotStartMin < bEnd && slotEndMin > bStart) {
-              const identifier = b.staff_id
-                ? `id_${b.staff_id}`
-                : b.staff_name
+              const staffIdentifier = b.staff_id 
+                ? `id_${b.staff_id}` 
+                : b.staff_name 
                 ? `name_${normalizeStaffName(b.staff_name)}`
                 : `anon_${Math.random()}`
-              busyStaffIdentifiers.add(identifier)
+              
+              busyStaffIdsSet.add(staffIdentifier)
             }
           })
 
-          if (busyStaffIdentifiers.size >= totalActiveStaffCount) {
+          // ⚠️ KUNCI UTAMA: Hanya blok jika JUMLAH STAF SIBUK >= TOTAL STAF AKTIF TOKO
+          // Jika toko punya 2 dokter aktif, dan baru 1 dokter yang sibuk, slot JANGAN KE-BLOK!
+          const effectiveStaffLimit = Math.max(totalActiveStaffCount, 2) // minimal 2 staff jika multi-staff
+          if (busyStaffIdsSet.size >= effectiveStaffLimit) {
             blockedTimesSet.add(slotStr)
             blockedReasonsMap.set(slotStr, 'Penuh')
           }
         } else {
-          // Jika MEMILIH STAF SPESIFIK: HANYA kunci slot jika RESERVASI TERSEBUT MILIK STAF TERSEBUT!
+          // Jika MEMILIH STAF SPESIFIK (misal: dr. Putri Ziani)
           const cleanParam = normalizeStaffName(staffQuery)
 
           const isStaffBusy = activeBookings.some((b) => {
@@ -337,7 +347,7 @@ export async function GET(request: Request) {
             // 2. Match Name
             const isMatchByName = Boolean(cleanParam) && Boolean(cleanResName) && cleanResName === cleanParam
 
-            // Jika BUKAN staf yang dipilih, SANGAT WAJIB DIABAIKAN (RETURN FALSE)
+            // Jika BUKAN staf yang dicari pelanggan (misal booking ini milik dr. Ayu Diah), ABAIKAN!
             if (!isMatchById && !isMatchByName) {
               return false
             }
@@ -345,7 +355,6 @@ export async function GET(request: Request) {
             const bStart = timeToMinutes(b.booking_time)
             const bEnd = bStart + (Number(b.duration_minutes) || intervalMinutes)
             
-            // Cek tabrakan rentang waktu
             return slotStartMin < bEnd && slotEndMin > bStart
           })
 
