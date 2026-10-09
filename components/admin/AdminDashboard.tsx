@@ -3317,9 +3317,9 @@ export default function AdminDashboard({ tenantSlug: propsTenantSlug }: AdminDas
                   <p className="text-[11px] text-zinc-500">Tidak ada slot booking pelanggan pada periode ini.</p>
                 </div>
               ) : (
-                  customerReservations.map((item, idx: number) => {
-                  const bookingDate = item.block_date || item.date || item.booking_date || '-'
-                  const bookingTime = item.start_time || item.block_time || item.booking_time || '-'
+                  customerReservations.map((item: BlockedSlot, idx: number) => {
+                  const bookingDate = item.block_date || item.booking_date || '-'
+                  const bookingTime = item.block_time || item.start_time || item.booking_time || '-'
                   const customerName = item.customer_name || (item.reason ? item.reason.replace(/Otomatis:\s*Booking\s*Confirmed\s*\((.*?)\)/i, '$1') : 'Pelanggan')
                   const staffName = item.staff_name || '-'
                   const serviceName = item.service_name || '-'

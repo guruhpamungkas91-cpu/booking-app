@@ -59,6 +59,12 @@ export interface BlockedSlot {
   block_end_date?: string
   block_time?: string
   reason?: string
+  customer_name?: string
+  staff_name?: string
+  service_name?: string
+  booking_date?: string
+  booking_time?: string
+  start_time?: string
 }
 
 export interface BookingFormData {
