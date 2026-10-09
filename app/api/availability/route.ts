@@ -306,11 +306,11 @@ export async function GET(request: Request) {
 
             const cleanResName = normalizeStaffName(b.staff_name || '')
 
-            // 1. Cek kecocokan berdasarkan ID
+            // 1. Cek kecocokan berdasarkan ID (Perbandingan String Murni)
             const isMatchById =
               Boolean(staffIdQuery) &&
               Boolean(b.staff_id) &&
-              String(b.staff_id) === String(staffIdQuery)
+              String(b.staff_id).trim() === String(staffIdQuery).trim()
 
             // 2. Cek kecocokan berdasarkan Nama
             const isMatchByName =
@@ -318,9 +318,8 @@ export async function GET(request: Request) {
               Boolean(cleanResName) &&
               cleanResName === cleanParam
 
-            // Jika salah satu cocok, berarti ini reservasi staf yang dicari
+            // Jika BUKAN staf yang sedang dipilih pelanggan, ABAIKAN reservasi ini!
             const isSameStaff = isMatchById || isMatchByName
-
             if (!isSameStaff) return false
 
             const bStart = timeToMinutes(b.booking_time)

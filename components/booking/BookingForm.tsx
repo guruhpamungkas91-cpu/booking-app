@@ -947,8 +947,8 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
 
     setFormData((prev) => ({
       ...prev,
-      selected_staff_id: staff.id, // Menyimpan ID asli (misal: 5 atau "5")
-      selected_staff: staff.name ?? '', // Menyimpan Nama asli
+      selected_staff_id: String(staff.id), // Pastikan diset sebagai String
+      selected_staff: staff.name ?? '',
       booking_time: '', // Reset waktu saat ganti staff
     }))
   }
