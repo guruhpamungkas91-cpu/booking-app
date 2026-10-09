@@ -170,7 +170,7 @@ export async function GET(request: Request) {
     // 2. FETCH BLOCKED SLOTS
     let blockedQuery = supabase
       .from('blocked_slots')
-      .select('start_time, end_time')
+      .select('start_time, end_time, staff_id, staff_name')
       .eq('block_date', targetDateISO)
 
     if (tenantId) {
@@ -179,7 +179,7 @@ export async function GET(request: Request) {
       blockedQuery = blockedQuery.eq('tenant_slug', tenantSlug)
     }
 
-    const { data: adminBlocked } = await blockedQuery.returns<BlockedSlotRecord[]>()
+    const { data: adminBlocked } = await blockedQuery.returns<Record<string, unknown>[]>()
 
     // 3. FETCH STAF AKTIF
     let totalActiveStaffCount = 1
@@ -255,12 +255,30 @@ export async function GET(request: Request) {
 
       // C. Menabrak Blocked Slots Admin
       if (adminBlocked && adminBlocked.length > 0) {
+        const cleanParam = normalizeStaffName(staffQuery)
+
         const isBlockedByAdmin = adminBlocked.some((b) => {
           if (!b.start_time) return false
+
+          // Jika pilih staf spesifik, cek apakah blocked_slot ini milik staf tsb atau global (tanpa staff_id)
+          if (staffIdQuery || cleanParam) {
+            const bStaffId = b.staff_id ? String(b.staff_id).trim() : ''
+            const bStaffName = b.staff_name ? normalizeStaffName(String(b.staff_name)) : ''
+
+            const isSameStaffId = Boolean(staffIdQuery) && bStaffId === String(staffIdQuery).trim()
+            const isSameStaffName = Boolean(cleanParam) && bStaffName === cleanParam
+            const isGlobalBlock = !bStaffId && !bStaffName // Block global untuk semua staff
+
+            if (!isSameStaffId && !isSameStaffName && !isGlobalBlock) {
+              return false // Abaikan jika ini block milik staff lain!
+            }
+          }
+
           const bStart = timeToMinutes(b.start_time)
           const bEnd = b.end_time ? timeToMinutes(b.end_time) : bStart + intervalMinutes
           return slotStartMin < bEnd && slotEndMin > bStart
         })
+
         if (isBlockedByAdmin) {
           blockedTimesSet.add(slotStr)
           blockedReasonsMap.set(slotStr, 'Penuh')
@@ -275,7 +293,7 @@ export async function GET(request: Request) {
           (!staffIdQuery || IGNORED_STAFF_VALUES.has(staffIdQuery.toLowerCase()))
 
         if (isNoStaffSelected) {
-          // Jika TIDAK pilih staf spesifik: kunci slot jika seluruh staf di jam tersebut sibuk
+          // Jika TIDAK pilih staf spesifik: kunci slot HANYA jika SELURUH staf di jam tersebut sibuk
           const busyStaffIdentifiers = new Set<string>()
 
           activeBookings.forEach((b) => {
@@ -298,32 +316,30 @@ export async function GET(request: Request) {
             blockedReasonsMap.set(slotStr, 'Penuh')
           }
         } else {
-          // Jika MEMILIH STAF SPESIFIK: Hanya kunci slot milik staf tersebut
+          // Jika MEMILIH STAF SPESIFIK: HANYA kunci slot jika RESERVASI TERSEBUT MILIK STAF TERSEBUT!
           const cleanParam = normalizeStaffName(staffQuery)
 
           const isStaffBusy = activeBookings.some((b) => {
             if (!b.booking_time) return false
 
             const cleanResName = normalizeStaffName(b.staff_name || '')
+            const resStaffId = b.staff_id != null ? String(b.staff_id).trim() : ''
 
-            // 1. Cek kecocokan berdasarkan ID (Perbandingan String Murni)
-            const isMatchById =
-              Boolean(staffIdQuery) &&
-              Boolean(b.staff_id) &&
-              String(b.staff_id).trim() === String(staffIdQuery).trim()
+            // 1. Match ID
+            const isMatchById = Boolean(staffIdQuery) && Boolean(resStaffId) && resStaffId === String(staffIdQuery).trim()
 
-            // 2. Cek kecocokan berdasarkan Nama
-            const isMatchByName =
-              Boolean(cleanParam) &&
-              Boolean(cleanResName) &&
-              cleanResName === cleanParam
+            // 2. Match Name
+            const isMatchByName = Boolean(cleanParam) && Boolean(cleanResName) && cleanResName === cleanParam
 
-            // Jika BUKAN staf yang sedang dipilih pelanggan, ABAIKAN reservasi ini!
-            const isSameStaff = isMatchById || isMatchByName
-            if (!isSameStaff) return false
+            // Jika BUKAN staf yang dipilih, SANGAT WAJIB DIABAIKAN (RETURN FALSE)
+            if (!isMatchById && !isMatchByName) {
+              return false
+            }
 
             const bStart = timeToMinutes(b.booking_time)
             const bEnd = bStart + (Number(b.duration_minutes) || intervalMinutes)
+            
+            // Cek tabrakan rentang waktu
             return slotStartMin < bEnd && slotEndMin > bStart
           })
 
