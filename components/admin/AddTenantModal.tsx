@@ -23,6 +23,7 @@ export default function AddTenantModal({ isOpen, onClose }: AddTenantModalProps)
     business_category: 'Barbershop',
     admin_email: '',
     admin_whatsapp: '',
+    staff_label: 'Capster', // 👈 Ditambahkan di sini agar sinkron
   })
 
   if (!isOpen) return null
@@ -40,6 +41,11 @@ export default function AddTenantModal({ isOpen, onClose }: AddTenantModalProps)
 
     const cleanClientCode = formData.client_code.toUpperCase().trim()
 
+    // Menyesuaikan control_center_label otomatis berdasarkan label staff atau kategori
+    const controlLabel = formData.staff_label.toLowerCase().includes('lapangan') 
+      ? '🎾 Control Center' 
+      : '💈 Control Center'
+
     const { error } = await supabase.from('tenants').insert([
       {
         business_name: formData.business_name.trim(),
@@ -51,9 +57,9 @@ export default function AddTenantModal({ isOpen, onClose }: AddTenantModalProps)
         admin_email: formData.admin_email.trim(),
         admin_whatsapp: formData.admin_whatsapp.trim(),
         is_active: true,
-        // Properti default bawaan agar tersimpan rapi sejak awal
-        staff_label: 'Capster',
-        control_center_label: '💈 Control Center',
+        // Properti default bawaan dinamis
+        staff_label: formData.staff_label.trim() || 'Capster',
+        control_center_label: controlLabel,
         prevent_double_booking: true,
         enable_notes: true,
       },
@@ -73,6 +79,7 @@ export default function AddTenantModal({ isOpen, onClose }: AddTenantModalProps)
         business_category: 'Barbershop',
         admin_email: '',
         admin_whatsapp: '',
+        staff_label: 'Capster', // 👈 Ikut direset dengan aman
       })
       onClose()
       router.refresh()
@@ -116,7 +123,7 @@ export default function AddTenantModal({ isOpen, onClose }: AddTenantModalProps)
               <input
                 type="text"
                 required
-                placeholder="Contoh: M Cut Barbershop"
+                placeholder="Contoh: Padel Arena / M Cut"
                 value={formData.business_name || ''}
                 onChange={(e) => setFormData({ ...formData, business_name: e.target.value })}
                 className="w-full bg-black border border-cyan-500/30 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.08)]"
@@ -131,7 +138,7 @@ export default function AddTenantModal({ isOpen, onClose }: AddTenantModalProps)
               <input
                 type="text"
                 required
-                placeholder="Contoh: mcut"
+                placeholder="Contoh: padel-arena"
                 value={formData.tenant_slug || ''}
                 onChange={(e) => setFormData({ ...formData, tenant_slug: e.target.value })}
                 className="w-full bg-black border border-cyan-500/30 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.08)] font-mono text-xs"
@@ -146,7 +153,7 @@ export default function AddTenantModal({ isOpen, onClose }: AddTenantModalProps)
               <input
                 type="text"
                 required
-                placeholder="Contoh: MCUT"
+                placeholder="Contoh: PADEL"
                 value={formData.client_code || ''}
                 onChange={(e) => setFormData({ ...formData, client_code: e.target.value })}
                 className="w-full bg-black border border-cyan-500/30 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.08)] font-mono text-xs uppercase"
@@ -160,7 +167,7 @@ export default function AddTenantModal({ isOpen, onClose }: AddTenantModalProps)
               </label>
               <input
                 type="text"
-                placeholder="Contoh: mcut.vercel.app"
+                placeholder="Contoh: padel.vercel.app"
                 value={formData.domain_url || ''}
                 onChange={(e) => setFormData({ ...formData, domain_url: e.target.value })}
                 className="w-full bg-black border border-cyan-500/30 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.08)] font-mono text-xs"
@@ -189,9 +196,23 @@ export default function AddTenantModal({ isOpen, onClose }: AddTenantModalProps)
               </label>
               <input
                 type="text"
-                placeholder="Contoh: Barbershop, Salon, F&B, dll"
+                placeholder="Contoh: Padel, Barbershop, Salon"
                 value={formData.business_category || ''}
                 onChange={(e) => setFormData({ ...formData, business_category: e.target.value })}
+                className="w-full bg-black border border-cyan-500/30 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.08)]"
+              />
+            </div>
+
+            {/* Label Staff / Resource */}
+            <div>
+              <label className="block text-xs font-bold text-cyan-400 uppercase tracking-wider mb-1.5">
+                Label Resource (staff_label)
+              </label>
+              <input
+                type="text"
+                placeholder="Cth: Lapangan, Court, Capster, Dokter"
+                value={formData.staff_label || ''}
+                onChange={(e) => setFormData({ ...formData, staff_label: e.target.value })}
                 className="w-full bg-black border border-cyan-500/30 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.08)]"
               />
             </div>
@@ -212,7 +233,7 @@ export default function AddTenantModal({ isOpen, onClose }: AddTenantModalProps)
             </div>
 
             {/* Nomor WhatsApp Admin */}
-            <div>
+            <div className="md:col-span-2">
               <label className="block text-xs font-bold text-cyan-400 uppercase tracking-wider mb-1.5">
                 Nomor WhatsApp Admin
               </label>

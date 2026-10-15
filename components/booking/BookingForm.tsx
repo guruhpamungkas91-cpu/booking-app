@@ -1746,9 +1746,7 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
               {/* JUMLAH ORANG / PASIEN */}
               {(tenant.enable_guest_count ?? tenant.enableGuestCount ?? tenant.enable_person_count ?? false) && (
                 <div>
-                  <label className="block text-[11px] font-semibold text-zinc-300 uppercase tracking-wider mb-1.5">
-                    Jumlah Orang / Pasien
-                  </label>
+                  <label>{tenant?.category?.toLowerCase().includes('olahraga') ? 'Jumlah Pemain' : tenant?.category?.toLowerCase().includes('mobil') ? 'Jumlah Kendaraan' : 'Jumlah Orang / Pasien'}</label>
                   <div className="grid grid-cols-5 gap-2">
                     {Array.from({ length: Number(tenant.maxPersonPerBooking || tenant.max_person_per_booking || 5) }, (_, i) => i + 1).map((num: number) => {
                       const isSelected = formData.person_count === num
@@ -1908,7 +1906,7 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
 
                   {formData.selected_staff && (
                     <div className="flex justify-between items-center text-zinc-400">
-                      <span>Staff / Terapis:</span>
+                      <span>{tenant?.staff_label || 'Staff'}:</span>
                       <span className="text-zinc-100 font-semibold">{formData.selected_staff}</span>
                     </div>
                   )}

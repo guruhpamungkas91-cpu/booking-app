@@ -81,6 +81,8 @@ export interface Tenant {
   category?: string
   staff_label?: string
   staffLabel?: string
+  guest_label?: string
+  guestLabel?: string
   control_center_label?: string
   theme_color?: string
   themeColor?: string

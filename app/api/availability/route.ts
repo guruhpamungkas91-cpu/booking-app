@@ -270,7 +270,7 @@ export async function GET(request: Request) {
           const bStaffId = b.staff_id ? String(b.staff_id).trim() : ''
           const bStaffName = b.staff_name ? normalizeStaffName(String(b.staff_name)) : ''
 
-          // ⚠️ ABAIKAN RECORD OTOMATIS YANG TANPA STAFF_ID (KARENA ITU DATA RESERVASI MURNI)
+          // ⚠️ PENGAMAN UTAMA: Abaikan record otomatis tanpa staff_id agar tidak memblokir staf lain
           if (!bStaffId && !bStaffName && bReason.toLowerCase().includes('otomatis')) {
             return false
           }
@@ -279,10 +279,10 @@ export async function GET(request: Request) {
           if (staffIdQuery || cleanParam) {
             const isSameStaffId = Boolean(staffIdQuery) && bStaffId === String(staffIdQuery).trim()
             const isSameStaffName = Boolean(cleanParam) && bStaffName === cleanParam
-            const isGlobalManualBlock = !bStaffId && !bStaffName // Lock manual toko oleh admin
+            const isGlobalManualBlock = !bStaffId && !bStaffName // Lock manual murni dari admin
 
             if (!isSameStaffId && !isSameStaffName && !isGlobalManualBlock) {
-              return false // Abaikan jika ini milik staf lain
+              return false // Abaikan jika ini block milik staf lain!
             }
           }
 

@@ -207,7 +207,7 @@ export default function TenantAdminPage({
             onClick={() => router.push(`/${tenantSlug}`)}
             className="text-[11px] text-zinc-400 hover:text-white transition-colors"
           >
-            ← Kembali ke Katalog {brandTitle}
+            ← Kembali ke Beranda {brandTitle}
           </button>
         </div>
       </div>
