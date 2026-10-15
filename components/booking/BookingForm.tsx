@@ -1510,9 +1510,9 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
                   <div className="grid grid-cols-2 gap-2.5">
                     {staffList.map((st) => {
                       const isSelected =
-                      formData.selected_staff_id !== undefined &&
-                      formData.selected_staff_id !== null &&
-                      String(formData.selected_staff_id) === String(st.id)
+                        formData.selected_staff_id !== undefined &&
+                        formData.selected_staff_id !== null &&
+                        String(formData.selected_staff_id) === String(st.id)
 
                       return (
                         <button
@@ -1524,23 +1524,37 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
                               : undefined
                           }
                           onClick={() => handleSelectStaff(st)}
-                          className={`py-3 px-3.5 text-xs font-semibold rounded-2xl border transition-all duration-300 text-left ${
+                          className={`py-3 px-3.5 text-xs font-semibold rounded-2xl border transition-all duration-300 text-left flex items-center space-x-3 ${
                             isSelected
                               ? `${theme.accentBgLight}${theme.accentBorder} text-white shadow-[0_0_25px_rgba(var(--color-primary-rgb),0.3)] scale-[1.01]`
                               : 'bg-zinc-900/80 border-zinc-800/90 text-zinc-300 hover:border-zinc-700 hover:bg-zinc-900'
                           }`}
                         >
-                          <p
-                            style={isSelected && theme.inlineText ? theme.inlineText : undefined}
-                            className={`text-sm font-bold ${
-                              isSelected ? theme.accentText : 'text-zinc-100'
-                            }`}
-                          >
-                            {st.name}
-                          </p>
-                          <p className="text-[11px] text-zinc-300 font-medium mt-0.5">
-                            {st.role}
-                          </p>
+                          {/* 🟢 TAMPILKAN FOTO JIKA ADA */}
+                          {st.photo_url && (
+                            <div className="relative w-10 h-10 rounded-xl overflow-hidden border border-zinc-700 shrink-0">
+                              <Image
+                                src={st.photo_url}
+                                alt={st.name || 'Lapangan'}
+                                fill
+                                className="object-cover"
+                              />
+                            </div>
+                          )}
+
+                          <div>
+                            <p
+                              style={isSelected && theme.inlineText ? theme.inlineText : undefined}
+                              className={`text-sm font-bold ${
+                                isSelected ? theme.accentText : 'text-zinc-100'
+                              }`}
+                            >
+                              {st.name}
+                            </p>
+                            <p className="text-[11px] text-zinc-300 font-medium mt-0.5">
+                              {st.role}
+                            </p>
+                          </div>
                         </button>
                       )
                     })}

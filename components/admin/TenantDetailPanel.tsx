@@ -353,7 +353,7 @@ export default function TenantDetailPanel({
           is_active: Boolean(stf.is_active),
           max_slots: stf.max_slots || 1,
           phone: stf.phone || null,
-          photo_url: stf.photo_url || null,
+          photo_url: stf.photo_url || null, // Pastikan field ini memastikan URL foto terkirim ke database
         }
 
         if (stf.id && typeof stf.id === 'number') {
