@@ -659,9 +659,9 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
     serviceTotal = serviceTotal * personCount
 
     // 🟢 TAMBAHAN: Hitung penyesuaian harga lapangan (Court Adjustment)
-    const courtPriceAdjustment = selectedStaffObj && 'price_adjustment' in selectedStaffObj 
-      ? parsePrice(selectedStaffObj.price_adjustment as number | string) 
-      : 0
+    const courtPriceAdjustment = selectedStaffObj && typeof selectedStaffObj === 'object'
+    ? parsePrice((selectedStaffObj as Record<string, unknown>).price_adjustment as string | number)
+    : 0
 
     // Masukkan biaya tambahan lapangan ke total layanan
     serviceTotal += courtPriceAdjustment
@@ -1925,11 +1925,11 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
                   )}
 
                   {/* 🟢 TARUH KODINGAN BIAYA TAMBAHAN LAPANGAN DI SINI */}
-                  {selectedStaffObj && parsePrice(selectedStaffObj.price_adjustment as any) > 0 && (
+                  {selectedStaffObj && parsePrice((selectedStaffObj as Record<string, unknown>).price_adjustment as string | number) > 0 && (
                     <div className="flex justify-between items-center text-zinc-400">
                       <span>Biaya Tambahan ({selectedStaffObj.name}):</span>
                       <span className="text-zinc-100 font-semibold">
-                        +Rp {parsePrice(selectedStaffObj.price_adjustment as any).toLocaleString('id-ID')}
+                        +Rp {parsePrice((selectedStaffObj as Record<string, unknown>).price_adjustment as string | number).toLocaleString('id-ID')}
                       </span>
                     </div>
                   )}
