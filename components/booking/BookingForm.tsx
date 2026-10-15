@@ -1501,11 +1501,11 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
                 </h2>
               </div>
 
-              {/* PILIH STAFF / TERAPIS */}
+              {/* PILIH STAFF / LAPANGAN */}
               {tenant.enable_multi_staff && staffList.length > 0 && (
                 <div>
                   <label className="block text-[11px] font-semibold text-zinc-300 uppercase tracking-wider mb-1.5">
-                    {tenant.staff_label || 'Pilih Staff / Terapis'}
+                    Pilih {tenant.staff_label || 'Lapangan'}
                   </label>
                   <div className="grid grid-cols-2 gap-2.5">
                     {staffList.map((st) => {
@@ -1515,47 +1515,58 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
                         String(formData.selected_staff_id) === String(st.id)
 
                       return (
-                        <button
-                          type="button"
+                        <div
                           key={st.id}
-                          style={
-                            isSelected && theme.inlineBgLight && theme.inlineBorder
-                              ? { ...theme.inlineBgLight, ...theme.inlineBorder }
-                              : undefined
-                          }
                           onClick={() => handleSelectStaff(st)}
-                          className={`py-3 px-3.5 text-xs font-semibold rounded-2xl border transition-all duration-300 text-left flex items-center space-x-3 ${
+                          className={`py-3 px-3.5 rounded-2xl border transition-all duration-300 text-left flex flex-col justify-between cursor-pointer ${
                             isSelected
                               ? `${theme.accentBgLight}${theme.accentBorder} text-white shadow-[0_0_25px_rgba(var(--color-primary-rgb),0.3)] scale-[1.01]`
                               : 'bg-zinc-900/80 border-zinc-800/90 text-zinc-300 hover:border-zinc-700 hover:bg-zinc-900'
                           }`}
                         >
-                          {/* 🟢 TAMPILKAN FOTO JIKA ADA */}
-                          {st.photo_url && (
-                            <div className="relative w-10 h-10 rounded-xl overflow-hidden border border-zinc-700 shrink-0">
-                              <Image
-                                src={st.photo_url}
-                                alt={st.name || 'Lapangan'}
-                                fill
-                                className="object-cover"
-                              />
-                            </div>
-                          )}
-
                           <div>
                             <p
                               style={isSelected && theme.inlineText ? theme.inlineText : undefined}
-                              className={`text-sm font-bold ${
+                              className={`text-xs font-bold leading-snug ${
                                 isSelected ? theme.accentText : 'text-zinc-100'
                               }`}
                             >
                               {st.name}
                             </p>
-                            <p className="text-[11px] text-zinc-300 font-medium mt-0.5">
+                            <p className="text-[10px] text-zinc-400 font-medium mt-0.5">
                               {st.role}
                             </p>
                           </div>
-                        </button>
+
+                          {/* Tombol Lihat Detail / Foto Lapangan */}
+                          {st.photo_url && (
+                            <button
+                              type="button"
+                              style={theme?.inlineText ? theme.inlineText : undefined}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                // Format objek agar cocok dengan state modal detail
+                                setSelectedServiceDetail({
+                                  id: st.id,
+                                  name: st.name,
+                                  label: st.name,
+                                  price: parsePrice((st as Record<string, unknown>).price_adjustment as string | number),
+                                  image_url: st.photo_url,
+                                  desc: `${st.role || 'Lapangan'} - Fasilitas siap pakai untuk sesi bermain kamu.`,
+                                } as unknown as ServiceItem)
+                              }}
+                              className={`mt-2 self-start inline-flex items-center space-x-1 text-[10px] font-bold ${
+                                theme?.accentText || 'text-emerald-400'
+                              } hover:underline`}
+                            >
+                              <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                              </svg>
+                              <span>Lihat Foto Lapangan</span>
+                            </button>
+                          )}
+                        </div>
                       )
                     })}
                   </div>
@@ -2048,7 +2059,7 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
         </form>
       </div>
 
-      {/* 🌟 MODAL POPUP DETAIL LAYANAN & ADD-ON */}
+      {/* 🌟 MODAL POPUP DETAIL LAYANAN & LAPANGAN */}
       {selectedServiceDetail && (
         <div 
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn"
@@ -2061,16 +2072,17 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
             <button
               type="button"
               onClick={() => setSelectedServiceDetail(null)}
-              className="absolute top-4 right-4 w-8 h-8 rounded-full bg-zinc-800 text-zinc-400 hover:text-white flex items-center justify-center transition-colors font-bold text-xs"
+              className="absolute top-4 right-4 w-8 h-8 rounded-full bg-zinc-800/80 text-zinc-400 hover:text-white flex items-center justify-center transition-colors font-bold text-xs z-10"
             >
               ✕
             </button>
 
+            {/* GAMBAR DENGAN ASPECT RATIO BAGUS */}
             {'image_url' in selectedServiceDetail && selectedServiceDetail.image_url && (
-              <div className="relative w-full h-40 rounded-2xl overflow-hidden border border-zinc-800">
+              <div className="relative w-full h-48 rounded-2xl overflow-hidden border border-zinc-800 shadow-md">
                 <Image
                   src={selectedServiceDetail.image_url}
-                  alt={selectedServiceDetail.name || 'Detail Layanan'}
+                  alt={getServiceDisplayLabel(selectedServiceDetail)}
                   fill
                   className="object-cover"
                 />
@@ -2081,10 +2093,15 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
               <h3 className="text-base font-bold text-white">
                 {getServiceDisplayLabel(selectedServiceDetail)}
               </h3>
-              <p className="text-xs font-extrabold text-rose-400 mt-1">
-                Rp {parsePrice(selectedServiceDetail.price).toLocaleString('id-ID')}
-                {'duration' in selectedServiceDetail && selectedServiceDetail.duration ? ` • ${selectedServiceDetail.duration} Menit` : ''}
-              </p>
+              {parsePrice(selectedServiceDetail.price) > 0 ? (
+                <p className="text-xs font-extrabold text-emerald-400 mt-1">
+                  +Rp {parsePrice(selectedServiceDetail.price).toLocaleString('id-ID')} (Surcharge Lapangan)
+                </p>
+              ) : (
+                <p className="text-xs font-extrabold text-emerald-400 mt-1">
+                  Harga Standar Paket
+                </p>
+              )}
             </div>
 
             <div className="text-xs text-zinc-300 space-y-2 max-h-48 overflow-y-auto leading-relaxed pr-1">
@@ -2102,7 +2119,7 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
             <button
               type="button"
               onClick={() => setSelectedServiceDetail(null)}
-              className="w-full py-3 rounded-2xl bg-zinc-800 hover:bg-zinc-700 text-white font-bold text-xs transition-colors"
+              className="w-full py-3 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-black font-extrabold text-xs transition-colors tracking-wider uppercase"
             >
               Tutup
             </button>
