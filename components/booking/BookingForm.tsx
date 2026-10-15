@@ -1484,7 +1484,7 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
             <div className="space-y-4 animate-fadeIn">
               <div className="flex items-center justify-between">
                 <h2 className="text-[11px] font-extrabold text-zinc-300 uppercase tracking-widest">
-                  Langkah 1 dari 3: Pilih Layanan & Terapis
+                  Langkah 1 dari 3: LANGKAH 1 DARI 3: PILIH LAYANAN & {tenant?.staff_label?.toUpperCase() || 'STAFF'}
                 </h2>
               </div>
 
