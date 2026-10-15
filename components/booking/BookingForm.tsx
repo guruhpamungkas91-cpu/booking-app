@@ -670,7 +670,8 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
 
     if (formData.selectedTenantAddons && formData.selectedTenantAddons.length > 0) {
       extraFee = formData.selectedTenantAddons.reduce((sum, addon) => {
-        return sum + parsePrice(addon.price)
+        const qty = Number((addon as Record<string, unknown>).qty) || 1
+        return sum + (parsePrice(addon.price) * qty)
       }, 0)
     } else if ((formData.selectedAddonIds?.length ?? 0) > 0 && addonServices.length > 0) {
       const selectedIds = formData.selectedAddonIds ?? []
@@ -1333,48 +1334,51 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
               const addonPrice = parsePrice(addon.price)
               const addonId = addon.id || index
 
-              const isChecked = selectedAddons.some(
-                (item) => item.label === addonName
-              ) || selectedIds.includes(addonId)
+              const matchedAddon = selectedAddons.find((item) => item.label === addonName)
+              const isChecked = Boolean(matchedAddon) || selectedIds.includes(addonId)
+              const currentQty = (matchedAddon as Record<string, unknown>)?.qty ? Number((matchedAddon as Record<string, unknown>).qty) : 1
 
               return (
                 <div
                   key={addonId}
                   style={isChecked && theme?.inlineBgLight && theme?.inlineBorder ? { ...theme.inlineBgLight, ...theme.inlineBorder } : undefined}
-                  onClick={() => {
-                    setFormData((prev) => {
-                      const currentAddons = prev.selectedTenantAddons || []
-                      const currentIds = prev.selectedAddonIds || []
-
-                      if (isChecked) {
-                        return {
-                          ...prev,
-                          selectedTenantAddons: currentAddons.filter((item) => item.label !== addonName),
-                          selectedAddonIds: currentIds.filter((id) => id !== addonId)
-                        }
-                      } else {
-                        return {
-                          ...prev,
-                          selectedTenantAddons: [
-                            ...currentAddons, 
-                            { label: addonName, name: addonName, price: addonPrice }
-                          ],
-                          selectedAddonIds: [...currentIds, addonId]
-                        }
-                      }
-                    })
-                  }}
-                  className={`cursor-pointer p-3.5 rounded-2xl border transition-all duration-300 flex flex-col group ${
+                  className={`p-3.5 rounded-2xl border transition-all duration-300 flex flex-col group ${
                     isChecked
                       ? `${theme.accentBgLight}${theme?.accentBorder || 'border-purple-500'} text-white shadow-[0_0_25px_rgba(var(--color-primary-rgb),0.25)] scale-[1.01]`
                       : 'bg-zinc-950/80 border-zinc-800/80 text-zinc-400 hover:border-zinc-700 hover:bg-zinc-900/60'
                   }`}
                 >
                   <div className="flex items-center justify-between w-full">
-                    <div className="flex items-center space-x-3">
+                    {/* AREA KLIK CHECKBOX & TEKS */}
+                    <div 
+                      className="flex items-center space-x-3 cursor-pointer flex-1 pr-2"
+                      onClick={() => {
+                        setFormData((prev) => {
+                          const currentAddons = prev.selectedTenantAddons || []
+                          const currentIds = prev.selectedAddonIds || []
+
+                          if (isChecked) {
+                            return {
+                              ...prev,
+                              selectedTenantAddons: currentAddons.filter((item) => item.label !== addonName),
+                              selectedAddonIds: currentIds.filter((id) => id !== addonId)
+                            }
+                          } else {
+                            return {
+                              ...prev,
+                              selectedTenantAddons: [
+                                ...currentAddons, 
+                                { label: addonName, name: addonName, price: addonPrice, qty: 1 }
+                              ],
+                              selectedAddonIds: [...currentIds, addonId]
+                            }
+                          }
+                        })
+                      }}
+                    >
                       <div 
                         style={isChecked && theme?.inlineStyle ? { background: tenant.theme_color } : undefined}
-                        className={`w-4 h-4 rounded-lg border flex items-center justify-center transition-all duration-300 ${
+                        className={`w-4 h-4 rounded-lg border flex items-center justify-center transition-all duration-300 shrink-0 ${
                           isChecked 
                             ? `${theme?.accentSolidBg || 'bg-purple-600'} border-white shadow-[0_0_12px_currentColor]` 
                             : 'border-zinc-700 bg-zinc-900 group-hover:border-zinc-600'
@@ -1400,9 +1404,51 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
                         )}
                       </div>
                     </div>
-                    <span className="text-xs font-extrabold text-zinc-200 bg-zinc-900/90 px-3 py-1.5 rounded-xl border border-zinc-800 shadow-inner whitespace-nowrap ml-2">
-                      +Rp {addonPrice.toLocaleString('id-ID')}
-                    </span>
+
+                    {/* BAGIAN HARGA ATAU TOMBOL QUANTITY */}
+                    <div className="flex items-center space-x-2 shrink-0 ml-2">
+                      {isChecked ? (
+                        <div className="flex items-center bg-zinc-900 border border-zinc-700 rounded-xl p-1 space-x-1.5" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const newQty = Math.max(1, currentQty - 1)
+                              setFormData((prev) => ({
+                                ...prev,
+                                selectedTenantAddons: (prev.selectedTenantAddons || []).map((item) =>
+                                  item.label === addonName ? { ...item, qty: newQty } : item
+                                )
+                              }))
+                            }}
+                            className="w-5 h-5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-white font-bold text-xs flex items-center justify-center cursor-pointer"
+                          >
+                            -
+                          </button>
+                          <span className="text-xs font-extrabold text-emerald-400 px-1">
+                            {currentQty} Unit
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const newQty = currentQty + 1
+                              setFormData((prev) => ({
+                                ...prev,
+                                selectedTenantAddons: (prev.selectedTenantAddons || []).map((item) =>
+                                  item.label === addonName ? { ...item, qty: newQty } : item
+                                )
+                              }))
+                            }}
+                            className="w-5 h-5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-white font-bold text-xs flex items-center justify-center cursor-pointer"
+                          >
+                            +
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-xs font-extrabold text-zinc-200 bg-zinc-900/90 px-3 py-1.5 rounded-xl border border-zinc-800 shadow-inner whitespace-nowrap">
+                          +Rp {addonPrice.toLocaleString('id-ID')}
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   {(addon.long_description || addon.desc || addon.image_url) && (
