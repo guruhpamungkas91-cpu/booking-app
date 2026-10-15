@@ -263,6 +263,8 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
   custom_notes: ''
 })
   
+  const [selectedStaffObj, setSelectedStaffObj] = useState<StaffItem | null>(null)
+
   const [addonQuantities] = useState<Record<string | number, number>>({})
   const [loading, setLoading] = useState<boolean>(false)
   
@@ -656,13 +658,21 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
     const personCount = Number(formData.person_count) || 1
     serviceTotal = serviceTotal * personCount
 
+    // 🟢 TAMBAHAN: Hitung penyesuaian harga lapangan (Court Adjustment)
+    const courtPriceAdjustment = selectedStaffObj && 'price_adjustment' in selectedStaffObj 
+      ? parsePrice(selectedStaffObj.price_adjustment as number | string) 
+      : 0
+
+    // Masukkan biaya tambahan lapangan ke total layanan
+    serviceTotal += courtPriceAdjustment
+
     let extraFee = 0
 
     if (formData.selectedTenantAddons && formData.selectedTenantAddons.length > 0) {
       extraFee = formData.selectedTenantAddons.reduce((sum, addon) => {
         return sum + parsePrice(addon.price)
       }, 0)
-      } else if ((formData.selectedAddonIds?.length ?? 0) > 0 && addonServices.length > 0) {
+    } else if ((formData.selectedAddonIds?.length ?? 0) > 0 && addonServices.length > 0) {
       const selectedIds = formData.selectedAddonIds ?? []
 
       extraFee = addonServices
@@ -679,7 +689,7 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
     }
 
     return serviceTotal + extraFee
-  }, [formData.selected_services, formData.person_count, formData.selectedTenantAddons, formData.selectedAddonIds, mainServices, addonServices, addonQuantities])
+  }, [formData.selected_services, formData.person_count, formData.selectedTenantAddons, formData.selectedAddonIds, mainServices, addonServices, addonQuantities, selectedStaffObj])
 
   const grandTotal = calculateTotal()
 
@@ -945,9 +955,12 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
   const handleSelectStaff = (staff: StaffItem): void => {
     if (staff.id === undefined || staff.id === null) return
 
+    // Simpan objek staff lengkap untuk perhitungan harga lapangan
+    setSelectedStaffObj(staff)
+
     setFormData((prev) => ({
       ...prev,
-      selected_staff_id: String(staff.id), // Pastikan diset sebagai String
+      selected_staff_id: String(staff.id),
       selected_staff: staff.name ?? '',
       booking_time: '', // Reset waktu saat ganti staff
     }))
@@ -1510,7 +1523,7 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
                               ? { ...theme.inlineBgLight, ...theme.inlineBorder }
                               : undefined
                           }
-                          onClick={() => handleSelectStaff({ id: st.id, name: st.name })}
+                          onClick={() => handleSelectStaff(st)}
                           className={`py-3 px-3.5 text-xs font-semibold rounded-2xl border transition-all duration-300 text-left ${
                             isSelected
                               ? `${theme.accentBgLight}${theme.accentBorder} text-white shadow-[0_0_25px_rgba(var(--color-primary-rgb),0.3)] scale-[1.01]`
@@ -1911,6 +1924,16 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
                     </div>
                   )}
 
+                  {/* 🟢 TARUH KODINGAN BIAYA TAMBAHAN LAPANGAN DI SINI */}
+                  {selectedStaffObj && parsePrice(selectedStaffObj.price_adjustment as any) > 0 && (
+                    <div className="flex justify-between items-center text-zinc-400">
+                      <span>Biaya Tambahan ({selectedStaffObj.name}):</span>
+                      <span className="text-zinc-100 font-semibold">
+                        +Rp {parsePrice(selectedStaffObj.price_adjustment as any).toLocaleString('id-ID')}
+                      </span>
+                    </div>
+                  )}
+
                   <div className="flex justify-between items-start text-zinc-400">
                     <span>Layanan Utama:</span>
                     <span className="text-zinc-100 font-semibold text-right max-w-[60%]">
@@ -1923,7 +1946,7 @@ export default function BookingFormContent({ initialTenant }: { initialTenant?: 
                   {formData.selectedTenantAddons && formData.selectedTenantAddons.length > 0 && (
                     <div className="flex justify-between items-start text-zinc-400">
                       <span>Add-ons:</span>
-                      <span className="text-purple-300 font-semibold text-right max-w-[60%]">
+                      <span className="purple-300 font-semibold text-right max-w-[60%]">
                         {formData.selectedTenantAddons.map((a) => a.label).join(', ')}
                       </span>
                     </div>
